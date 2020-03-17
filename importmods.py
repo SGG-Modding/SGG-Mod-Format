@@ -63,9 +63,10 @@ for base, mods in codes.items():
             basefile.write(line)
     else:
         basefile = open(base,'a')
-    basefile.write("\n"+importkey+"\n")
+        basefile.write("\n")
+    basefile.write(importkey+"\n")
     basefile.write(warning+"\n")
-    print("\n"+base.split("/")[-1])
+    print("\n"+"/".join(base.split("/")[1:]))
     i = 0
     for mod in mods:
         i+=1
