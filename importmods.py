@@ -63,7 +63,7 @@ for base, mods in codes.items():
         basefile = open(base,'a')
     basefile.write(importkey+"\n")
     basefile.write(warning+"\n")
-    print(base)
+    print(base[len(home)+1:])
     for mod in mods:
         print("    \""+mod+"\"")
         basefile.write(importkeyword+"\""+mod+"\""+"\n")
