@@ -25,8 +25,18 @@ defaults = {"Hades":"\"RoomManager.lua\"",
             "Pyre":"\"Campaign.lua\"",
             "Transistor":"\"AllCampaignScripts.txt\""}
 
-game = os.path.abspath('..').replace("\\","/").split("/")[-1]
+game = os.path.realpath('..').replace("\\","/").split("/")[-1]
 default = defaults[game]
+
+def in_directory(file, directory):
+    #https://stackoverflow.com/questions/3812849/how-to-check-whether-a-directory-is-a-sub-directory-of-another-directory
+    #make both absolute    
+    directory = os.path.join(os.path.realpath(directory), '')
+    file = os.path.realpath(file)
+
+    #return true, if the common prefix of both is equal to directory
+    #e.g. /a/b/c/d.rst and directory is /a/b, the common prefix is /a/b
+    return os.path.commonprefix([file, directory]) == directory
 
 codes = defaultdict(list)
 for mod in os.scandir(mods):
@@ -38,7 +48,9 @@ for mod in os.scandir(mods):
                     code = line[len(header)+1:].replace("\n","")
                     if code == defaultcode:
                         code = default
-                    codes[home+"/"+code.replace("\"","")].append(modsrel+"/"+path)
+                    code = home+"/"+code.replace("\"","")
+                    if in_directory(code,".."):
+                        codes[code].append(modsrel+"/"+path)
                 break
 
 print("Adding import statements for "+game+" mods...")
@@ -63,10 +75,9 @@ for base, mods in codes.items():
             basefile.write(line)
     else:
         basefile = open(base,'a')
-        basefile.write("\n")
-    basefile.write(importkey+"\n")
+    basefile.write("\n"+importkey+"\n")
     basefile.write(warning+"\n")
-    print("\n"+"/".join(base.split("/")[1:]))
+    print("\n"+base.split("/")[-1])
     i = 0
     for mod in mods:
         i+=1
