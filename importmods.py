@@ -25,8 +25,8 @@ defaults = {"Hades":"\"RoomManager.lua\"",
             "Pyre":"\"Campaign.lua\"",
             "Transistor":"\"AllCampaignScripts.txt\""}
 
-gamepath = os.path.abspath('..')
-default = defaults[gamepath.replace("\\","/").split("/")[-1]]
+game = os.path.abspath('..').replace("\\","/").split("/")[-1]
+default = defaults[game]
 
 codes = defaultdict(list)
 for mod in os.scandir(mods):
@@ -41,6 +41,8 @@ for mod in os.scandir(mods):
                     codes[home+"/"+code.replace("\"","")].append(modsrel+"/"+path)
                 break
 
+print("Adding import statements for "+game+" mods...")
+
 for base, mods in codes.items():
     keyfound = False
     lines = []
@@ -50,7 +52,7 @@ for base, mods in codes.items():
                 keyfound = True
                 break
             lines.append(line)
-    Path(bakdir+"/"+home).mkdir(parents=True, exist_ok=True)
+    Path(bakdir+"/"+"/".join(base.split("/")[:-1])).mkdir(parents=True, exist_ok=True)
     backupfile = open(bakdir+"/"+base+baktype,'w')
     for line in lines:
         backupfile.write(line)
@@ -61,12 +63,18 @@ for base, mods in codes.items():
             basefile.write(line)
     else:
         basefile = open(base,'a')
-    basefile.write(importkey+"\n")
+    basefile.write("\n"+importkey+"\n")
     basefile.write(warning+"\n")
-    print(base[len(home)+1:])
+    print("\n"+base.split("/")[-1])
+    i = 0
     for mod in mods:
-        print("    "+mod)
+        i+=1
+        print(" #"+str(i)+" "*(6-len(str(i)))+mod)
         basefile.write(importkeyword+"\""+mod+"\""+"\n")
     basefile.write(postword+"\n")
     basefile.write(importend+"\n")
     basefile.close()
+print("\n"+str(len(codes))+" files import a total of "+str(sum(map(len,codes.values())))+" mods.")
+
+if __name__ == '__main__':
+    input("Press any key to end program...")
