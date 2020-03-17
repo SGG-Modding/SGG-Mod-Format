@@ -29,6 +29,8 @@ game = os.path.abspath('..').replace("\\","/").split("/")[-1]
 default = defaults[game]
 
 def in_directory(file, directory):
+    if not os.path.isfile(file):
+        return False
     #https://stackoverflow.com/questions/3812849/how-to-check-whether-a-directory-is-a-sub-directory-of-another-directory
     #make both absolute    
     directory = os.path.join(os.path.realpath(directory), '')
@@ -37,8 +39,6 @@ def in_directory(file, directory):
     #return true, if the common prefix of both is equal to directory
     #e.g. /a/b/c/d.rst and directory is /a/b, the common prefix is /a/b
     return os.path.commonprefix([file, directory]) == directory
-
-
 
 codes = defaultdict(list)
 for mod in os.scandir(mods):
