@@ -25,7 +25,7 @@ defaults = {"Hades":"\"RoomManager.lua\"",
             "Pyre":"\"Campaign.lua\"",
             "Transistor":"\"AllCampaignScripts.txt\""}
 
-game = os.path.realpath('..').replace("\\","/").split("/")[-1]
+game = os.path.abspath('..').replace("\\","/").split("/")[-1]
 default = defaults[game]
 
 def in_directory(file, directory):
@@ -37,6 +37,8 @@ def in_directory(file, directory):
     #return true, if the common prefix of both is equal to directory
     #e.g. /a/b/c/d.rst and directory is /a/b, the common prefix is /a/b
     return os.path.commonprefix([file, directory]) == directory
+
+
 
 codes = defaultdict(list)
 for mod in os.scandir(mods):
@@ -75,9 +77,10 @@ for base, mods in codes.items():
             basefile.write(line)
     else:
         basefile = open(base,'a')
-    basefile.write("\n"+importkey+"\n")
+        basefile.write("\n")
+    basefile.write(importkey+"\n")
     basefile.write(warning+"\n")
-    print("\n"+base.split("/")[-1])
+    print("\n"+"/".join(base.split("/")[1:]))
     i = 0
     for mod in mods:
         i+=1
