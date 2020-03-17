@@ -19,7 +19,7 @@ importkeyword = "Import "
 postword = "if ModUtil then if ModUtil.CollapseMarked then ModUtil.CollapseMarked() end end"
 importend = "-- AUTOMATIC MOD IMPORTS END"
 bakdir = "Backup"
-baktype = ".bak"
+baktype = ""
 
 defaults = {"Hades":"\"RoomManager.lua\"",
             "Pyre":"\"Campaign.lua\"",
@@ -65,7 +65,7 @@ for base, mods in codes.items():
     basefile.write(warning+"\n")
     print(base[len(home)+1:])
     for mod in mods:
-        print("    \""+mod+"\"")
+        print("    "+mod)
         basefile.write(importkeyword+"\""+mod+"\""+"\n")
     basefile.write(postword+"\n")
     basefile.write(importend+"\n")
