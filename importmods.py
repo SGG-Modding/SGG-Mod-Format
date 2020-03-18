@@ -25,8 +25,11 @@ defaults = {"Hades":"\"RoomManager.lua\"",
             "Pyre":"\"Campaign.lua\"",
             "Transistor":"\"AllCampaignScripts.txt\""}
 
+def strup(string):
+    return string[0].upper()+string[1:]
+
 gamedir = os.path.join(os.path.realpath(".."), '')
-game = gamedir.replace("\\","/").split("/")[-2]
+game = strup(gamedir.replace("\\","/").split("/")[-2])
 default = defaults[game]
 
 def in_directory(file):
@@ -34,7 +37,7 @@ def in_directory(file):
     if not os.path.isfile(file):
         return False
     file = os.path.realpath(file)
-    if file.replace("\\","/").split("/")[-2] != home:
+    if strup(file.replace("\\","/").split("/")[-2]) != home:
         return False
     return os.path.commonprefix([file, gamedir]) == gamedir
 
