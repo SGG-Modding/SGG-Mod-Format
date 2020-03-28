@@ -22,8 +22,8 @@ local MarkedForCollapse = {}
 
 function ModUtil.InvertTable( Table )
     local inverseTable = {}
-    for _,value in ipairs(tableArg) do
-        inverseTable[value]=true
+    for key,value in ipairs(tableArg) do
+        inverseTable[value]=key
     end
     return inverseTable
 end
