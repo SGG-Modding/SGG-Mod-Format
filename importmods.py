@@ -13,6 +13,7 @@ mods = "Mods"
 modsrel = ".."
 header = "-- IMPORT @"
 defaultcode = "DEFAULT"
+priorityh = "-- PRIORITY "
 importkey = "-- AUTOMATIC MOD IMPORTS BEGIN"
 warning = "-- ANYTHING BELOW THIS POINT WILL BE DELETED"
 importkeyword = "Import "
@@ -24,6 +25,19 @@ baktype = ""
 defaults = {"Hades":"\"RoomManager.lua\"",
             "Pyre":"\"Campaign.lua\"",
             "Transistor":"\"AllCampaignScripts.txt\""}
+
+class modcode():
+    ep = 100
+    ap = None
+    before = None
+    after = None
+    rbefore = None
+    rafter = None
+    def __init__(self,name,key,index):
+        self.path = path
+        self.key = key
+        self.id = index
+
 
 def strup(string):
     return string[0].upper()+string[1:]
@@ -41,20 +55,46 @@ def in_directory(file):
         return False
     return os.path.commonprefix([file, gamedir]) == gamedir
 
+def valid_scan(file):
+    if os.path.exists(file):
+        if os.path.isdir(file):
+            return True
+    return False
+
 codes = defaultdict(list)
 for mod in os.scandir(mods):
-    for script in os.scandir(mod.path+"/"+home):
-        path = script.path.replace("\\","/")
-        with open(script.path,'r') as file:
-            for line in file:
-                if line[:len(header)]==header:
-                    code = line[len(header)+1:].replace("\n","")
-                    if code == defaultcode:
-                        code = default
-                    code = home+"/"+code.replace("\"","")
-                    if in_directory(code):
-                        codes[code].append(modsrel+"/"+path)
-                break
+    if valid_scan(mod.path+"/"+home):
+        for script in os.scandir(mod.path+"/"+home):
+            path = script.path.replace("\\","/")
+            code = ""
+            with open(script.path,'r') as file:
+                linum = 0
+                for line in file:
+                    linum += 1
+                    if linum == 1:
+                        if line[:len(header)]==header:
+                            code = line[len(header)+1:].replace("\n","")
+                            if code == defaultcode:
+                                code = default
+                            code = home+"/"+code.replace("\"","")
+                            if in_directory(code):
+                                codes[code].append(modcode(modsrel+"/"+path,code,len(codes[code])))
+                            continue
+                        else:
+                            break
+                    if linum == 2:
+                        if line[:len(priorityh)]==priorityh:
+                            try:
+                                codes[code][-1].ep = int(line[len(priorityh):][:-1])
+                            except:
+                                pass
+                        break
+                    break
+
+for base, mods in codes.items():
+    codes[base].sort(key=lambda x: x.ep)
+    for i in range(len(mods)):
+        mods[i].id=i
 
 print("Adding import statements for "+game+" mods...")
 
@@ -85,8 +125,8 @@ for base, mods in codes.items():
     i = 0
     for mod in mods:
         i+=1
-        print(" #"+str(i)+" "*(6-len(str(i)))+mod)
-        basefile.write(importkeyword+"\""+mod+"\""+"\n")
+        print(" #"+str(i)+" "*(6-len(str(i)))+mod.path)
+        basefile.write(importkeyword+"\""+mod.path+"\""+"\n")
     basefile.write(postword+"\n")
     basefile.write(importend+"\n")
     basefile.close()
