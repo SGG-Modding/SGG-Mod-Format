@@ -8,7 +8,7 @@ Author: MagicGonads
 	To use add (before other mods) to the BOTTOM of DEFAULT
 	"Import "../Mods/ModUtil/Scripts/ModUtil.lua""
 	
-	To optimise put after other mods
+	To optimise put after other mods (this is done automatically by importmods)
 	"if ModUtil then if ModUtil.CollapseMarked then ModUtil.CollapseMarked() end end"
 	at the BOTTOM of DEFAULT
 ]]
