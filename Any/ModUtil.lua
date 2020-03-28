@@ -20,6 +20,14 @@ SaveIgnores["ModUtil"]=true
 
 local MarkedForCollapse = {}
 
+function ModUtil.InvertTable( Table )
+    local inverseTable = {}
+    for _,value in ipairs(tableArg) do
+        inverseTable[value]=true
+    end
+    return inverseTable
+end
+
 function ModUtil.IsUnKeyed( Table )
 	if type(Table) == "table" then
 		local lk = 0
@@ -49,7 +57,7 @@ end
 
 function ModUtil.SafeGet( Table, IndexArray )
 	if IsEmpty(IndexArray) then
-		return nil -- can't set the input argument as it is passed by value rather than reference so for consistency no get as well
+		return Table
 	end
 	local n = #IndexArray
 	local node = Table
@@ -77,7 +85,7 @@ end
 
 function ModUtil.SafeSet( Table, IndexArray, Value )
 	if IsEmpty(IndexArray) then
-		return -- can't set the input argument as it is passed by value rather than reference
+		return -- can't set the input argument
 	end
 	local n = #IndexArray
 	local node = Table
