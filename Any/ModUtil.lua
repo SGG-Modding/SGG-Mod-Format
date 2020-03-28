@@ -2,12 +2,11 @@
 
 --[[
 Author: MagicGonads 
-					with help from PonyWarrior
 	Library to allow mods to be more compatible with eachother
 	To include in your mod you must tell the user that they require this mod.
 	
 	To use add (before other mods) to the BOTTOM of DEFAULT
-	"Import "Mods/ModUtil.lua""
+	"Import "../Mods/ModUtil/Scripts/ModUtil.lua""
 	
 	To optimise put after other mods
 	"if ModUtil then if ModUtil.CollapseMarked then ModUtil.CollapseMarked() end end"
@@ -17,23 +16,9 @@ Author: MagicGonads
 ModUtil = {
 	AutoCollapse = true,
 }
+SaveIgnores["ModUtil"]=true
 
 local MarkedForCollapse = {}
-
-function ModUtil.DebugPrint(text, delay, destroy)
-    if delay == nil then
-        delay = 5
-    end
-    Destroy({Ids = ScreenAnchors.HoldDisplayId})
-    ScreenAnchors.HoldDisplayId = SpawnObstacle({ Name = "BlankObstacle", Group = "Events", DestinationId = CurrentRun.Hero.ObjectId })
-    Attach({ Id = ScreenAnchors.HoldDisplayId, DestinationId = CurrentRun.Hero.ObjectId })
-    CreateTextBox({ Id = ScreenAnchors.HoldDisplayId, Text = text, FontSize = 32, OffsetX = 0, OffsetY = -150, Color = Color.Yellow, Font = "AlegreyaSansSCBold", Justification = "Center" })
-    wait(delay, RoomThreadName)
-    if delay > 0 then
-        Destroy({Ids = ScreenAnchors.HoldDisplayId})
-        ScreenAnchors.HoldDisplayId = nil
-    end
-end
 
 function ModUtil.IsUnKeyed( Table )
 	if type(Table) == "table" then
@@ -64,7 +49,7 @@ end
 
 function ModUtil.SafeGet( Table, IndexArray )
 	if IsEmpty(IndexArray) then
-		return Table
+		return nil -- can't set the input argument as it is passed by value rather than reference so for consistency no get as well
 	end
 	local n = #IndexArray
 	local node = Table
@@ -92,8 +77,7 @@ end
 
 function ModUtil.SafeSet( Table, IndexArray, Value )
 	if IsEmpty(IndexArray) then
-		Table = Value
-		return
+		return -- can't set the input argument as it is passed by value rather than reference
 	end
 	local n = #IndexArray
 	local node = Table
