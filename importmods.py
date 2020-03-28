@@ -33,7 +33,7 @@ class modcode():
     after = None
     rbefore = None
     rafter = None
-    def __init__(self,name,key,index):
+    def __init__(self,path,key,index):
         self.path = path
         self.key = key
         self.id = index
