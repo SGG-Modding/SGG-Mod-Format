@@ -17,7 +17,7 @@ priorityh = "-- PRIORITY "
 importkey = "-- AUTOMATIC MOD IMPORTS BEGIN"
 warning = "-- ANYTHING BELOW THIS POINT WILL BE DELETED"
 importkeyword = "Import "
-postword = "if ModUtil then if ModUtil.CollapseMarked then ModUtil.CollapseMarked() end end"
+postword = ""
 importend = "-- AUTOMATIC MOD IMPORTS END"
 bakdir = "Backup"
 baktype = ""
@@ -85,7 +85,7 @@ for mod in os.scandir(mods):
                     if linum == 2:
                         if line[:len(priorityh)]==priorityh:
                             try:
-                                codes[code][-1].ep = int(line[len(priorityh):][:-1])
+                                codes[code][-1].ep = float(line[len(priorityh):][:-1])
                             except:
                                 pass
                         break
@@ -127,8 +127,10 @@ for base, mods in codes.items():
         i+=1
         print(" #"+str(i)+" "*(6-len(str(i)))+mod.path)
         basefile.write(importkeyword+"\""+mod.path+"\""+"\n")
-    basefile.write(postword+"\n")
-    basefile.write(importend+"\n")
+    if len(postword):
+        basefile.write(postword+"\n")
+    if len(importend):
+        basefile.write(importend+"\n")
     basefile.close()
 print("\n"+str(len(codes))+" files import a total of "+str(sum(map(len,codes.values())))+" mods.")
 
