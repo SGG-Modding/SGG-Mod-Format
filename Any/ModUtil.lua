@@ -21,6 +21,19 @@ if not ModUtil then
 	}
 	SaveIgnores["ModUtil"]=true
 
+	local FuncsToLoad = {}
+	function ModUtil.LoadFuncs( triggerArgs )
+		for k,v in pairs(FuncsToLoad) do
+			v(triggerArgs)
+		end
+		FuncsToLoad = {}
+	end
+	OnAnyLoad{ModUtil.LoadFuncs}
+
+	function ModUtil.LoadOnce( triggerFunction )
+		table.insert( FuncsToLoad, triggerFunction )
+	end
+
 	local MarkedForCollapse = {}
 	function ModUtil.CollapseMarked()
 		for k,v in pairs(MarkedForCollapse) do
@@ -81,7 +94,7 @@ if not ModUtil then
 			node = Table[i]
 		end
 	end
-
+	
 	function ModUtil.MarkForCollapse( Table, IndexArray )
 		MarkedForCollapse[ModUtil.SafeGet(Table, IndexArray)] = true
 	end
