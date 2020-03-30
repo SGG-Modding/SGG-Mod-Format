@@ -144,7 +144,7 @@ if not ModUtil then
 				ModUtil.MapSetTable( InVal, SetVal )
 			else
 				InTable[SetKey] = SetVal
-				if SetVal == nil and unkeyed then
+				if type(SetKey) ~= "number" and unkeyed then
 					ModUtil.MarkForCollapse(InTable)
 				end
 			end
