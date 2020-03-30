@@ -18,6 +18,7 @@ if not ModUtil then
 
 	ModUtil = {
 		AutoCollapse = true,
+		WrapCallbacks = {},
 	}
 	SaveIgnores["ModUtil"]=true
 
@@ -148,6 +149,27 @@ if not ModUtil then
 					ModUtil.MarkForCollapse(InTable)
 				end
 			end
+		end
+	end
+
+	function ModUtil.WrapBaseFunction( baseFuncName, wrapFunc, modObject )
+		if type(wrapFunc) ~= "function" then return end
+		if not baseFuncName then return end
+		if type(_G[baseFuncName]) ~= "function" then return end
+		local baseFunc = _G[baseFuncName]
+		if type(modObject) == "table" then 
+			ModUtil.SafeSet(modObject, {"BaseFunctions",baseFuncName}, _G[baseFuncName])
+			if type(ModUtil.WrapCallbacks[baseFuncName]) == "table" then
+				table.insert(ModUtil.WrapCallbacks[baseFuncName],modObject)
+			else
+				ModUtil.WrapCallbacks[baseFuncName] = {modObject}
+			end
+		end
+		_G[baseFuncName] = function( ... )
+			return wrapFunc( baseFunc, ... )
+		end
+		if type(modObject) == "table" then 
+			ModUtil.SafeSet(modObject, {"WrappedFunctions",baseFuncName}, _G[baseFuncName])
 		end
 	end
 
