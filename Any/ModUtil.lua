@@ -19,8 +19,31 @@ if not ModUtil then
 	ModUtil = {
 		AutoCollapse = true,
 		WrapCallbacks = {},
+		Mods = {},
+		ModOverrides = {},
+		Anchors = {},
+		
 	}
 	SaveIgnores["ModUtil"]=true
+
+	local gameHints = {
+		Hades=SetupHeroObject,
+		Pyre=CampaignStartup,
+		Transistor=GlobalTest,
+	}
+	for game,hint in pairs(gameHints) do
+		ModUtil.Game = game
+		ModUtil[game] = {}
+		break
+	end
+
+	function ModUtil.RegisterMod( modName )
+		if not _G[modName] then
+			_G[modName] = {}
+			table.insert(ModUtil.Mods,_G[modName])
+		end
+		SaveIgnores[modName]=true
+	end
 
 	local FuncsToLoad = {}
 	function ModUtil.LoadFuncs( triggerArgs )
@@ -171,6 +194,91 @@ if not ModUtil then
 		if type(modObject) == "table" then 
 			ModUtil.SafeSet(modObject, {"WrappedFunctions",baseFuncName}, _G[baseFuncName])
 		end
+	end
+
+	function ModUtil.StoreOverride( globalName , modObject )
+		ModUtil.ModOverrides[globalName] = modObject 
+		if not modObject.Overrides then
+			modObject.Overrides = {}
+		end
+		modObject.Overrides[globalName] = _G[globalName]
+	end
+	
+	function ModUtil.RandomColor(rng)
+		local Color_Collapsed = CollapseTable(Color)
+		return Color_Collapsed[RandomInt(1, #Color_Collapsed, rng)]
+	end
+	
+	if ModUtil.Pyre then
+	
+		function ModUtil.Pyre.PrintDisplay( text , delay, color )
+			if color == nil then
+				color = Color.Yellow
+			end
+			if delay == nil then
+				delay = 5
+			end
+			Destroy({Ids = ModUtil.Anchors.PrintDisplay})
+			ModUtil.Anchors.PrintDisplay = { Components = {} }
+			screen = ModUtil.Anchors.PrintDisplay
+			components = screen.Components
+			screen.Name = "PrintDisplay"
+			components.Block = SpawnObstacle({ Name = "BlankObstacle", Group = "PrintDisplay", X = 30, Y = 30 })
+			DisplayWorldText({ Id = components.Block.Id, Text = text, FontSize = 22, OffsetX = 50, OffsetY = 30, Color = color, Font = "UbuntuMonoBold"})
+			wait(delay)
+			if delay > 0 then
+				RemoveWorldText({ DestinationId = components.Block, Duration = 0.3 })
+				Destroy({Ids = ModUtil.Anchors.PrintDisplay})
+				ModUtil.Anchors.PrintDisplay = nil
+			end
+		end
+	
+	end
+	
+	if ModUtil.Hades then
+	
+		function ModUtil.Hades.PrintDisplay( text , delay, color )
+			if color == nil then
+				color = Color.Yellow
+			end
+			if delay == nil then
+				delay = 5
+			end
+			Destroy({Ids = ModUtil.Anchors.PrintDisplay})
+			ModUtil.Anchors.PrintDisplay = { Components = {} }
+			screen = ModUtil.Anchors.PrintDisplay
+			components = screen.Components
+			screen.Name = "PrintDisplay"
+			components.Block = CreateScreenComponent({ Name = "BlankObstacle", Group = "PrintDisplay", X = 30, Y = 30 })
+			CreateTextBox({ Id = components.Block.Id, Text = text, FontSize = 22, OffsetX = 50, OffsetY = 30, Color = color, Font = "UbuntuMonoBold"})
+			wait(delay, RoomThreadName)
+			if delay > 0 then
+				Destroy({Ids = ModUtil.Anchors.PrintDisplay})
+				ModUtil.Anchors.PrintDisplay = nil
+			end
+		end
+	
+		function ModUtil.Hades.PrintOverhead(text, delay, color, dest)
+			if dest == nil then
+				dest = CurrentRun.Hero.ObjectId
+			end
+			if color == nil then
+				color = Color.Yellow
+			end
+			if delay == nil then
+				delay = 5
+			end
+			Destroy({Ids = ScreenAnchors.HoldDisplayId})
+			ScreenAnchors.HoldDisplayId = SpawnObstacle({ Name = "BlankObstacle", Group = "Events", DestinationId = dest })
+			Attach({ Id = ScreenAnchors.HoldDisplayId, DestinationId = dest })
+			CreateTextBox({ Id = ScreenAnchors.HoldDisplayId, Text = text, FontSize = 32, OffsetX = 0, OffsetY = -150, Color = color, Font = "UbuntuMonoBold", Justification = "Center" })
+			wait(delay, RoomThreadName)
+			if delay > 0 then
+				Destroy({Ids = ScreenAnchors.HoldDisplayId})
+				ScreenAnchors.HoldDisplayId = nil
+			end
+		end
+		
 	end
 
 end
