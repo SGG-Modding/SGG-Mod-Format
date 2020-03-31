@@ -220,8 +220,8 @@ if not ModUtil then
 			end
 			Destroy({Ids = ModUtil.Anchors.PrintDisplay})
 			ModUtil.Anchors.PrintDisplay = { Components = {} }
-			screen = ModUtil.Anchors.PrintDisplay
-			components = screen.Components
+			local screen = ModUtil.Anchors.PrintDisplay
+			local components = screen.Components
 			screen.Name = "PrintDisplay"
 			components.Block = SpawnObstacle({ Name = "BlankObstacle", Group = "PrintDisplay", X = 30, Y = 30 })
 			DisplayWorldText({ Id = components.Block.Id, Text = text, FontSize = 22, OffsetX = 50, OffsetY = 30, Color = color, Font = "UbuntuMonoBold"})
@@ -246,8 +246,8 @@ if not ModUtil then
 			end
 			Destroy({Ids = ModUtil.Anchors.PrintDisplay})
 			ModUtil.Anchors.PrintDisplay = { Components = {} }
-			screen = ModUtil.Anchors.PrintDisplay
-			components = screen.Components
+			local screen = ModUtil.Anchors.PrintDisplay
+			local components = screen.Components
 			screen.Name = "PrintDisplay"
 			components.Block = CreateScreenComponent({ Name = "BlankObstacle", Group = "PrintDisplay", X = 30, Y = 30 })
 			CreateTextBox({ Id = components.Block.Id, Text = text, FontSize = 22, OffsetX = 50, OffsetY = 30, Color = color, Font = "UbuntuMonoBold"})
