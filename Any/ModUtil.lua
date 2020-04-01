@@ -209,33 +209,154 @@ if not ModUtil then
 		return Color_Collapsed[RandomInt(1, #Color_Collapsed, rng)]
 	end
 	
-	if ModUtil.Pyre then
+	if ModUtil.Hades then
 	
-		function ModUtil.Pyre.PrintDisplay( text , delay, color )
-			if color == nil then
-				color = Color.Yellow
-			end
-			if delay == nil then
-				delay = 5
-			end
-			Destroy({Ids = ModUtil.Anchors.PrintDisplay})
-			ModUtil.Anchors.PrintDisplay = { Components = {} }
-			local screen = ModUtil.Anchors.PrintDisplay
-			local components = screen.Components
-			screen.Name = "PrintDisplay"
-			components.Block = SpawnObstacle({ Name = "BlankObstacle", Group = "PrintDisplay", X = 30, Y = 30 })
-			DisplayWorldText({ Id = components.Block.Id, Text = text, FontSize = 22, OffsetX = 50, OffsetY = 30, Color = color, Font = "UbuntuMonoBold"})
-			wait(delay)
-			if delay > 0 then
-				RemoveWorldText({ DestinationId = components.Block, Duration = 0.3 })
-				Destroy({Ids = ModUtil.Anchors.PrintDisplay})
-				ModUtil.Anchors.PrintDisplay = nil
+		local function ClosePrintStack()
+			if ModUtil.Anchors.PrintStack then
+				ModUtil.Anchors.PrintStack.CullEnabled = false
+				PlaySound({ Name = "/SFX/Menu Sounds/GeneralWhooshMENU" })
+				ModUtil.Anchors.PrintStack.KeepOpen = false
+				
+				CloseScreen(GetAllIds(ModUtil.Anchors.PrintStack.Components),0)
+				ModUtil.Anchors.PrintStack = nil
 			end
 		end
+		
+		OnAnyLoad{ ClosePrintStack }
 	
-	end
-	
-	if ModUtil.Hades then
+		local function OrderPrintStack(screen,components)
+			
+			for k,v in pairs(screen.CullPrintStack) do
+				if v.obj then
+					Destroy({ Ids = v.obj.Id })
+					components["TextStack_" .. v.tid] = nil
+					v.obj = nil
+					screen.TextStack[v.tid]=nil
+				end
+			end
+			screen.CullPrintStack = {}
+			
+			for k,v in pairs(screen.TextStack) do
+				components["TextStack_" .. k] = nil
+				Destroy({Ids = v.obj.Id})
+			end
+			
+			screen.TextStack = CollapseTable(screen.TextStack)
+			for i,v in pairs(screen.TextStack) do
+				v.tid = i
+			end
+			if #screen.TextStack == 0 then
+				return ClosePrintStack()
+			end
+			
+			local Ymul = 8
+			local Ygap = 30
+			local Yoff = 260
+			local n =#screen.TextStack
+			
+			if n then
+				for k=n,math.max(1,n-Ymul+1),-1 do
+					v = screen.TextStack[k]
+					if v then
+						local data = v.data
+						screen.TextStack[k].obj = CreateScreenComponent({ Name = "rectangle01", Group = "PrintStack", X = -1000, Y = -1000})
+						local textStack = screen.TextStack[k].obj
+						components["TextStack_" .. k] = textStack
+						SetScaleX({Id = textStack.Id, Fraction = 1.55})
+						SetScaleY({Id = textStack.Id, Fraction = 0.085})
+						SetColor({ Id = textStack.Id, Color = data.Bgcol })
+						CreateTextBox({ Id = textStack.Id, Text = data.Text, FontSize = 15, OffsetX = 0, OffsetY = 0, Color = data.Color, Font = "UbuntuMonoBold", Justification = "Center" })
+						Attach({ Id = textStack.Id, DestinationId = components.Background.Id, OffsetX = 220, OffsetY = -Yoff })
+						Yoff = Yoff - Ygap
+					end
+				end
+			end
+			
+		end
+		
+		function ModUtil.Hades.PrintStack( text, color, bgcol, delay, sound)
+			if type(text) ~= "string" then
+				text = tostring(text)
+			end
+			if color == nil then
+				color = {1,1,1,1}
+			end
+			if bgcol == nil then
+				bgcol = {0,0,0,0}
+			end
+			if sound == nil then
+				sound = "/Leftovers/SFX/AuraOff"
+			end
+			if delay == nil then
+				delay = 4
+			end
+			local first = false
+			if not ModUtil.Anchors.PrintStack then
+				first = true
+				ModUtil.Anchors.PrintStack = { Components = {} }
+			end
+			local screen = ModUtil.Anchors.PrintStack
+			local components = screen.Components
+			--Background
+			if first then 
+				PlaySound({ Name = "/SFX/Menu Sounds/DialoguePanelOutMenu" })
+				components.Background = CreateScreenComponent({ Name = "BlankObstacle", Group = "PrintStack", X = ScreenCenterX, Y = 2*ScreenCenterY})
+				components.Backing = CreateScreenComponent({ Name = "TraitTray_Center", Group = "PrintStack"})
+				Attach({ Id = components.Backing.Id, DestinationId = components.Background.Id, OffsetX = -180, OffsetY = -150 })
+				SetColor({ Id = components.Backing.Id, Color = {0.590, 0.555, 0.657, 0.8} })
+				SetScaleX({Id = components.Backing.Id, Fraction = 6.25})
+				SetScaleY({Id = components.Backing.Id, Fraction = 0.60})
+				screen.KeepOpen = true
+				screen.TextStack = {}
+				screen.CullPrintStack = {}
+				screen.MaxStacks = 32
+				
+				thread( function()
+					while screen do
+						wait(0.5)
+						if screen.CullEnabled then
+							if screen.CullPrintStack[1] then
+								OrderPrintStack(screen,components)
+							end
+						end
+					end
+				end)
+				
+			end
+			
+			screen.CullEnabled = false
+			
+			local n =#screen.TextStack + 1
+			if n > screen.MaxStacks then
+				for i,v in ipairs(screen.TextStack) do
+					if i > n-screen.MaxStacks then break end
+					Destroy({ Ids = v.obj.Id })
+					v.obj = nil
+					components["TextStack_" .. v.tid] = nil
+					screen.TextStack[v.tid] = nil
+				end
+			end
+			
+			local newText = {}
+			newText.obj = CreateScreenComponent({ Name = "rectangle01", Group = "PrintStack"})
+			newText.data = {Text = text, Color = color, Bgcol = bgcol}
+			SetColor({ Id = newText.obj.Id, Color = {0,0,0,0}})
+			table.insert(screen.TextStack, newText)
+			
+			PlaySound({ Name = sound })
+			
+			OrderPrintStack(screen,components)
+			
+			thread( function()
+				wait(delay)
+				if newText.obj then
+					table.insert(screen.CullPrintStack,newText)
+				end
+			end)
+			
+			screen.CullEnabled = true
+			
+		end
 	
 		function ModUtil.Hades.PrintDisplay( text , delay, color )
 			if color == nil then
@@ -244,17 +365,18 @@ if not ModUtil then
 			if delay == nil then
 				delay = 5
 			end
-			Destroy({Ids = ModUtil.Anchors.PrintDisplay})
-			ModUtil.Anchors.PrintDisplay = { Components = {} }
-			local screen = ModUtil.Anchors.PrintDisplay
-			local components = screen.Components
-			screen.Name = "PrintDisplay"
-			components.Block = CreateScreenComponent({ Name = "BlankObstacle", Group = "PrintDisplay", X = 30, Y = 30 })
-			CreateTextBox({ Id = components.Block.Id, Text = text, FontSize = 22, OffsetX = 50, OffsetY = 30, Color = color, Font = "UbuntuMonoBold"})
-			wait(delay, RoomThreadName)
+			if ModUtil.Anchors.PrintDisplay then
+				Destroy({Ids = ModUtil.Anchors.PrintDisplay.Id})
+			end
+			ModUtil.Anchors.PrintDisplay = CreateScreenComponent({Name = "BlankObstacle", Group = "PrintDisplay", X = 30, Y = 30 })
+			CreateTextBox({ Id = ModUtil.Anchors.PrintDisplay.Id, Text = text, FontSize = 22, OffsetX = 50, OffsetY = 30, Color = color, Font = "UbuntuMonoBold"})
+			
 			if delay > 0 then
-				Destroy({Ids = ModUtil.Anchors.PrintDisplay})
-				ModUtil.Anchors.PrintDisplay = nil
+				thread(function()
+					wait(delay)
+					Destroy({Ids = ModUtil.Anchors.PrintDisplay.Id})
+					ModUtil.Anchors.PrintDisplay = nil
+				end)
 			end
 		end
 	
@@ -268,14 +390,16 @@ if not ModUtil then
 			if delay == nil then
 				delay = 5
 			end
-			Destroy({Ids = ScreenAnchors.HoldDisplayId})
-			ScreenAnchors.HoldDisplayId = SpawnObstacle({ Name = "BlankObstacle", Group = "Events", DestinationId = dest })
-			Attach({ Id = ScreenAnchors.HoldDisplayId, DestinationId = dest })
-			CreateTextBox({ Id = ScreenAnchors.HoldDisplayId, Text = text, FontSize = 32, OffsetX = 0, OffsetY = -150, Color = color, Font = "UbuntuMonoBold", Justification = "Center" })
-			wait(delay, RoomThreadName)
+			Destroy({Ids = ModUtil.Anchors.PrintOverhead})
+			ModUtil.Anchors.PrintOverhead = SpawnObstacle({ Name = "BlankObstacle", Group = "Events", DestinationId = dest })
+			Attach({ Id = ModUtil.Anchors.PrintOverhead, DestinationId = dest })
+			CreateTextBox({ Id = ModUtil.Anchors.PrintOverhead, Text = text, FontSize = 32, OffsetX = 0, OffsetY = -150, Color = color, Font = "AlegreyaSansSCBold", Justification = "Center" })
 			if delay > 0 then
-				Destroy({Ids = ScreenAnchors.HoldDisplayId})
-				ScreenAnchors.HoldDisplayId = nil
+				thread(function()
+					wait(delay)
+					Destroy({Ids = ModUtil.Anchors.PrintOverhead})
+					ModUtil.Anchors.PrintOverhead = nil
+				end)
 			end
 		end
 		
