@@ -8,10 +8,12 @@ Author: MagicGonads
 	Library to allow mods to be more compatible with eachother
 	To include in your mod you must tell the user that they require this mod.
 	
-	To use add (before other mods) to the BOTTOM of DEFAULT
+	Use the mod importer to import this mod to ensure it is loaded in the right position.
+	
+	Or if you want add (before other mods) to the BOTTOM of DEFAULT
 	"Import "../Mods/ModUtil/Scripts/ModUtil.lua""
 	
-	Mods can also manually import it by ading the statement to their script
+	Mods can also manually import it by adding the statement to their script
 ]]
 
 if not ModUtil then
@@ -28,7 +30,7 @@ if not ModUtil then
 
 	local gameHints = {
 		Hades=SetupHeroObject,
-		Pyre=CampaignStartup,
+		Pyre=CommenceDraft,
 		Transistor=GlobalTest,
 	}
 	for game,hint in pairs(gameHints) do
@@ -42,6 +44,7 @@ if not ModUtil then
 			_G[modName] = {}
 			table.insert(ModUtil.Mods,_G[modName])
 		end
+		_G[modName].modName = modName
 		SaveIgnores[modName]=true
 	end
 
@@ -207,6 +210,18 @@ if not ModUtil then
 	function ModUtil.RandomColor(rng)
 		local Color_Collapsed = CollapseTable(Color)
 		return Color_Collapsed[RandomInt(1, #Color_Collapsed, rng)]
+	end
+	
+	if ModUtil.Pyre then 
+		
+		if CampaignStartup then
+			ModUtil.Pyre.Gamemode = "Campaign"
+			ModUtil.Pyre.Campaign = {}
+		else
+			ModUtil.Pyre.Gamemode = "Versus"
+			ModUtil.Pyre.Versus = {}
+		end
+		
 	end
 	
 	if ModUtil.Hades then
