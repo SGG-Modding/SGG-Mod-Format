@@ -23,7 +23,7 @@ bakdir = "Backup"
 baktype = ""
 
 defaults = {"Hades":"\"RoomManager.lua\"",
-            "Pyre":"\"Campaign.lua\"",
+            "Pyre":"\"Campaign.lua\" \"MPScripts.lua\"",
             "Transistor":"\"AllCampaignScripts.txt\""}
 
 class modcode():
@@ -67,27 +67,31 @@ for mod in os.scandir(mods):
         for script in os.scandir(mod.path+"/"+home):
             path = script.path.replace("\\","/")
             code = ""
+            codest = []
             with open(script.path,'r') as file:
                 linum = 0
                 for line in file:
                     linum += 1
                     if linum == 1:
                         if line[:len(header)]==header:
-                            code = line[len(header)+1:].replace("\n","")
-                            if code == defaultcode:
-                                code = default
-                            code = home+"/"+code.replace("\"","")
-                            if in_directory(code):
-                                codes[code].append(modcode(modsrel+"/"+path,code,len(codes[code])))
+                            codest = [line[len(header)+1:].replace("\n","")]
+                            if codest[0] == defaultcode:
+                                codest[0] = default
+                            codest[0] = codest[0].replace("\"","")
+                            codest = [home+"/"+code for code in codest[0].split(" ")]
+                            for code in codest:
+                                if in_directory(code):
+                                    codes[code].append(modcode(modsrel+"/"+path,code,len(codes[code])))
                             continue
                         else:
                             break
                     if linum == 2:
                         if line[:len(priorityh)]==priorityh:
-                            try:
-                                codes[code][-1].ep = float(line[len(priorityh):][:-1])
-                            except:
-                                pass
+                            for code in codest:
+                                try:
+                                    codes[code][-1].ep = float(line[len(priorityh):][:-1])
+                                except:
+                                    pass
                         break
                     break
 
