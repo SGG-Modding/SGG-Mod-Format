@@ -153,12 +153,9 @@ if not ModUtil then
 			if type(node) ~= "table" then
 				return nil
 			end
-			if k == n then
-				return node[i]
-			end
 			node = node[i]
 		end
-		return Table
+		return node
 	end
 	
 	function ModUtil.MarkForCollapse( Table, IndexArray )
@@ -173,7 +170,7 @@ if not ModUtil then
 		local node = Table
 		for k, i in ipairs(IndexArray) do
 			if type(node) ~= "table" then
-				return
+				return false
 			end
 			if k == n then
 				local unkeyed = ModUtil.AutoIsUnKeyed( InTable )
@@ -181,7 +178,7 @@ if not ModUtil then
 				if Value == nil and unkeyed then
 					ModUtil.MarkForCollapse( node )
 				end
-				return
+				return true
 			end
 			node = node[i]
 		end
