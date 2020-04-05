@@ -62,15 +62,6 @@ if not ModUtil then
 		FuncsToLoad = {}
 	end
 	OnAnyLoad{ModUtil.LoadFuncs}
-	
-	function ModUtil.ForceClosed( triggerArgs )
-		for k,v in pairs(ModUtil.Anchors.CloseFuncs) do
-			v( nil, nil, triggerArgs )
-		end
-		ModUtil.Anchors.CloseFuncs = {}
-		ModUtil.Anchors.Menu = {}
-	end
-	OnAnyLoad{ModUtil.ForceClosed}
 
 	function ModUtil.LoadOnce( triggerFunction )
 		table.insert( FuncsToLoad, triggerFunction )
@@ -84,6 +75,15 @@ if not ModUtil then
 		MarkedForCollapse = {}
 	end
 	OnAnyLoad{ModUtil.CollapseMarked}
+
+	function ModUtil.ForceClosed( triggerArgs )
+		for k,v in pairs(ModUtil.Anchors.CloseFuncs) do
+			v( nil, nil, triggerArgs )
+		end
+		ModUtil.Anchors.CloseFuncs = {}
+		ModUtil.Anchors.Menu = {}
+	end
+	OnAnyLoad{ModUtil.ForceClosed}
 
 	function ModUtil.RandomColor(rng)
 		local Color_Collapsed = CollapseTable(Color)
@@ -147,9 +147,6 @@ if not ModUtil then
 	end
 
 	function ModUtil.SafeGet( Table, IndexArray )
-		if IsEmpty(IndexArray) then
-			return Table
-		end
 		local n = #IndexArray
 		local node = Table
 		for k, i in ipairs(IndexArray) do
@@ -159,8 +156,9 @@ if not ModUtil then
 			if k == n then
 				return node[i]
 			end
-			node = Table[i]
+			node = node[i]
 		end
+		return Table
 	end
 	
 	function ModUtil.MarkForCollapse( Table, IndexArray )
@@ -185,7 +183,7 @@ if not ModUtil then
 				end
 				return
 			end
-			node = Table[i]
+			node = node[i]
 		end
 	end
 
@@ -377,9 +375,16 @@ if not ModUtil then
 		end
 		
 		function ModUtil.Hades.DimMenu( screen )
-			screen.Components.BackgroundDim = CreateScreenComponent({ Name = "rectangle01", Group = screen.Name })
-			SetScale({ Id = screen.Components.BackgroundDim.Id, Fraction = 4 })
+			if not screen.Components.BackgroundDim then
+				screen.Components.BackgroundDim = CreateScreenComponent({ Name = "rectangle01", Group = screen.Name })
+				SetScale({ Id = screen.Components.BackgroundDim.Id, Fraction = 4 })
+			end
 			SetColor({ Id = screen.Components.BackgroundDim.Id, Color = {0.090, 0.055, 0.157, 0.8} })
+		end
+		
+		function ModUtil.Hades.UndimMenu( screen )
+			if not screen.Components.BackgroundDim then return end
+			SetColor({ Id = screen.Components.BackgroundDim.Id, Color = {0.090, 0.055, 0.157, 0} })
 		end
 		
 		function ModUtil.Hades.PostOpenMenu( group )
