@@ -19,12 +19,13 @@ Author: MagicGonads
 if not ModUtil then
 
 	ModUtil = {
+		modName = "ModUtil",
 		AutoCollapse = true,
 		WrapCallbacks = {},
 		Mods = {},
 		ModOverrides = {},
-		Anchors = {},
-		
+		Anchors = {Menu={},CloseFuncs={}},
+		GlobalConnector = "__",
 	}
 	SaveIgnores["ModUtil"]=true
 
@@ -39,13 +40,18 @@ if not ModUtil then
 		break
 	end
 
-	function ModUtil.RegisterMod( modName )
-		if not _G[modName] then
-			_G[modName] = {}
-			table.insert(ModUtil.Mods,_G[modName])
+	function ModUtil.RegisterMod( modName, parent )
+		if not parent then
+			parent = _G
+			SaveIgnores[modName]=true
 		end
-		_G[modName].modName = modName
-		SaveIgnores[modName]=true
+		if not parent[modName] then
+			parent[modName] = {}
+			table.insert(ModUtil.Mods,parent[modName])
+		end
+		parent[modName].modName = modName
+		parent[modName].modParent = modParent
+		return parent[modName]
 	end
 
 	local FuncsToLoad = {}
@@ -56,6 +62,15 @@ if not ModUtil then
 		FuncsToLoad = {}
 	end
 	OnAnyLoad{ModUtil.LoadFuncs}
+	
+	function ModUtil.ForceClosed( triggerArgs )
+		for k,v in pairs(ModUtil.Anchors.CloseFuncs) do
+			v( nil, nil, triggerArgs )
+		end
+		ModUtil.Anchors.CloseFuncs = {}
+		ModUtil.Anchors.Menu = {}
+	end
+	OnAnyLoad{ModUtil.ForceClosed}
 
 	function ModUtil.LoadOnce( triggerFunction )
 		table.insert( FuncsToLoad, triggerFunction )
@@ -70,12 +85,31 @@ if not ModUtil then
 	end
 	OnAnyLoad{ModUtil.CollapseMarked}
 
+	function ModUtil.RandomColor(rng)
+		local Color_Collapsed = CollapseTable(Color)
+		return Color_Collapsed[RandomInt(1, #Color_Collapsed, rng)]
+	end
+
 	function ModUtil.InvertTable( Table )
 		local inverseTable = {}
 		for key,value in ipairs(tableArg) do
 			inverseTable[value]=key
 		end
 		return inverseTable
+	end
+
+	function ModUtil.ToString(o)
+		--https://stackoverflow.com/a/27028488
+		if type(o) == 'table' then
+			local s = '{ '
+			for k,v in pairs(o) do
+				if type(k) ~= 'number' then k = '"'..k..'"' end
+				s = s .. '['..k..'] = ' .. ModUtil.ToString(v) .. ','
+			end
+			return s .. '} '
+		else
+			return tostring(o)
+		end
 	end
 
 	function ModUtil.IsUnKeyed( Table )
@@ -103,6 +137,13 @@ if not ModUtil then
 			end
 		end
 		return false
+	end
+
+	function ModUtil.NewTable( Table, key )
+		if type(Table) ~= "table" then return end
+		if Table[key] == nil then
+			Table[key] = {}
+		end
 	end
 
 	function ModUtil.SafeGet( Table, IndexArray )
@@ -178,38 +219,112 @@ if not ModUtil then
 		end
 	end
 
-	function ModUtil.WrapBaseFunction( baseFuncName, wrapFunc, modObject )
-		if type(wrapFunc) ~= "function" then return end
-		if not baseFuncName then return end
-		if type(_G[baseFuncName]) ~= "function" then return end
-		local baseFunc = _G[baseFuncName]
-		if type(modObject) == "table" then 
-			ModUtil.SafeSet(modObject, {"BaseFunctions",baseFuncName}, _G[baseFuncName])
-			if type(ModUtil.WrapCallbacks[baseFuncName]) == "table" then
-				table.insert(ModUtil.WrapCallbacks[baseFuncName],modObject)
+	function ModUtil.JoinIndexArrays( A, B )
+		local C = {}
+		local j = 0
+		for i,v in ipairs(A) do
+			C[i]=v
+			j = i
+		end
+		for i,v in ipairs(B) do
+			C[i+j]=v
+		end
+		return C
+	end
+	
+	function ModUtil.PathArray( Path )
+		local s = ""
+		local i = {}
+		for c in Path:gmatch(".") do
+			if c ~= "." then
+				s = s .. c
 			else
-				ModUtil.WrapCallbacks[baseFuncName] = {modObject}
+				table.insert(i,s)
+				s = ""
 			end
 		end
-		_G[baseFuncName] = function( ... )
-			return wrapFunc( baseFunc, ... )
+		if #s > 0 then
+			table.insert(i,s)
 		end
+		return i
+	end
+	
+	function ModUtil.JoinPath( Path )
+		local s = ""
+		for c in Path:gmatch(".") do
+			if c ~= "." then
+				s = s .. c
+			else
+				s = s .. ModUtil.GlobalConnector
+			end
+		end
+		return s
+	end
+
+	function ModUtil.WrapFunction( funcTable, funcIndexArray, wrapFunc, modObject )
+		if type(wrapFunc) ~= "function" then return end
+		if not funcTable then return end
+		
+		local func = ModUtil.SafeGet(funcTable, funcIndexArray)
+		if type(func) ~= "function" then return end
+
 		if type(modObject) == "table" then 
-			ModUtil.SafeSet(modObject, {"WrappedFunctions",baseFuncName}, _G[baseFuncName])
+			ModUtil.NewTable( modObject, "BaseFunctions" )
+			ModUtil.NewTable( modObject.BaseFunctions, funcTable )
+			ModUtil.SafeSet(modObject.BaseFunctions[funcTable], funcIndexArray, func)
+			ModUtil.NewTable( ModUtil.WrapCallbacks, funcTable )
+			ModUtil.SafeSet(ModUtil.WrapCallbacks[funcTable], funcIndexArray, modObject)
+		end
+		ModUtil.SafeSet(funcTable, funcIndexArray, function( ... )
+			return wrapFunc( func, ... )
+		end)
+		if type(modObject) == "table" then
+			ModUtil.NewTable( modObject, "WrappedFunctions" )
+			ModUtil.NewTable( modObject.WrappedFunctions, funcTable )
+			ModUtil.SafeSet(modObject.WrappedFunctions[funcTable], funcIndexArray, ModUtil.SafeGet(funcTable, funcIndexArray))
 		end
 	end
 
-	function ModUtil.StoreOverride( globalName , modObject )
-		ModUtil.ModOverrides[globalName] = modObject 
-		if not modObject.Overrides then
-			modObject.Overrides = {}
-		end
-		modObject.Overrides[globalName] = _G[globalName]
+	function ModUtil.WrapBaseFunction( baseFuncPath, wrapFunc, modObject )
+		ModUtil.WrapFunction( _G, ModUtil.PathArray( baseFuncPath ), wrapFunc, modObject )
+	end
+
+	function ModUtil.Override( baseTable, IndexArray, modObject )
+		ModUtil.ModOverrides[baseTable] = modObject 
+		ModUtil.NewTable( modObject, "Overrides" )
+		ModUtil.SafeSet(modObject.Overrides[baseTable], IndexArray, ModUtil.SafeGet(baseTable, IndexArray))
 	end
 	
-	function ModUtil.RandomColor(rng)
-		local Color_Collapsed = CollapseTable(Color)
-		return Color_Collapsed[RandomInt(1, #Color_Collapsed, rng)]
+	function ModUtil.BaseOverride( basePath, modObject )
+		ModUtil.Override( _G, ModUtil.PathArray( basePath ), modObject )
+	end
+	
+	function ModUtil.GlobalisePath( Path )
+		_G[ModUtil.JoinPath( Path )] = ModUtil.SafeGet(_G,ModUtil.PathArray( Path ))
+	end
+	
+	function ModUtil.GlobaliseFuncs( Table, Path )
+		if Path == nil then
+			Path = ""
+		end
+		for k,v in pairs( Table ) do
+			if type(k) == "string" then
+				if type(v) == "function" then
+					_G[ModUtil.JoinPath( Path.."."..k )] = v
+				elseif type(v) == "table" then
+					ModUtil.GlobaliseFuncs( v, Path.."."..k )
+				end
+			end
+		end
+	end
+	
+	function ModUtil.GlobaliseModFuncs( modObject )
+		local parent = modObject
+		while parent.modParent do
+			parent = parent.modParent
+			if parent == _G then break end
+		end
+		ModUtil.GlobaliseFuncs( modObject, modObject.modName )
 	end
 	
 	if ModUtil.Pyre then 
@@ -225,6 +340,55 @@ if not ModUtil then
 	end
 	
 	if ModUtil.Hades then
+	
+		function ModUtil.Hades.CloseMenu( screen, button )
+			CloseScreen(GetAllIds(screen.Components), 0.1)
+			ModUtil.Anchors.Menu[screen.Name] = nil
+			screen.KeepOpen = false
+			OnScreenClosed({ Flag = screen.Name })
+			if TableLength(ModUtil.Anchors.Menu) == 0 then
+				DisableShopGamepadCursor()
+				UnfreezePlayerUnit()
+				SetConfigOption({ Name = "FreeFormSelectWrapY", Value = false })
+				SetConfigOption({ Name = "UseOcclusion", Value = true })
+			end
+			if ModUtil.Anchors.CloseFuncs[screen.Name] then
+				ModUtil.Anchors.CloseFuncs[screen.Name]( screen, button )
+				ModUtil.Anchors.CloseFuncs[screen.Name]=nil
+			end
+		end
+	
+		function ModUtil.Hades.OpenMenu( group, closeFunc )
+			if ModUtil.Anchors.Menu[group] then
+				ModUtil.Hades.CloseMenu(ModUtil.Anchors.Menu[group])
+			end
+			if closeFunc then ModUtil.Anchors.CloseFuncs[group]=closeFunc end
+			
+			local screen = { Name = group, Components = {} }
+			local components = screen.Components
+			ModUtil.Anchors.Menu[group] = screen
+			
+			OnScreenOpened({ Flag = screen.Name, PersistCombatUI = true })
+			SetConfigOption({ Name = "UseOcclusion", Value = false })
+			
+			components.Background = CreateScreenComponent({ Name = "BlankObstacle", Group = group })
+			
+			return screen
+		end
+		
+		function ModUtil.Hades.DimMenu( screen )
+			screen.Components.BackgroundDim = CreateScreenComponent({ Name = "rectangle01", Group = screen.Name })
+			SetScale({ Id = screen.Components.BackgroundDim.Id, Fraction = 4 })
+			SetColor({ Id = screen.Components.BackgroundDim.Id, Color = {0.090, 0.055, 0.157, 0.8} })
+		end
+		
+		function ModUtil.Hades.PostOpenMenu( group )
+			local screen = ModUtil.Anchors.Menu[group]
+			FreezePlayerUnit()
+			EnableShopGamepadCursor()
+			thread(HandleWASDInput, screen)
+			HandleScreenInput(screen)
+		end
 	
 		local function ClosePrintStack()
 			if ModUtil.Anchors.PrintStack then
@@ -264,7 +428,7 @@ if not ModUtil then
 				return ClosePrintStack()
 			end
 			
-			local Ymul = 8
+			local Ymul = 9
 			local Ygap = 30
 			local Yoff = 260
 			local n =#screen.TextStack
@@ -289,10 +453,11 @@ if not ModUtil then
 			
 		end
 		
-		function ModUtil.Hades.PrintStack( text, color, bgcol, delay, sound)
+		function ModUtil.Hades.PrintStack( text, delay, color, bgcol, sound)
 			if type(text) ~= "string" then
-				text = tostring(text)
+				text = ModUtil.ToString(text)
 			end
+			text = " "..text.." "
 			if color == nil then
 				color = {1,1,1,1}
 			end
@@ -374,6 +539,10 @@ if not ModUtil then
 		end
 	
 		function ModUtil.Hades.PrintDisplay( text , delay, color )
+			if type(text) ~= "string" then
+				text = ModUtil.ToString(text)
+			end
+			text = " "..text.." "
 			if color == nil then
 				color = Color.Yellow
 			end
@@ -383,8 +552,8 @@ if not ModUtil then
 			if ModUtil.Anchors.PrintDisplay then
 				Destroy({Ids = ModUtil.Anchors.PrintDisplay.Id})
 			end
-			ModUtil.Anchors.PrintDisplay = CreateScreenComponent({Name = "BlankObstacle", Group = "PrintDisplay", X = 30, Y = 30 })
-			CreateTextBox({ Id = ModUtil.Anchors.PrintDisplay.Id, Text = text, FontSize = 22, OffsetX = 50, OffsetY = 30, Color = color, Font = "UbuntuMonoBold"})
+			ModUtil.Anchors.PrintDisplay = CreateScreenComponent({Name = "BlankObstacle", Group = "PrintDisplay", X = ScreenCenterX, Y = 40 })
+			CreateTextBox({ Id = ModUtil.Anchors.PrintDisplay.Id, Text = text, FontSize = 22, Color = color, Font = "UbuntuMonoBold"})
 			
 			if delay > 0 then
 				thread(function()
@@ -396,6 +565,10 @@ if not ModUtil then
 		end
 	
 		function ModUtil.Hades.PrintOverhead(text, delay, color, dest)
+			if type(text) ~= "string" then
+				text = ModUtil.ToString(text)
+			end
+			text = " "..text.." "
 			if dest == nil then
 				dest = CurrentRun.Hero.ObjectId
 			end
@@ -418,6 +591,95 @@ if not ModUtil then
 			end
 		end
 		
+		function ModUtil.Hades.NewMenuYesNo( name, yesFunc, noFunc, closeFunc, title, body, yesText, noText, icon, iconScale)
+			if not name or name == "" then return end
+			if not yesFunc or not noFunc then return end
+			if not icon then icon = "AmmoPack" end
+			if not iconScale then iconScale = 1 end
+			if not yesText then yesText = "Yes" end
+			if not noText then noText = "No" end
+			if not body then body = "Make a choice..." end
+			if not title then title = name end
+			
+			local group = "MenuYesNo_"..name
+			
+			local screen = ModUtil.Hades.OpenMenu( group, closeFunc )
+			local components = screen.Components
+			
+			PlaySound({ Name = "/SFX/Menu Sounds/GodBoonInteract" })
+			
+			components.LeftPart = CreateScreenComponent({ Name = "TraitTrayBackground", Group = group, X = 1030, Y = 424})
+			components.MiddlePart = CreateScreenComponent({ Name = "TraitTray_Center", Group = group, X = 660, Y = 464 })
+			components.RightPart = CreateScreenComponent({ Name = "TraitTray_Right", Group = group, X = 1270, Y = 438 })
+			SetScaleY({Id = components.LeftPart.Id, Fraction = 0.8})
+			SetScaleY({Id = components.MiddlePart.Id, Fraction = 0.8})
+			SetScaleY({Id = components.RightPart.Id, Fraction = 0.8})
+			SetScaleX({Id = components.MiddlePart.Id, Fraction = 5})
+			
+
+			CreateTextBox({ Id = components.Background.Id, Text = " "..title.." ", FontSize = 34,
+			OffsetX = 0, OffsetY = -225, Color = Color.White, Font = "SpectralSCLight",
+			ShadowBlur = 0, ShadowColor = {0,0,0,1}, ShadowOffset={0, 1}, Justification = "Center" })
+			CreateTextBox({ Id = components.Background.Id, Text = " "..body.." ", FontSize = 19,
+			OffsetX = 0, OffsetY = -175, Width = 840, Color = Color.SubTitle, Font = "CrimsonTextItalic",
+			ShadowBlur = 0, ShadowColor = {0,0,0,1}, ShadowOffset={0, 1}, Justification = "Center" })
+
+			components.Icon = CreateScreenComponent({ Name = "BlankObstacle", Group = group })
+			Attach({ Id = components.Icon.Id, DestinationId = components.Background.Id, OffsetX = 0, OffsetY = -50})
+			SetAnimation({ Name = icon, DestinationId = components.Icon.Id, Scale = iconScale })
+
+			ModUtil.NewTable(ModUtil.Anchors.Menu[group], "Funcs")
+			ModUtil.Anchors.Menu[group].Funcs={
+				Yes = function(screen, button)
+						local ret = yesFunc(screen,button)
+						ModUtil.Hades.CloseMenuYesNo(screen,button)
+						return ret
+					end, 
+				No = function(screen, button)
+						local ret = noFunc(screen,button)
+						ModUtil.Hades.CloseMenuYesNo(screen,button)
+						return ret
+					end,
+			}
+			ModUtil.GlobaliseFuncs( ModUtil.Anchors.Menu[group].Funcs, "ModUtil.Anchors.Menu."..group..".Funcs" )
+
+			components.CloseButton = CreateScreenComponent({ Name = "ButtonClose", Scale = 0.7, Group = group })
+			Attach({ Id = components.CloseButton.Id, DestinationId = components.Background.Id, OffsetX = 0, OffsetY = ScreenCenterY - 315 })
+			components.CloseButton.OnPressedFunctionName = ModUtil.JoinPath("ModUtil.Hades.CloseMenuYesNo")
+			components.CloseButton.ControlHotkey = "Cancel"
+
+			components.YesButton = CreateScreenComponent({ Name = "BoonSlot1", Group = group, Scale = 0.35, })
+			components.YesButton.OnPressedFunctionName = ModUtil.JoinPath("ModUtil.Anchors.Menu."..group..".Funcs.Yes")
+			SetScaleX({Id = components.YesButton.Id, Fraction = 0.75})
+			SetScaleY({Id = components.YesButton.Id, Fraction = 1.15})
+			Attach({ Id = components.YesButton.Id, DestinationId = components.Background.Id, OffsetX = -150, OffsetY = 75 })
+			CreateTextBox({ Id = components.YesButton.Id, Text = " "..yesText.." ",
+				FontSize = 28, OffsetX = 0, OffsetY = 0, Width = 720, Color = Color.LimeGreen, Font = "AlegreyaSansSCLight",
+				ShadowBlur = 0, ShadowColor = {0,0,0,1}, ShadowOffset={0, 2}, Justification = "Center"
+			})
+			
+			components.NoButton = CreateScreenComponent({ Name = "BoonSlot1", Group = group, Scale = 0.35, })
+			components.NoButton.OnPressedFunctionName = ModUtil.JoinPath("ModUtil.Anchors.Menu."..group..".Funcs.No")
+			SetScaleX({Id = components.NoButton.Id, Fraction = 0.75})
+			SetScaleY({Id = components.NoButton.Id, Fraction = 1.15})
+			Attach({ Id = components.NoButton.Id, DestinationId = components.Background.Id, OffsetX = 150, OffsetY = 75 })
+			CreateTextBox({ Id = components.NoButton.Id, Text = noText,
+				FontSize = 26, OffsetX = 0, OffsetY = 0, Width = 720, Color = Color.Red, Font = "AlegreyaSansSCLight",
+				ShadowBlur = 0, ShadowColor = {0,0,0,1}, ShadowOffset={0, 2}, Justification = "Center"
+			})
+			
+			ModUtil.Hades.PostOpenMenu( group )
+		end
+		
+		function ModUtil.Hades.CloseMenuYesNo( screen, button )
+			PlaySound({ Name = "/SFX/Menu Sounds/GeneralWhooshMENU" })
+			_G[ModUtil.JoinPath("ModUtil.Anchors.Menu."..screen.Name..".Funcs.Yes")]=nil
+			_G[ModUtil.JoinPath("ModUtil.Anchors.Menu."..screen.Name..".Funcs.No")]=nil
+			ModUtil.Hades.CloseMenu( screen, button )
+		end
+		
 	end
+	
+	ModUtil.GlobaliseModFuncs( ModUtil )
 
 end
