@@ -256,6 +256,14 @@ if not ModUtil then
 		return s
 	end
 
+	function ModUtil.PathGet( Path )
+		return ModUtil.SafeGet(_G,ModUtil.PathArray(Path))
+	end
+
+	function ModUtil.PathSet( Path, Value )
+		return ModUtil.SafeSet(_G,ModUtil.PathArray(Path),value)
+	end
+
 	function ModUtil.WrapFunction( funcTable, funcIndexArray, wrapFunc, modObject )
 		if type(wrapFunc) ~= "function" then return end
 		if not funcTable then return end
