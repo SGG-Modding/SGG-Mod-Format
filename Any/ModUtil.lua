@@ -18,14 +18,22 @@ Author: MagicGonads
 
 if not ModUtil then
 
-	ModUtil = {
-		modName = "ModUtil",
+	-- Setup
+	
+	local config = {
 		AutoCollapse = true,
+	}
+	
+	ModUtil = {
+		config = config,
+		modName = "ModUtil",
 		WrapCallbacks = {},
 		Mods = {},
-		ModOverrides = {},
+		Overrides = {},
 		Anchors = {Menu={},CloseFuncs={}},
 		GlobalConnector = "__",
+		FuncsToLoad = {},
+		MarkedForCollapse = {},
 	}
 	SaveIgnores["ModUtil"]=true
 
@@ -39,6 +47,8 @@ if not ModUtil then
 		ModUtil[game] = {}
 		break
 	end
+
+	-- Management
 
 	function ModUtil.RegisterMod( modName, parent )
 		if not parent then
@@ -54,27 +64,18 @@ if not ModUtil then
 		return parent[modName]
 	end
 
-	local FuncsToLoad = {}
+	
 	function ModUtil.LoadFuncs( triggerArgs )
-		for k,v in pairs(FuncsToLoad) do
+		for k,v in pairs(ModUtil.FuncsToLoad) do
 			v(triggerArgs)
 		end
-		FuncsToLoad = {}
+		ModUtil.FuncsToLoad = {}
 	end
 	OnAnyLoad{ModUtil.LoadFuncs}
 
 	function ModUtil.LoadOnce( triggerFunction )
-		table.insert( FuncsToLoad, triggerFunction )
+		table.insert( ModUtil.FuncsToLoad, triggerFunction )
 	end
-
-	local MarkedForCollapse = {}
-	function ModUtil.CollapseMarked()
-		for k,v in pairs(MarkedForCollapse) do
-			k = CollapseTable(k)
-		end
-		MarkedForCollapse = {}
-	end
-	OnAnyLoad{ModUtil.CollapseMarked}
 
 	function ModUtil.ForceClosed( triggerArgs )
 		for k,v in pairs(ModUtil.Anchors.CloseFuncs) do
@@ -85,18 +86,7 @@ if not ModUtil then
 	end
 	OnAnyLoad{ModUtil.ForceClosed}
 
-	function ModUtil.RandomColor(rng)
-		local Color_Collapsed = CollapseTable(Color)
-		return Color_Collapsed[RandomInt(1, #Color_Collapsed, rng)]
-	end
-
-	function ModUtil.InvertTable( Table )
-		local inverseTable = {}
-		for key,value in ipairs(tableArg) do
-			inverseTable[value]=key
-		end
-		return inverseTable
-	end
+	-- Data Misc
 
 	function ModUtil.ToString(o)
 		--https://stackoverflow.com/a/27028488
@@ -110,6 +100,14 @@ if not ModUtil then
 		else
 			return tostring(o)
 		end
+	end
+
+	function ModUtil.InvertTable( Table )
+		local inverseTable = {}
+		for key,value in ipairs(tableArg) do
+			inverseTable[value]=key
+		end
+		return inverseTable
 	end
 
 	function ModUtil.IsUnKeyed( Table )
@@ -129,8 +127,8 @@ if not ModUtil then
 	end
 
 	function ModUtil.AutoIsUnKeyed( Table )
-		if ModUtil.AutoCollapse then
-			if not MarkedForCollapse[Table] then
+		if ModUtil.config.AutoCollapse then
+			if not ModUtil.MarkedForCollapse[Table] then
 				return ModUtil.IsUnKeyed( Table )
 			else
 				return false
@@ -138,6 +136,8 @@ if not ModUtil then
 		end
 		return false
 	end
+
+	-- Data Manipulation
 
 	function ModUtil.NewTable( Table, key )
 		if type(Table) ~= "table" then return end
@@ -178,10 +178,6 @@ if not ModUtil then
 		return true
 	end
 
-	function ModUtil.MarkForCollapse( Table, IndexArray )
-		MarkedForCollapse[ModUtil.SafeGet(Table, IndexArray)] = true
-	end
-
 	function ModUtil.MapNilTable( InTable, NilTable )
 		local unkeyed = ModUtil.AutoIsUnKeyed( InTable )
 		for NilKey, NilVal in pairs(NilTable) do
@@ -211,6 +207,20 @@ if not ModUtil then
 			end
 		end
 	end
+
+	function ModUtil.CollapseMarked()
+		for k,v in pairs(ModUtil.MarkedForCollapse) do
+			k = CollapseTable(k)
+		end
+		ModUtil.MarkedForCollapse = {}
+	end
+	OnAnyLoad{ModUtil.CollapseMarked}
+
+	function ModUtil.MarkForCollapse( Table, IndexArray )
+		ModUtil.MarkedForCollapse[ModUtil.SafeGet(Table, IndexArray)] = true
+	end
+	
+	-- Path Manipulation
 
 	function ModUtil.JoinIndexArrays( A, B )
 		local C = {}
@@ -262,40 +272,16 @@ if not ModUtil then
 		return ModUtil.SafeSet(_G,ModUtil.PathArray(Path),value)
 	end
 
-	function ModUtil.WrapFunction( funcTable, funcIndexArray, wrapFunc, modObject )
-		if type(wrapFunc) ~= "function" then return end
-		if not funcTable then return end
-		
-		local func = ModUtil.SafeGet(funcTable, funcIndexArray)
-		if type(func) ~= "function" then return end
-
-		ModUtil.NewTable(ModUtil.WrapCallbacks, funcTable)
-		if ModUtil.SafeGet(ModUtil.WrapCallbacks[funcTable], funcIndexArray) == nil then
-			ModUtil.SafeSet(ModUtil.WrapCallbacks[funcTable], funcIndexArray, {})
-		end
-		table.insert(ModUtil.SafeGet(ModUtil.WrapCallbacks[funcTable], funcIndexArray), {mod=modObject,wrap=wrapFunc,func=func})
-		ModUtil.SafeSet(funcTable, funcIndexArray, function( ... )
-			return wrapFunc( func, ... )
-		end)
+	function ModUtil.PathNilTable( Path, NilTable )
+		return ModUtil.MapNilTable( ModUtil.SafeGet(_G,ModUtil.PathArray(Path)), NilTable )
 	end
 
-	function ModUtil.WrapBaseFunction( baseFuncPath, wrapFunc, modObject )
-		ModUtil.WrapFunction( _G, ModUtil.PathArray( baseFuncPath ), wrapFunc, modObject )
+	function ModUtil.PathSetTable( Path, SetTable )
+		return ModUtil.MapSetTable( ModUtil.SafeGet(_G,ModUtil.PathArray(Path)), SetTable )
 	end
 
-	function ModUtil.Override( baseTable, IndexArray, Value, modObject )
-		local baseValue = ModUtil.SafeGet(baseTable, IndexArray)
-		ModUtil.NewTable(ModUtil.ModOverrides, baseTable)
-		if ModUtil.SafeGet(ModUtil.ModOverrides[baseTable], IndexArray) == nil then
-			ModUtil.SafeSet(ModUtil.ModOverrides[baseTable], IndexArray, {})
-		end
-		table.insert(ModUtil.SafeGet(ModUtil.ModOverrides[baseTable], IndexArray), {mod=modObject,value=Value,base=baseValue})
-	end
-	
-	function ModUtil.BaseOverride( basePath, Value, modObject )
-		ModUtil.Override( _G, ModUtil.PathArray( basePath ), modObject )
-	end
-	
+	-- Globalisation
+
 	function ModUtil.GlobalisePath( Path )
 		_G[ModUtil.JoinPath( Path )] = ModUtil.SafeGet(_G,ModUtil.PathArray( Path ))
 	end
@@ -323,6 +309,95 @@ if not ModUtil then
 		end
 		ModUtil.GlobaliseFuncs( modObject, modObject.modName )
 	end
+
+	-- Function Wrapping
+
+	function ModUtil.WrapFunction( funcTable, IndexArray, wrapFunc, modObject )
+		if type(wrapFunc) ~= "function" then return end
+		if not funcTable then return end
+		local func = ModUtil.SafeGet(funcTable, IndexArray)
+		if type(func) ~= "function" then return end
+
+		ModUtil.NewTable(ModUtil.WrapCallbacks, funcTable)
+		local tempTable = ModUtil.SafeGet(ModUtil.WrapCallbacks[funcTable], IndexArray)
+		if tempTable == nil then
+			tempTable = {}
+			ModUtil.SafeSet(ModUtil.WrapCallbacks[funcTable], IndexArray, tempTable)
+		end
+		table.insert(tempTable, {id=#tempTable+1,mod=modObject,wrap=wrapFunc,func=func})
+		
+		ModUtil.SafeSet(funcTable, IndexArray, function( ... )
+			return wrapFunc( func, ... )
+		end)
+	end
+	
+	function ModUtil.UnwrapFunction( funcTable, IndexArray )
+		if not funcTable then return end
+		local func = ModUtil.SafeGet(funcTable, IndexArray)
+		if type(func) ~= "function" then return end
+
+		local tempTable = ModUtil.SafeGet(ModUtil.WrapCallbacks[funcTable], IndexArray)
+		if not tempTable then return end 
+		local funcData = table.remove(tempTable)
+		if not funcData then return end
+		
+		ModUtil.SafeSet( funcTable, IndexArray, funcData.base )
+		return funcData
+	end
+
+	function ModUtil.WrapBaseFunction( baseFuncPath, wrapFunc, modObject )
+		ModUtil.WrapFunction( _G, ModUtil.PathArray( baseFuncPath ), wrapFunc, modObject )
+	end
+	
+	function ModUtil.UnwrapBaseFunction( baseFuncPath )
+		ModUtil.UnwrapFunction( _G, ModUtil.PathArray( baseFuncPath ))
+	end
+
+	-- Override Management
+
+	function ModUtil.Override( baseTable, IndexArray, Value, modObject )
+		if not baseTable then return end
+	
+		local baseValue = ModUtil.SafeGet(baseTable, IndexArray)
+		ModUtil.NewTable(ModUtil.Overrides, baseTable)
+		local tempTable = ModUtil.SafeGet(ModUtil.Overrides[baseTable], IndexArray)
+		if tempTable == nil then
+			tempTable = {}
+			ModUtil.SafeSet(ModUtil.Overrides[baseTable], IndexArray, tempTable)
+		end
+		table.insert(tempTable, {id=#tempTable+1,mod=modObject,value=Value,base=baseValue})
+		
+		ModUtil.SafeSet( baseTable, IndexArray, Value )
+		
+	end
+	
+	function ModUtil.Restore( baseTable, IndexArray )
+		if not baseTable then return end
+		local tempTable = ModUtil.SafeGet(ModUtil.Overrides[baseTable], IndexArray)
+		if not tempTable then return end
+		local baseData = table.remove(tempTable)
+		if not baseData then return end
+		
+		ModUtil.SafeSet( baseTable, IndexArray, baseData.base )
+		return baseData
+	end
+	
+	function ModUtil.BaseOverride( basePath, Value, modObject )
+		ModUtil.Override( _G, ModUtil.PathArray( basePath ), Value, modObject )
+	end
+	
+	function ModUtil.BaseRestore( basePath )
+		ModUtil.Restore( _G, ModUtil.PathArray( basePath ) )
+	end
+	
+	-- Misc
+	
+	function ModUtil.RandomColor(rng)
+		local Color_Collapsed = CollapseTable(Color)
+		return Color_Collapsed[RandomInt(1, #Color_Collapsed, rng)]
+	end
+
+	--
 	
 	if ModUtil.Pyre then 
 		
@@ -337,6 +412,8 @@ if not ModUtil then
 	end
 	
 	if ModUtil.Hades then
+		
+		-- Screen Handling
 		
 		ModUtil.Anchors.NumFreeze = 0
 		ModUtil.WrapBaseFunction( "FreezePlayerUnit", function(baseFunc, ...)
@@ -366,6 +443,7 @@ if not ModUtil then
 			end
 		end, ModUtil)
 	
+		-- Menu Handling
 	
 		function ModUtil.Hades.CloseMenu( screen, button )
 			CloseScreen(GetAllIds(screen.Components), 0.1)
@@ -419,6 +497,61 @@ if not ModUtil then
 			EnableShopGamepadCursor()
 			thread(HandleWASDInput, screen)
 			HandleScreenInput(screen)
+		end
+	
+		-- Debug Printing
+	
+		function ModUtil.Hades.PrintDisplay( text , delay, color )
+			if type(text) ~= "string" then
+				text = ModUtil.ToString(text)
+			end
+			text = " "..text.." "
+			if color == nil then
+				color = Color.Yellow
+			end
+			if delay == nil then
+				delay = 5
+			end
+			if ModUtil.Anchors.PrintDisplay then
+				Destroy({Ids = ModUtil.Anchors.PrintDisplay.Id})
+			end
+			ModUtil.Anchors.PrintDisplay = CreateScreenComponent({Name = "BlankObstacle", Group = "PrintDisplay", X = ScreenCenterX, Y = 40 })
+			CreateTextBox({ Id = ModUtil.Anchors.PrintDisplay.Id, Text = text, FontSize = 22, Color = color, Font = "UbuntuMonoBold"})
+			
+			if delay > 0 then
+				thread(function()
+					wait(delay)
+					Destroy({Ids = ModUtil.Anchors.PrintDisplay.Id})
+					ModUtil.Anchors.PrintDisplay = nil
+				end)
+			end
+		end
+	
+		function ModUtil.Hades.PrintOverhead(text, delay, color, dest)
+			if type(text) ~= "string" then
+				text = ModUtil.ToString(text)
+			end
+			text = " "..text.." "
+			if dest == nil then
+				dest = CurrentRun.Hero.ObjectId
+			end
+			if color == nil then
+				color = Color.Yellow
+			end
+			if delay == nil then
+				delay = 5
+			end
+			Destroy({Ids = ModUtil.Anchors.PrintOverhead})
+			ModUtil.Anchors.PrintOverhead = SpawnObstacle({ Name = "BlankObstacle", Group = "Events", DestinationId = dest })
+			Attach({ Id = ModUtil.Anchors.PrintOverhead, DestinationId = dest })
+			CreateTextBox({ Id = ModUtil.Anchors.PrintOverhead, Text = text, FontSize = 32, OffsetX = 0, OffsetY = -150, Color = color, Font = "AlegreyaSansSCBold", Justification = "Center" })
+			if delay > 0 then
+				thread(function()
+					wait(delay)
+					Destroy({Ids = ModUtil.Anchors.PrintOverhead})
+					ModUtil.Anchors.PrintOverhead = nil
+				end)
+			end
 		end
 	
 		local function ClosePrintStack()
@@ -568,59 +701,8 @@ if not ModUtil then
 			screen.CullEnabled = true
 			
 		end
-	
-		function ModUtil.Hades.PrintDisplay( text , delay, color )
-			if type(text) ~= "string" then
-				text = ModUtil.ToString(text)
-			end
-			text = " "..text.." "
-			if color == nil then
-				color = Color.Yellow
-			end
-			if delay == nil then
-				delay = 5
-			end
-			if ModUtil.Anchors.PrintDisplay then
-				Destroy({Ids = ModUtil.Anchors.PrintDisplay.Id})
-			end
-			ModUtil.Anchors.PrintDisplay = CreateScreenComponent({Name = "BlankObstacle", Group = "PrintDisplay", X = ScreenCenterX, Y = 40 })
-			CreateTextBox({ Id = ModUtil.Anchors.PrintDisplay.Id, Text = text, FontSize = 22, Color = color, Font = "UbuntuMonoBold"})
-			
-			if delay > 0 then
-				thread(function()
-					wait(delay)
-					Destroy({Ids = ModUtil.Anchors.PrintDisplay.Id})
-					ModUtil.Anchors.PrintDisplay = nil
-				end)
-			end
-		end
-	
-		function ModUtil.Hades.PrintOverhead(text, delay, color, dest)
-			if type(text) ~= "string" then
-				text = ModUtil.ToString(text)
-			end
-			text = " "..text.." "
-			if dest == nil then
-				dest = CurrentRun.Hero.ObjectId
-			end
-			if color == nil then
-				color = Color.Yellow
-			end
-			if delay == nil then
-				delay = 5
-			end
-			Destroy({Ids = ModUtil.Anchors.PrintOverhead})
-			ModUtil.Anchors.PrintOverhead = SpawnObstacle({ Name = "BlankObstacle", Group = "Events", DestinationId = dest })
-			Attach({ Id = ModUtil.Anchors.PrintOverhead, DestinationId = dest })
-			CreateTextBox({ Id = ModUtil.Anchors.PrintOverhead, Text = text, FontSize = 32, OffsetX = 0, OffsetY = -150, Color = color, Font = "AlegreyaSansSCBold", Justification = "Center" })
-			if delay > 0 then
-				thread(function()
-					wait(delay)
-					Destroy({Ids = ModUtil.Anchors.PrintOverhead})
-					ModUtil.Anchors.PrintOverhead = nil
-				end)
-			end
-		end
+		
+		-- Custom Menus
 		
 		function ModUtil.Hades.NewMenuYesNo( name, yesFunc, noFunc, closeFunc, title, body, yesText, noText, icon, iconScale)
 			if not name or name == "" then return end
@@ -710,6 +792,8 @@ if not ModUtil then
 		end
 		
 	end
+	
+	-- Post Setup
 	
 	ModUtil.GlobaliseModFuncs( ModUtil )
 
