@@ -145,7 +145,7 @@ if not ModUtil then
 			Table[key] = {}
 		end
 	end
-
+	
 	function ModUtil.SafeGet( Table, IndexArray )
 		local n = #IndexArray
 		local node = Table
@@ -157,10 +157,6 @@ if not ModUtil then
 		end
 		return node
 	end
-	
-	function ModUtil.MarkForCollapse( Table, IndexArray )
-		MarkedForCollapse[ModUtil.SafeGet(Table, IndexArray)] = true
-	end
 
 	function ModUtil.SafeSet( Table, IndexArray, Value )
 		if IsEmpty(IndexArray) then
@@ -168,20 +164,22 @@ if not ModUtil then
 		end
 		local n = #IndexArray
 		local node = Table
-		for k, i in ipairs(IndexArray) do
-			if type(node) ~= "table" then
-				return false
-			end
-			if k == n then
-				local unkeyed = ModUtil.AutoIsUnKeyed( InTable )
-				node[i] = Value
-				if Value == nil and unkeyed then
-					ModUtil.MarkForCollapse( node )
-				end
-				return true
-			end
-			node = node[i]
+		for i = 1, n-1 do
+			k = IndexArray[i]
+			ModUtil.NewTable(node,k)
+			node = node[k]
 		end
+		if (node[IndexArray[n]]==nil)~=(Value==nil) then
+			if ModUtil.AutoIsUnKeyed( InTable ) then
+				ModUtil.MarkForCollapse( node )
+			end
+		end
+		node[IndexArray[n]] = Value
+		return true
+	end
+
+	function ModUtil.MarkForCollapse( Table, IndexArray )
+		MarkedForCollapse[ModUtil.SafeGet(Table, IndexArray)] = true
 	end
 
 	function ModUtil.MapNilTable( InTable, NilTable )
@@ -271,34 +269,30 @@ if not ModUtil then
 		local func = ModUtil.SafeGet(funcTable, funcIndexArray)
 		if type(func) ~= "function" then return end
 
-		if type(modObject) == "table" then 
-			ModUtil.NewTable( modObject, "BaseFunctions" )
-			ModUtil.NewTable( modObject.BaseFunctions, funcTable )
-			ModUtil.SafeSet(modObject.BaseFunctions[funcTable], funcIndexArray, func)
-			ModUtil.NewTable( ModUtil.WrapCallbacks, funcTable )
-			ModUtil.SafeSet(ModUtil.WrapCallbacks[funcTable], funcIndexArray, modObject)
+		ModUtil.NewTable(ModUtil.WrapCallbacks, funcTable)
+		if ModUtil.SafeGet(ModUtil.WrapCallbacks[funcTable], funcIndexArray) == nil then
+			ModUtil.SafeSet(ModUtil.WrapCallbacks[funcTable], funcIndexArray, {})
 		end
+		table.insert(ModUtil.SafeGet(ModUtil.WrapCallbacks[funcTable], funcIndexArray), {mod=modObject,wrap=wrapFunc,func=func})
 		ModUtil.SafeSet(funcTable, funcIndexArray, function( ... )
 			return wrapFunc( func, ... )
 		end)
-		if type(modObject) == "table" then
-			ModUtil.NewTable( modObject, "WrappedFunctions" )
-			ModUtil.NewTable( modObject.WrappedFunctions, funcTable )
-			ModUtil.SafeSet(modObject.WrappedFunctions[funcTable], funcIndexArray, ModUtil.SafeGet(funcTable, funcIndexArray))
-		end
 	end
 
 	function ModUtil.WrapBaseFunction( baseFuncPath, wrapFunc, modObject )
 		ModUtil.WrapFunction( _G, ModUtil.PathArray( baseFuncPath ), wrapFunc, modObject )
 	end
 
-	function ModUtil.Override( baseTable, IndexArray, modObject )
-		ModUtil.ModOverrides[baseTable] = modObject 
-		ModUtil.NewTable( modObject, "Overrides" )
-		ModUtil.SafeSet(modObject.Overrides[baseTable], IndexArray, ModUtil.SafeGet(baseTable, IndexArray))
+	function ModUtil.Override( baseTable, IndexArray, Value, modObject )
+		local baseValue = ModUtil.SafeGet(baseTable, IndexArray)
+		ModUtil.NewTable(ModUtil.ModOverrides, baseTable)
+		if ModUtil.SafeGet(ModUtil.ModOverrides[baseTable], IndexArray) == nil then
+			ModUtil.SafeSet(ModUtil.ModOverrides[baseTable], IndexArray, {})
+		end
+		table.insert(ModUtil.SafeGet(ModUtil.ModOverrides[baseTable], IndexArray), {mod=modObject,value=Value,base=baseValue})
 	end
 	
-	function ModUtil.BaseOverride( basePath, modObject )
+	function ModUtil.BaseOverride( basePath, Value, modObject )
 		ModUtil.Override( _G, ModUtil.PathArray( basePath ), modObject )
 	end
 	
@@ -343,18 +337,45 @@ if not ModUtil then
 	end
 	
 	if ModUtil.Hades then
+		
+		ModUtil.Anchors.NumFreeze = 0
+		ModUtil.WrapBaseFunction( "FreezePlayerUnit", function(baseFunc, ...)
+			ModUtil.Anchors.NumFreeze = ModUtil.Anchors.NumFreeze + 1
+			if ModUtil.Anchors.NumFreeze >= 0 then
+				baseFunc(...)
+			end
+		end, ModUtil)
+		ModUtil.WrapBaseFunction( "UnfreezePlayerUnit", function(baseFunc, ...)
+			ModUtil.Anchors.NumFreeze = ModUtil.Anchors.NumFreeze - 1
+			if ModUtil.Anchors.NumFreeze <= 0 then
+				baseFunc(...)
+			end
+		end, ModUtil)
+		
+		ModUtil.Anchors.NumCursor = 0
+		ModUtil.WrapBaseFunction( "EnableShopGamePadCursor", function(baseFunc, ...)
+			ModUtil.Anchors.NumCursor = ModUtil.Anchors.NumCursor + 1
+			if ModUtil.Anchors.NumCursor >= 0 then
+				baseFunc(...)
+			end
+		end, ModUtil)
+		ModUtil.WrapBaseFunction( "DisableShopGamePadCursor", function(baseFunc, ...)
+			ModUtil.Anchors.NumCursor = ModUtil.Anchors.NumCursor - 1
+			if ModUtil.Anchors.NumCursor <= 0 then
+				baseFunc(...)
+			end
+		end, ModUtil)
+	
 	
 		function ModUtil.Hades.CloseMenu( screen, button )
 			CloseScreen(GetAllIds(screen.Components), 0.1)
 			ModUtil.Anchors.Menu[screen.Name] = nil
 			screen.KeepOpen = false
 			OnScreenClosed({ Flag = screen.Name })
-			if TableLength(ModUtil.Anchors.Menu) == 0 then
-				DisableShopGamepadCursor()
-				UnfreezePlayerUnit()
-				SetConfigOption({ Name = "FreeFormSelectWrapY", Value = false })
-				SetConfigOption({ Name = "UseOcclusion", Value = true })
-			end
+			DisableShopGamepadCursor()
+			UnfreezePlayerUnit()
+			SetConfigOption({ Name = "FreeFormSelectWrapY", Value = false })
+			SetConfigOption({ Name = "UseOcclusion", Value = true })
 			if ModUtil.Anchors.CloseFuncs[screen.Name] then
 				ModUtil.Anchors.CloseFuncs[screen.Name]( screen, button )
 				ModUtil.Anchors.CloseFuncs[screen.Name]=nil
