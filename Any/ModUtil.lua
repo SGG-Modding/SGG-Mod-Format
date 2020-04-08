@@ -392,11 +392,15 @@ if not ModUtil then
 	
 	-- Misc
 	
-	function ModUtil.RandomColor(rng)
-		local Color_Collapsed = CollapseTable(Color)
-		return Color_Collapsed[RandomInt(1, #Color_Collapsed, rng)]
+	function ModUtil.RandomElement(Table,rng)
+		local Collapsed = CollapseTable(Table)
+		return Collapsed[RandomInt(1, #Collapsed, rng)]
 	end
-
+	
+	function ModUtil.RandomColor(rng)
+		return ModUtil.RandomElement(Color,rng)
+	end
+	
 	--
 	
 	if ModUtil.Pyre then 
@@ -460,7 +464,7 @@ if not ModUtil then
 			end
 		end
 	
-		function ModUtil.Hades.OpenMenu( group, closeFunc )
+		function ModUtil.Hades.OpenMenu( group, closeFunc, openFunc )
 			if ModUtil.Anchors.Menu[group] then
 				ModUtil.Hades.CloseMenu(ModUtil.Anchors.Menu[group])
 			end
@@ -475,20 +479,24 @@ if not ModUtil then
 			
 			components.Background = CreateScreenComponent({ Name = "BlankObstacle", Group = group })
 			
+			if openFunc then openFunc(screen) end
+			
 			return screen
 		end
 		
 		function ModUtil.Hades.DimMenu( screen )
+			if not screen then return end
 			if not screen.Components.BackgroundDim then
 				screen.Components.BackgroundDim = CreateScreenComponent({ Name = "rectangle01", Group = screen.Name })
 				SetScale({ Id = screen.Components.BackgroundDim.Id, Fraction = 4 })
 			end
-			SetColor({ Id = screen.Components.BackgroundDim.Id, Color = {0.090, 0.055, 0.157, 0.8} })
+			SetColor({ Id = screen.Components.BackgroundDim.Id, Color = {0.090, 0.090, 0.090, 0.8} })
 		end
 		
 		function ModUtil.Hades.UndimMenu( screen )
+			if not screen then return end
 			if not screen.Components.BackgroundDim then return end
-			SetColor({ Id = screen.Components.BackgroundDim.Id, Color = {0.090, 0.055, 0.157, 0} })
+			SetColor({ Id = screen.Components.BackgroundDim.Id, Color = {0.090, 0.090, 0.090, 0} })
 		end
 		
 		function ModUtil.Hades.PostOpenMenu( group )
@@ -497,6 +505,7 @@ if not ModUtil then
 			EnableShopGamepadCursor()
 			thread(HandleWASDInput, screen)
 			HandleScreenInput(screen)
+			return screen
 		end
 	
 		-- Debug Printing
@@ -641,7 +650,7 @@ if not ModUtil then
 			end
 			local screen = ModUtil.Anchors.PrintStack
 			local components = screen.Components
-			--Background
+			
 			if first then 
 				PlaySound({ Name = "/SFX/Menu Sounds/DialoguePanelOutMenu" })
 				components.Background = CreateScreenComponent({ Name = "BlankObstacle", Group = "PrintStack", X = ScreenCenterX, Y = 2*ScreenCenterY})
@@ -704,19 +713,18 @@ if not ModUtil then
 		
 		-- Custom Menus
 		
-		function ModUtil.Hades.NewMenuYesNo( name, yesFunc, noFunc, closeFunc, title, body, yesText, noText, icon, iconScale)
-			if not name or name == "" then return end
+		function ModUtil.Hades.NewMenuYesNo( group, closeFunc, openFunc, yesFunc, noFunc, title, body, yesText, noText, icon, iconScale)
+			
+			if not group or group == "" then group = "MenuYesNo" end
 			if not yesFunc or not noFunc then return end
 			if not icon then icon = "AmmoPack" end
 			if not iconScale then iconScale = 1 end
 			if not yesText then yesText = "Yes" end
 			if not noText then noText = "No" end
 			if not body then body = "Make a choice..." end
-			if not title then title = name end
+			if not title then title = group end
 			
-			local group = "MenuYesNo_"..name
-			
-			local screen = ModUtil.Hades.OpenMenu( group, closeFunc )
+			local screen = ModUtil.Hades.OpenMenu( group, closeFunc, openFunc )
 			local components = screen.Components
 			
 			PlaySound({ Name = "/SFX/Menu Sounds/GodBoonInteract" })
@@ -781,7 +789,7 @@ if not ModUtil then
 				ShadowBlur = 0, ShadowColor = {0,0,0,1}, ShadowOffset={0, 2}, Justification = "Center"
 			})
 			
-			ModUtil.Hades.PostOpenMenu( group )
+			return ModUtil.Hades.PostOpenMenu( group )
 		end
 		
 		function ModUtil.Hades.CloseMenuYesNo( screen, button )
