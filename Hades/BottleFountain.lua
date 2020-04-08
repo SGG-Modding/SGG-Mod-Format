@@ -5,7 +5,9 @@ ModUtil.RegisterMod("BottleFountain")
 local config = {
 	debug = false,
 	StartBottles = {},
+	NectarCost = 1,
 }
+BottleFountain.config = config
 
 function BottleFountain.SetupBottles()
 	if CurrentRun.FountainBottles == nil then CurrentRun.FountainBottles = config.StartBottles end
@@ -68,7 +70,7 @@ end, BottleFountain)
 
 ModUtil.WrapBaseFunction( "Heal", function(baseFunc, victim, triggerArgs)
 	if victim == CurrentRun.Hero then
-		if triggerArgs.SourceName == "HealthFountain" and triggerArgs.HealFraction ~= 0 and HasResource( "GiftPoints", 1 ) then
+		if triggerArgs.SourceName == "HealthFountain" and triggerArgs.HealFraction ~= 0 and HasResource( "GiftPoints", config.NectarCost ) then
 			local bottleChose = false
 			local screen = ModUtil.Hades.NewMenuYesNo( 
 				"BottleFountainGet", 
@@ -79,7 +81,7 @@ ModUtil.WrapBaseFunction( "Heal", function(baseFunc, victim, triggerArgs)
 				end,
 				ModUtil.Hades.DimMenu,
 				function()
-					SpendResource( "GiftPoints", 1, "BottleFountain" )
+					SpendResource( "GiftPoints", config.NectarCost, "BottleFountain" )
 					BottleFountain.CollectBottle( 1, triggerArgs.HealFraction / CalculateHealingMultiplier() )
 					bottleChose = true
 				end,
