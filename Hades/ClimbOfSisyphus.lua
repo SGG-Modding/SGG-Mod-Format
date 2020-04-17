@@ -3,17 +3,43 @@
 ModUtil.RegisterMod("ClimbOfSisyphus")
 
 local config = { 
+	BaseFalls = 0,
 	BaseGods = 4,
 	MaxGodRate = 1,
-	PlayerDamageMult = 1.20,
-	EnemyDamageMult = 0.80,
+	PlayerDamageMult = 1.35,
+	EnemyDamageMult = 0.65,
+	EncounterDifficultyRate = 2.35,
+	EncounterMinWaveRate = 0.65,
+	EncounterMaxWaveRate = 1.25,
+	EncounterEnemyCapRate = 0.65,
+	EncounterTypesRate = 0.20,
+	RarityRate = 0.20,
+	ExchangeRate = 0.15,
 }	
 ClimbOfSisyphus.config = config
+
+local function falloff( x )
+	return x/math.sqrt(3+x*x)
+end
+
+local function lerp( x, y, t, d )
+	if x and y then
+		return x*(1-t) + t*y
+	end
+	return d
+end
+
+local function maxInterpolate( x, t )
+	if x and t < 1 then
+		return x*(1-t) + t
+	end
+	return t
+end
 
 OnAnyLoad{function()
 	if not CurrentRun then return end
 	if not CurrentRun.TotalFalls then
-		CurrentRun.TotalFalls = 0
+		CurrentRun.TotalFalls = config.BaseFalls
 		CurrentRun.MetaDepth = GetBiomeDepth( CurrentRun )
 	end
 end}
@@ -116,4 +142,41 @@ ModUtil.WrapBaseFunction("GetBiomeDepth", function(baseFunc, currentRun, ...)
 		return currentRun.MetaDepth + baseFunc( currentRun, ...)
 	end
 	return baseFunc( currentRun )
+end, ClimbOfSisyphus)
+
+ModUtil.WrapBaseFunction("GenerateEncounter", function (baseFunc, currentRun, room, encounter )
+	if not CurrentRun.TotalFalls then
+		CurrentRun.TotalFalls = config.BaseFalls
+		CurrentRun.MetaDepth = GetBiomeDepth( CurrentRun )
+	end
+	
+	encounter.DifficultyModifier = (encounter.DifficultyModifier or 0) + config.EncounterDifficultyRate * CurrentRun.TotalFalls
+	encounter.ActiveEnemyCapDepthRamp = (encounter.ActiveEnemyCapDepthRamp or 0) + config.EncounterDifficultyRate * CurrentRun.TotalFalls
+	encounter.ActiveEnemyCapMax =  (encounter.ActiveEnemyCapMax or 1) + config.EncounterEnemyCapRate * CurrentRun.TotalFalls
+	
+	local waveCap = #WaveDifficultyPatterns
+	encounter.MinWaves = lerp((encounter.MinWaves or 1),waveCap,falloff(config.EncounterMinWaveRate * CurrentRun.TotalFalls))
+	encounter.MaxWaves = lerp((encounter.MaxWaves or 1),waveCap,falloff(config.EncounterMaxWaveRate * CurrentRun.TotalFalls))
+	if encounter.MinWaves > encounter.MaxWaves then encounter.MinWaves = encounter.MaxWaves end
+	
+	if encounter.MaxTypesCap then
+		encounter.MaxTypes = lerp((encounter.MaxTypes or 1),encounter.MaxTypesCap,falloff(config.EncounterTypesRate * CurrentRun.TotalFalls))
+	else
+		encounter.MaxTypes = (encounter.MaxTypes or 1) + config.EncounterTypesRate * CurrentRun.TotalFalls
+	end
+	encounter.MaxEliteTypes = (encounter.MaxEliteTypes or 0) + config.EncounterTypesRate * CurrentRun.TotalFalls
+	
+	return baseFunc(currentRun, room, encounter)
+end, ClimbOfSisyphus)
+
+ModUtil.WrapBaseFunction("SetTraitsOnLoot", function ( baseFunc, lootData, args )
+	local extraRarity = falloff( config.RarityRate * CurrentRun.TotalFalls )
+	local extraReplace = falloff( config.ExchangeRate * CurrentRun.TotalFalls )
+	lootData.RarityChances.Legendary = maxInterpolate(lootData.RarityChances.Legendary,extraRarity)
+	lootData.RarityChances.Heroic = maxInterpolate(lootData.RarityChances.Heroic,extraRarity)
+	lootData.RarityChances.Epic = maxInterpolate(lootData.RarityChances.Epic,extraRarity)
+	lootData.RarityChances.Rare = maxInterpolate(lootData.RarityChances.Rare,extraRarity)
+	lootData.RarityChances.Common = maxInterpolate(lootData.RarityChances.Common,extraRarity)
+	CurrentRun.Hero.BoonData.ReplaceChance = maxInterpolate(CurrentRun.Hero.BoonData.ReplaceChance,extraReplace)
+	baseFunc( lootData, args )
 end, ClimbOfSisyphus)
