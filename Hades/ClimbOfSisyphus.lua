@@ -34,16 +34,16 @@ end
 ModUtil.GlobalisePath("ClimbOfSisyphus.EndFallFunc")
 
 function ClimbOfSisyphus.RunFall( currentRun, door )
-	CurrentRun.RoomCreations = {}
-    CurrentRun.BlockedEncounters = {}
-    CurrentRun.ClosedDoors = {}
-    CurrentRun.CompletedStyxWings = 0
-    CurrentRun.BiomeRoomCountCache = {}
-    CurrentRun.RoomCountCache = {}
-    CurrentRun.RoomHistory = {}
-    CurrentRun.EncountersCompletedCache = {}
-    CurrentRun.EncountersOccuredCache = {}
-    CurrentRun.EncountersOccuredBiomedCache = {}
+	currentRun.RoomCreations = {}
+    currentRun.BlockedEncounters = {}
+    currentRun.ClosedDoors = {}
+    currentRun.CompletedStyxWings = 0
+    currentRun.BiomeRoomCountCache = {}
+    currentRun.RoomCountCache = {}
+    currentRun.RoomHistory = {}
+    currentRun.EncountersCompletedCache = {}
+    currentRun.EncountersOccuredCache = {}
+    currentRun.EncountersOccuredBiomedCache = {}
 	UpdateRunHistoryCache( currentRun )
 	door.Room = CreateRoom( RoomData["RoomOpening"] )
 	door.ExitFunctionName = ModUtil.JoinPath("ClimbOfSisyphus.EndFallFunc")
@@ -51,8 +51,8 @@ function ClimbOfSisyphus.RunFall( currentRun, door )
 	currentRun.CurrentRoom.ExitFunctionName = nil
 	currentRun.CurrentRoom.ExitDirection = door.Room.EntranceDirection
 	currentRun.CurrentRoom.SkipLoadNextMap = false
-	CurrentRun.TotalFalls = CurrentRun.TotalFalls + 1
-	CurrentRun.MetaDepth = GetBiomeDepth( CurrentRun )
+	currentRun.TotalFalls = CurrentRun.TotalFalls + 1
+	currentRun.MetaDepth = GetBiomeDepth( CurrentRun )
 end
 
 ModUtil.WrapBaseFunction("RunShopGeneration",function(baseFunc,currentRoom,...)
