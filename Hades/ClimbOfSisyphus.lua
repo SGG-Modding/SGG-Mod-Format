@@ -70,8 +70,8 @@ ModUtil.WrapBaseFunction("LeaveRoom",function(baseFunc,currentRun,door)
 			function() end,
 			"Endless Calling",
 			"Go back to Tartarus to climb once more?",
-			"Fall",
-			"Escape",
+			" Fall ",
+			" Escape ",
 			"EasyModeIcon",2.25
 		)
 	else
