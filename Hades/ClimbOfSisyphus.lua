@@ -34,11 +34,16 @@ end
 ModUtil.GlobalisePath("ClimbOfSisyphus.EndFallFunc")
 
 function ClimbOfSisyphus.RunFall( currentRun, door )
-	currentRun.RoomHistory = {}
-	currentRun.RoomCreations = {}
-	currentRun.RoomCountCache = {}
-	currentRun.BiomeRoomCountCache = {}
-	currentRun.CompletedStyxWings = 0
+	CurrentRun.RoomCreations = {}
+    CurrentRun.BlockedEncounters = {}
+    CurrentRun.ClosedDoors = {}
+    CurrentRun.CompletedStyxWings = 0
+    CurrentRun.BiomeRoomCountCache = {}
+    CurrentRun.RoomCountCache = {}
+    CurrentRun.RoomHistory = {}
+    CurrentRun.EncountersCompletedCache = {}
+    CurrentRun.EncountersOccuredCache = {}
+    CurrentRun.EncountersOccuredBiomedCache = {}
 	UpdateRunHistoryCache( currentRun )
 	door.Room = CreateRoom( RoomData["RoomOpening"] )
 	door.ExitFunctionName = ModUtil.JoinPath("ClimbOfSisyphus.EndFallFunc")
