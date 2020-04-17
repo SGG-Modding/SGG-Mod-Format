@@ -3,9 +3,10 @@
 ModUtil.RegisterMod("ClimbOfSisyphus")
 
 local config = { 
-	MaxGodRate = 4,
-	PlayerDamageMult = 1.10,
-	EnemyDamageMult = 0.90,
+	BaseGods = 4,
+	MaxGodRate = 1,
+	PlayerDamageMult = 1.20,
+	EnemyDamageMult = 0.80,
 }	
 ClimbOfSisyphus.config = config
 
@@ -81,7 +82,7 @@ end, ClimbOfSisyphus)
 
 ModUtil.BaseOverride("ReachedMaxGods",function(baseFunc,excludedGods)
 	excludedGods = excludedGods or {}
-	local maxLootTypes = 4 + config.MaxGodRate * CurrentRun.TotalFalls
+	local maxLootTypes = config.BaseGods + config.MaxGodRate * CurrentRun.TotalFalls
 	local gods = ShallowCopyTable( excludedGods )
 	for i, godName in pairs(GetInteractedGodsThisRun()) do
 		if not Contains( gods, godName ) then
