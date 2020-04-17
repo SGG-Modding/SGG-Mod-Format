@@ -4,7 +4,7 @@ ModUtil.RegisterMod("BottleFountain")
 
 local config = {
 	debug = false,
-	StartBottles = {1,1,1},
+	StartBottles = {},
 	NectarCost = 1,
 }
 BottleFountain.config = config
