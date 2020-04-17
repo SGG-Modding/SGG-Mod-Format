@@ -4,7 +4,7 @@ ModUtil.RegisterMod("BottleFountain")
 
 local config = {
 	debug = false,
-	StartBottles = {},
+	StartBottles = {1,1,1},
 	NectarCost = 1,
 }
 BottleFountain.config = config
@@ -41,29 +41,15 @@ function BottleFountain.DoHeal( healFraction )
 end
 
 ModUtil.WrapBaseFunction( "BeginOpeningCodex", function(baseFunc, ... )
-	if IsScreenOpen("BottleFountainUse") then return baseFunc(...) end
-	BottleFountain.SetupBottles()
-	if BottleFountain.HasBottles( 1 ) then
-		local screen = ModUtil.Hades.NewMenuYesNo( 
-			"BottleFountainUse", 
-			nil,
-			ModUtil.Hades.DimMenu,
-			function()
+	if not CanOpenCodex() and not AreScreensActive() and IsInputAllowed({}) then
+		if CurrentRun.Hero.MaxHealth > CurrentRun.Hero.Health then
+			wait(0.2)
+			BottleFountain.SetupBottles()
+			if BottleFountain.HasBottles( 1 ) then
 				BottleFountain.ConsumeBottle( 1 )
-			end,
-			function()
-				thread(function()
-					wait(0.05)
-					OpenCodexScreen()
-				end)
-			end,
-			"Bottled Fountain Vigor",
-			"Drink a bottle or open Codex?",
-			"Drink".." ("..#CurrentRun.FountainBottles..")",
-			"Codex",
-			"GiftIcon",1.25
-		)
-		return false
+			end
+			wait(0.2)
+		end
 	end
 	return baseFunc(...)
 end, BottleFountain)
