@@ -419,33 +419,19 @@ if not ModUtil then
 		
 		-- Screen Handling
 		
-		ModUtil.Anchors.NumFreeze = 0
-		ModUtil.WrapBaseFunction( "FreezePlayerUnit", function(baseFunc, ...)
-			ModUtil.Anchors.NumFreeze = ModUtil.Anchors.NumFreeze + 1
-			if ModUtil.Anchors.NumFreeze >= 0 then
-				baseFunc(...)
-			end
-		end, ModUtil)
-		ModUtil.WrapBaseFunction( "UnfreezePlayerUnit", function(baseFunc, ...)
-			ModUtil.Anchors.NumFreeze = ModUtil.Anchors.NumFreeze - 1
-			if ModUtil.Anchors.NumFreeze <= 0 then
-				baseFunc(...)
-			end
-		end, ModUtil)
-		
-		ModUtil.Anchors.NumCursor = 0
-		ModUtil.WrapBaseFunction( "EnableShopGamePadCursor", function(baseFunc, ...)
-			ModUtil.Anchors.NumCursor = ModUtil.Anchors.NumCursor + 1
-			if ModUtil.Anchors.NumCursor >= 0 then
-				baseFunc(...)
-			end
-		end, ModUtil)
-		ModUtil.WrapBaseFunction( "DisableShopGamePadCursor", function(baseFunc, ...)
-			ModUtil.Anchors.NumCursor = ModUtil.Anchors.NumCursor - 1
-			if ModUtil.Anchors.NumCursor <= 0 then
-				baseFunc(...)
-			end
-		end, ModUtil)
+		OnAnyLoad{ function() 
+			if ModUtil.UnfreezeLoop then return end
+			ModUtil.UnfreezeLoop = true
+			thread( function()
+				while ModUtil.UnfreezeLoop do
+					wait(15)
+					if (not AreScreensActive()) and (not IsInputAllowed({})) then
+						UnfreezePlayerUnit()
+						DisableShopGamepadCursor()
+					end
+				end
+			end)
+		end}
 	
 		-- Menu Handling
 	
@@ -454,10 +440,12 @@ if not ModUtil then
 			ModUtil.Anchors.Menu[screen.Name] = nil
 			screen.KeepOpen = false
 			OnScreenClosed({ Flag = screen.Name })
-			DisableShopGamepadCursor()
-			UnfreezePlayerUnit()
 			SetConfigOption({ Name = "FreeFormSelectWrapY", Value = false })
 			SetConfigOption({ Name = "UseOcclusion", Value = true })
+			if TableLength(ModUtil.Anchors.Menu) == 0 then
+				UnfreezePlayerUnit()
+				DisableShopGamepadCursor()
+			end
 			if ModUtil.Anchors.CloseFuncs[screen.Name] then
 				ModUtil.Anchors.CloseFuncs[screen.Name]( screen, button )
 				ModUtil.Anchors.CloseFuncs[screen.Name]=nil
