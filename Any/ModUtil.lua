@@ -331,6 +331,14 @@ if not ModUtil then
 		end)
 	end
 	
+	function ModUtil.RewrapFunction( funcTable, IndexArray )
+		for i,t in ipairs(ModUtil.SafeGet(ModUtil.WrapCallbacks[funcTable], IndexArray)) do
+			ModUtil.SafeSet(funcTable, IndexArray, function( ... )
+				return t.wrap( t.func, ... )
+			end)
+		end
+	end
+	
 	function ModUtil.UnwrapFunction( funcTable, IndexArray )
 		if not funcTable then return end
 		local func = ModUtil.SafeGet(funcTable, IndexArray)
@@ -341,12 +349,16 @@ if not ModUtil then
 		local funcData = table.remove(tempTable)
 		if not funcData then return end
 		
-		ModUtil.SafeSet( funcTable, IndexArray, funcData.base )
+		ModUtil.SafeSet( funcTable, IndexArray, funcData.func )
 		return funcData
 	end
 
 	function ModUtil.WrapBaseFunction( baseFuncPath, wrapFunc, modObject )
 		ModUtil.WrapFunction( _G, ModUtil.PathArray( baseFuncPath ), wrapFunc, modObject )
+	end
+	
+	function ModUtil.RewrapBaseFunction( baseFuncPath )
+		ModUtil.RewrapFunction( _G, ModUtil.PathArray( baseFuncPath ))
 	end
 	
 	function ModUtil.UnwrapBaseFunction( baseFuncPath )
@@ -359,6 +371,15 @@ if not ModUtil then
 		if not baseTable then return end
 	
 		local baseValue = ModUtil.SafeGet(baseTable, IndexArray)
+		local wrapCallbacks = nil
+		if type(baseValue) == "function" and type(Value) == "function" then
+			wrapCallbacks = ModUtil.SafeGet(ModUtil.WrapCallbacks[baseTable], IndexArray)
+			if wrapCallbacks then if wrapCallbacks[1] then
+				baseValue = wrapCallbacks[1].func 
+				wrapCallbacks[1].func = Value
+			end end
+		end
+		
 		ModUtil.NewTable(ModUtil.Overrides, baseTable)
 		local tempTable = ModUtil.SafeGet(ModUtil.Overrides[baseTable], IndexArray)
 		if tempTable == nil then
@@ -367,8 +388,12 @@ if not ModUtil then
 		end
 		table.insert(tempTable, {id=#tempTable+1,mod=modObject,value=Value,base=baseValue})
 		
-		ModUtil.SafeSet( baseTable, IndexArray, Value )
-		
+		if wrapCallbacks then if wrapCallbacks[1] then
+			ModUtil.RewrapFunctions( baseTable, IndexArray )
+			return end
+		else
+			ModUtil.SafeSet( baseTable, IndexArray, Value )
+		end
 	end
 	
 	function ModUtil.Restore( baseTable, IndexArray )
@@ -377,6 +402,15 @@ if not ModUtil then
 		if not tempTable then return end
 		local baseData = table.remove(tempTable)
 		if not baseData then return end
+		
+		if type(baseData.base) == "function" then
+			local wrapCallbacks = ModUtil.SafeGet(ModUtil.WrapCallbacks[baseTable], IndexArray)
+			if wrapCallbacks then if wrapCallbacks[1] then
+				wrapCallbacks[1].func = baseData.base
+				ModUtil.RewrapFunction( baseTable, IndexArray )
+				return baseData
+			end end
+		end
 		
 		ModUtil.SafeSet( baseTable, IndexArray, baseData.base )
 		return baseData
