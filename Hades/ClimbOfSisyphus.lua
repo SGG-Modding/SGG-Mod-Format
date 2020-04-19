@@ -111,7 +111,7 @@ ModUtil.WrapBaseFunction("LeaveRoom",function(baseFunc,currentRun,door)
 	end
 end, ClimbOfSisyphus)
 
-ModUtil.BaseOverride("ReachedMaxGods",function(baseFunc,excludedGods)
+ModUtil.BaseOverride("ReachedMaxGods",function(excludedGods)
 	excludedGods = excludedGods or {}
 	local maxLootTypes = config.BaseGods + config.MaxGodRate * CurrentRun.TotalFalls
 	local gods = ShallowCopyTable( excludedGods )
