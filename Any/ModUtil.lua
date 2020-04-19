@@ -332,11 +332,19 @@ if not ModUtil then
 	end
 	
 	function ModUtil.RewrapFunction( funcTable, IndexArray )
-		for i,t in ipairs(ModUtil.SafeGet(ModUtil.WrapCallbacks[funcTable], IndexArray)) do
-			ModUtil.SafeSet(funcTable, IndexArray, function( ... )
+		local wrapCallbacks = ModUtil.SafeGet(ModUtil.WrapCallbacks[funcTable], IndexArray)
+		local preFunc = nil
+		
+		for i,t in ipairs(wrapCallbacks) do
+			if preFunc then
+				t.func = preFunc
+			end
+			preFunc = function( ... )
 				return t.wrap( t.func, ... )
-			end)
+			end
+			ModUtil.SafeSet(funcTable, IndexArray, preFunc )
 		end
+
 	end
 	
 	function ModUtil.UnwrapFunction( funcTable, IndexArray )
