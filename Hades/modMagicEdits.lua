@@ -11,6 +11,7 @@
 --[[
 Mod: Magic Edits
 Author: MagicGonads
+Touched By: TurboCop
 		Collection of small configurable edits with no particular theme
 		Proof of concept for this mod format
 -]]
@@ -28,24 +29,44 @@ SaveIgnores["modMagicEdits"] = true
 
 local config = -- (set to nil or false to disable any of them) 
 {
-	AlwaysSeeChamberCount = true,	-- Always see chamber depth in the top right during runs
-	AlwaysUseSpecialDoors = true,	-- Can always open special chamber doors (will still cost whatever it costs)
-	CanAlwaysExitRoom = true,		-- Exit chambers early by interacting with the exit doors
 	UnlockEveryCodexEntry = false,	-- Unlock every codex entry ... (will affect your save permanently!)
 	AllowRespecMirror = false,		-- Always able to respec at the mirror and swap upgrades (will affect your save permanently!)
-	ChooseMultipleUpgrades = 1,		-- Choose multiple upgrades at any given choice (multiplier of available number)
-	PlayerDamageMult = 0.5,			-- Multiply damage the player recieves
-	EnemyDamageMult = 1.5,			-- Multiply damage enemies recieve
-	ExtraRarity = 0.65,				-- Global boost to rarity (100% best rarity if 1 or more, 0 unchanged)
-	ExtraMoney = 5,					-- Global multiplier of charon coins gained
-	PurchaseCost = 0, 				-- Global multiplier of all purchase costs (except using darkness on mirror)
 	GatherBonus = { 				-- Multipliers on resources gained
+		Enabled = false,
 		Global = 3,			
 		MetaPoints = 50,	-- Darkness
 		GiftPoints = 5,		-- Nectar
 		LockKeys = 5,		-- Chthonic Keys
 		Gems = 20,			-- Gemstones
-	}
+	},
+	PurchaseCost = {
+		Enabled = false,
+		purchaseCostMultiplier = 0,
+	},	-- Global multiplier of all purchase costs (except using darkness on mirror)
+	ChooseMultipleUpgrades = {
+		Enabled = false,
+		ChooseMultipleUpgradesValue = 1,
+	},	-- Choose multiple upgrades at any given choice (multiplier of available number)
+	ExtraRarity = {
+		Enabled = false,
+		ExtraRarityValue = 0.65,
+	},	-- Global boost to rarity (100% best rarity if 1 or more, 0 unchanged)
+	ExtraMoney = {
+		Enabled = false,
+		ExtraMoneyValue = 5,
+	},	-- Global multiplier of charon coins gained
+	AlwaysSeeChamberCount = true,	-- Always see chamber depth in the top right during runs
+	AlwaysUseSpecialDoors = false,	-- Can always open special chamber doors (will still cost whatever it costs)
+	PlayerDamageMult = {
+		Enabled = false,
+		PlayerDamageMultValue = 0.5,
+	},	-- Multiply damage the player recieves
+	EnemyDamageMult = {
+		Enabled = false,
+		EnemyDamageMultValue = 1.5,
+	},	-- Multiply damage enemies recieve
+	CanAlwaysExitRoom = false,		-- Exit chambers early by interacting with the exit doors
+	
 }
 
 modMagicEdits.config = config
@@ -73,7 +94,7 @@ if config.AllowRespecMirror then
 	}
 end
 
-if config.GatherBonus then
+if config.GatherBonus ~= nil and config.GatherBonus.Enabled then
 	local baseAddResource = AddResource
 	function AddResource( name, amount, source, args )
 		if source ~= "MetaPointCapRefund" then
@@ -89,12 +110,12 @@ if config.GatherBonus then
 	end
 end
 
-if config.PurchaseCost then
+if config.PurchaseCost ~= nil and config.PurchaseCost.Enabled then
 	local baseHasResource = HasResource
 	function HasResource( name, amount )
 		if name ~= "MetaPoints" then
 			if amount then
-				return baseHasResource( name, config.PurchaseCost*amount )
+				return baseHasResource( name, config.PurchaseCost.purchaseCostMultiplier*amount )
 			end
 		end
 		return baseHasResource( name, amount )
@@ -117,7 +138,7 @@ if config.PurchaseCost then
 	end
 end
 
-if config.ChooseMultipleUpgrades then
+if config.ChooseMultipleUpgrades ~= nil and config.ChooseMultipleUpgrades.Enabled then
 	if config.ChooseMultipleUpgrades >= 0 then
 	
 		local baseCloseUpgradeChoiceScreen = CloseUpgradeChoiceScreen
@@ -138,7 +159,7 @@ if config.ChooseMultipleUpgrades then
 			end
 			CurrentRun.Hero.UpgradeChoicesSinceMenuOpened = TableLength(lootData.UpgradeOptions)
 			if CurrentRun.Hero.UpgradeChoicesSinceMenuOpened then
-				CurrentRun.Hero.UpgradeChoicesSinceMenuOpened=CurrentRun.Hero.UpgradeChoicesSinceMenuOpened*config.ChooseMultipleUpgrades
+				CurrentRun.Hero.UpgradeChoicesSinceMenuOpened=CurrentRun.Hero.UpgradeChoicesSinceMenuOpened*config.ChooseMultipleUpgradesValue
 			else
 				CurrentRun.Hero.UpgradeChoicesSinceMenuOpened = 1
 			end
@@ -147,44 +168,44 @@ if config.ChooseMultipleUpgrades then
 	end
 end
 
-if config.ExtraRarity then
+if config.ExtraRarity ~= nil and config.ExtraRarity.Enabled then
 
 	local baseSetTraitsOnLoot = SetTraitsOnLoot
 	function SetTraitsOnLoot( lootData )
-		if lootData.RarityChances.Legendary and config.ExtraRarity < 1 then
-			lootData.RarityChances.Legendary = lootData.RarityChances.Legendary*(1-config.ExtraRarity) + config.ExtraRarity
+		if lootData.RarityChances.Legendary and config.ExtraRarity.ExtraRarityValue < 1 then
+			lootData.RarityChances.Legendary = lootData.RarityChances.Legendary*(1-config.ExtraRarity.ExtraRarityValue) + config.ExtraRarity.ExtraRarityValue
 		else
 			lootData.RarityChances.Legendary = config.ExtraRarity
 		end
-		if lootData.RarityChances.Heroic and config.ExtraRarity < 1 then
-			lootData.RarityChances.Heroic = lootData.RarityChances.Heroic*(1-config.ExtraRarity) + config.ExtraRarity
+		if lootData.RarityChances.Heroic and config.ExtraRarity.ExtraRarityValue < 1 then
+			lootData.RarityChances.Heroic = lootData.RarityChances.Heroic*(1-config.ExtraRarity.ExtraRarityValue) + config.ExtraRarity.ExtraRarityValue
 		else
-			lootData.RarityChances.Heroic = config.ExtraRarity
+			lootData.RarityChances.Heroic = config.ExtraRarity.ExtraRarityValue
 		end
-		if lootData.RarityChances.Epic and config.ExtraRarity < 1 then
-			lootData.RarityChances.Epic = lootData.RarityChances.Epic*(1-config.ExtraRarity) + config.ExtraRarity
+		if lootData.RarityChances.Epic and config.ExtraRarity.ExtraRarityValue < 1 then
+			lootData.RarityChances.Epic = lootData.RarityChances.Epic*(1-config.ExtraRarity.ExtraRarityValue) + config.ExtraRarity.ExtraRarityValue
 		else
-			lootData.RarityChances.Epic = config.ExtraRarity
+			lootData.RarityChances.Epic = config.ExtraRarity.ExtraRarityValue
 		end
-		if lootData.RarityChances.Rare and config.ExtraRarity < 1 then
-			lootData.RarityChances.Rare = lootData.RarityChances.Rare*(1-config.ExtraRarity) + config.ExtraRarity
+		if lootData.RarityChances.Rare and config.ExtraRarity.ExtraRarityValue < 1 then
+			lootData.RarityChances.Rare = lootData.RarityChances.Rare*(1-config.ExtraRarity.ExtraRarityValue) + config.ExtraRarity.ExtraRarityValue
 		else
-			lootData.RarityChances.Rare = config.ExtraRarity
+			lootData.RarityChances.Rare = config.ExtraRarity.ExtraRarityValue
 		end
-		if lootData.RarityChances.Common and config.ExtraRarity < 1 then
-			lootData.RarityChances.Common = lootData.RarityChances.Common*(1-config.ExtraRarity) + config.ExtraRarity
+		if lootData.RarityChances.Common and config.ExtraRarity.ExtraRarityValue < 1 then
+			lootData.RarityChances.Common = lootData.RarityChances.Common*(1-config.ExtraRarity.ExtraRarityValue) + config.ExtraRarity.ExtraRarityValue
 		else
-			lootData.RarityChances.Common = config.ExtraRarity
+			lootData.RarityChances.Common = config.ExtraRarity.ExtraRarityValue
 		end
 		baseSetTraitsOnLoot( lootData )
 	end
 end
 
-if config.ExtraMoney then
+if config.ExtraMoney ~= nil and config.ExtraMoney.Enabled then
 	local baseAddMoney = AddMoney
 	function AddMoney( amount, source )
 		if amount then
-			return baseAddMoney( config.ExtraMoney*amount, source )
+			return baseAddMoney( config.ExtraMoney.ExtraMoneyValue*amount, source )
 		end
 		return baseAddMoney( amount, source )
 	end
@@ -206,20 +227,20 @@ if config.AlwaysUseSpecialDoors then
 	end
 end
 
-if config.PlayerDamageMult then
+if config.PlayerDamageMult ~= nil and config.PlayerDamageMult.Enabled then
 	local baseDamage = Damage
 	function Damage( victim, triggerArgs )
 		if triggerArgs.DamageAmount and victim == CurrentRun.Hero then
-			triggerArgs.DamageAmount = triggerArgs.DamageAmount * config.PlayerDamageMult
+			triggerArgs.DamageAmount = triggerArgs.DamageAmount * config.PlayerDamageMult.PlayerDamageMultValue
 		end
 		baseDamage( victim, triggerArgs )
 	end
 end
-if config.EnemyDamageMult then
+if config.EnemyDamageMult ~= nil and config.EnemyDamageMult.Enabled then
 	local baseDamageEnemy = DamageEnemy
 	function DamageEnemy( victim, triggerArgs )
 		if triggerArgs.DamageAmount then
-			triggerArgs.DamageAmount = triggerArgs.DamageAmount * config.EnemyDamageMult
+			triggerArgs.DamageAmount = triggerArgs.DamageAmount * config.EnemyDamageMult.EnemyDamageMultValue
 		end
 		baseDamageEnemy( victim, triggerArgs )
 	end
