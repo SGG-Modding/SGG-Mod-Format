@@ -264,26 +264,37 @@ if not ModUtil then
 		return s
 	end
 
-	function ModUtil.PathGet( Path )
-		return ModUtil.SafeGet(_G,ModUtil.PathArray(Path))
+	function ModUtil.PathGet( Path, Base )
+		return ModUtil.SafeGet(Base or _G, ModUtil.PathArray(Path))
 	end
 
-	function ModUtil.PathSet( Path, Value )
-		return ModUtil.SafeSet(_G,ModUtil.PathArray(Path),value)
+	function ModUtil.PathSet( Path, Value, Base )
+		return ModUtil.SafeSet(Base or _G, ModUtil.PathArray(Path),Value)
 	end
 
-	function ModUtil.PathNilTable( Path, NilTable )
-		return ModUtil.MapNilTable( ModUtil.SafeGet(_G,ModUtil.PathArray(Path)), NilTable )
+	function ModUtil.PathNilTable( Path, NilTable, Base )
+		return ModUtil.MapNilTable( ModUtil.SafeGet(Base or _G, ModUtil.PathArray(Path)), NilTable )
 	end
 
-	function ModUtil.PathSetTable( Path, SetTable )
-		return ModUtil.MapSetTable( ModUtil.SafeGet(_G,ModUtil.PathArray(Path)), SetTable )
+	function ModUtil.PathSetTable( Path, SetTable, Base )
+		return ModUtil.MapSetTable( ModUtil.SafeGet(Base or _G, ModUtil.PathArray(Path)), SetTable )
 	end
 
 	-- Globalisation
 
 	function ModUtil.GlobalisePath( Path )
 		_G[ModUtil.JoinPath( Path )] = ModUtil.SafeGet(_G,ModUtil.PathArray( Path ))
+	end
+	
+	function ModUtil.UpdateGlobalisedPath( Path, PathArray )
+		local joinedPath = ModUtil.JoinPath( Path )
+		if _G[joinedPath] then 
+			if PathArray then
+				_G[joinedPath] = ModUtil.SafeGet(_G,PathArray)
+			else
+				_G[joinedPath] = ModUtil.SafeGet(_G,ModUtil.PathArray( Path ))
+			end
+		end
 	end
 	
 	function ModUtil.GlobaliseFuncs( Table, Path )
@@ -362,15 +373,21 @@ if not ModUtil then
 	end
 
 	function ModUtil.WrapBaseFunction( baseFuncPath, wrapFunc, modObject )
-		ModUtil.WrapFunction( _G, ModUtil.PathArray( baseFuncPath ), wrapFunc, modObject )
+		local pathArray = ModUtil.PathArray( baseFuncPath )
+		ModUtil.WrapFunction( _G, pathArray, wrapFunc, modObject )
+		ModUtil.UpdateGlobalisedPath( baseFuncPath, pathArray )
 	end
 	
 	function ModUtil.RewrapBaseFunction( baseFuncPath )
-		ModUtil.RewrapFunction( _G, ModUtil.PathArray( baseFuncPath ))
+		local pathArray = ModUtil.PathArray( baseFuncPath )
+		ModUtil.RewrapFunction( _G, pathArray )
+		ModUtil.UpdateGlobalisedPath( baseFuncPath, pathArray )
 	end
 	
 	function ModUtil.UnwrapBaseFunction( baseFuncPath )
-		ModUtil.UnwrapFunction( _G, ModUtil.PathArray( baseFuncPath ))
+		local pathArray = ModUtil.PathArray( baseFuncPath )
+		ModUtil.UnwrapFunction( _G, pathArray )
+		ModUtil.UpdateGlobalisedPath( baseFuncPath, pathArray )
 	end
 
 	-- Override Management
@@ -425,11 +442,15 @@ if not ModUtil then
 	end
 	
 	function ModUtil.BaseOverride( basePath, Value, modObject )
-		ModUtil.Override( _G, ModUtil.PathArray( basePath ), Value, modObject )
+		local pathArray = ModUtil.PathArray( basePath )
+		ModUtil.Override( _G, pathArray, Value, modObject )
+		ModUtil.UpdateGlobalisedPath( basePath, pathArray )
 	end
 	
 	function ModUtil.BaseRestore( basePath )
-		ModUtil.Restore( _G, ModUtil.PathArray( basePath ) )
+		local pathArray = ModUtil.PathArray( basePath )
+		ModUtil.Restore( _G, pathArray )
+		ModUtil.UpdateGlobalisedPath( basePath, pathArray )
 	end
 	
 	-- Misc
