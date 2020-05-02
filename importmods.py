@@ -1,3 +1,5 @@
+### OLD LOADER, USE modimporter.py INSTEAD
+
 #Mod importer for SuperGiant Games modding format
 #Place in the 'Content' folder
 #Place mod lua files in Content/Mods/#modname#/Scripts
