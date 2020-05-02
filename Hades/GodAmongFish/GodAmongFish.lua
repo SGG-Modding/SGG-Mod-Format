@@ -1,5 +1,3 @@
--- IMPORT @ DEFAULT
-
 ModUtil.RegisterMod( "GodAmongFish" )
 
 local config = {
