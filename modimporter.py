@@ -12,6 +12,7 @@ try:
     can_sjson = True
 except ModuleNotFoundError:
     print("SJSON python module not found! SJSON imports will be skipped!")
+    print("Get the SJSON module at https://pypi.org/project/SJSON/")
 
 DNE = ()
 
