@@ -42,6 +42,7 @@ kwrd_load = "Load"
 kwrd_reset = "Reset"
 kwrd_sjsonrem = "SJSON Rem".split(" ")
 kwrd_sjsonmap = "SJSON Map".split(" ")
+kwrd_sjsonrep = "SJSON Rep".split(" ")
 kwrd_to = "To"
 kwrd_priorty = "Priority"
 
@@ -198,6 +199,7 @@ mode_dud = 0
 mode_lua = 1
 mode_sjson_rem = 2
 mode_sjson_map = 3
+mode_sjson_rep = 4
 
 class modcode():
     ep = defaultpriority
@@ -298,7 +300,7 @@ def loadmodfile(filename,echo=True):
                     for S in to:
                         path = S.replace("\"","").replace("\\","/")
                         if in_directory(path):
-                            for s in tokens[1:]:
+                            for s in tokens[2:]:
                                 path2 = reldir+"/"+s.replace("\"","").replace("\\","/")
                                 if valid_scan(path2):
                                     for file in os.scandir(path2):
@@ -312,7 +314,7 @@ def loadmodfile(filename,echo=True):
                     for S in to:
                         path = S.replace("\"","").replace("\\","/")
                         if in_directory(path):
-                            for s in tokens[1:]:
+                            for s in tokens[2:]:
                                 path2 = reldir+"/"+s.replace("\"","").replace("\\","/")
                                 if valid_scan(path2):
                                     for file in os.scandir(path2):
@@ -321,6 +323,33 @@ def loadmodfile(filename,echo=True):
                                             codes[path].append(modcode(path2,path2,mode_sjson_map,path,len(codes[path]),ep))
                                 elif in_directory(path2):
                                     codes[path].append(modcode(path2,path2,mode_sjson_map,path,len(codes[path]),ep))
+
+                elif tokens[:len(kwrd_sjsonrep)] == kwrd_sjsonrep and can_sjson:
+                    for S in to:
+                        path = S.replace("\"","").replace("\\","/")
+                        if in_directory(path):
+                            A = tokens[1::2]
+                            B = tokens[2::2]
+                            for i in range(len(B)):
+                                path2 = reldir+"/"+A[i].replace("\"","").replace("\\","/")
+                                path3 = reldir+"/"+B[i].replace("\"","").replace("\\","/")
+                                if valid_scan(path2) and valid_scan(path3):
+                                    Af = []
+                                    Bf = []
+                                    for file in os.scandir(path2):
+                                        path2 = file.path.replace("\\","/")
+                                        if in_directory(path2):
+                                            Af.append(path2)
+                                    for file in os.scandir(path3):
+                                        path3 = file.path.replace("\\","/")
+                                        if in_directory(path3):
+                                            Bf.append(path3)
+                                    for j in range(min(len(Af),len(Bf))):
+                                        path2 = Af[j]
+                                        path3 = Bf[j]
+                                        codes[path].append(modcode(path2+'\n'+path3,(path2,path3),mode_sjson_rep,path,len(codes[path]),ep))
+                                if in_directory(path2) and in_directory(path3):
+                                    codes[path].append(modcode(path2+'\n'+path3,(path2,path3),mode_sjson_rep,path,len(codes[path]),ep))
                 
                 elif tokens[0] == kwrd_load and len(tokens)>1:
                     if tokens[1] == kwrd_priorty:
@@ -353,8 +382,8 @@ def makeedit(base,mods,echo=True):
     else:
         copyfile(base,bakdir+"/"+base+baktype)
     if echo:
+        i=0
         print("\n"+base)
-    i=0
     for mod in mods:
         if mod.mode == mode_lua:
             addimport(base,mod)
@@ -362,9 +391,12 @@ def makeedit(base,mods,echo=True):
             mergesjson(base,None,mod.data)
         elif mod.mode == mode_sjson_map:
             mergesjson(base,mod.data,None)
-        i+=1
+        elif mod.mode == mode_sjson_rep:
+            mergesjson(base,mod.data[0],mod.data[1])
         if echo:
-            print(" #"+str(i)+" "*(6-len(str(i)))+mod.src)
+            for s in mod.src.split('\n'):
+                i+=1
+                print(" #"+str(i)+" "*(6-len(str(i)))+s)
 
     modifiedstr = ""
     if mods[0].mode == mode_lua:
