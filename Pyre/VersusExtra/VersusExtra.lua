@@ -1,5 +1,3 @@
--- IMPORT @ "MPScripts.lua"
-
 ModUtil.RegisterMod( "VersusExtra" )
 
 local config = {
