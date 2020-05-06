@@ -1,3 +1,5 @@
+# Mod Importer for SuperGiant Games' Games
+
 import os
 from collections import defaultdict
 from pathlib import Path
@@ -6,15 +8,17 @@ from collections import OrderedDict
 from shutil import copyfile
 from datetime import datetime
 
+import xml.etree.ElementTree as xml
+
 can_sjson = False
 try:
     import sjson
     can_sjson = True
 except ModuleNotFoundError:
-    print("SJSON python module not found! SJSON imports will be skipped!")
+    print("SJSON python module not found! SJSON changes will be skipped!")
     print("Get the SJSON module at https://pypi.org/project/SJSON/")
 
-DNE = ()
+## Global Settings
 
 modsdir = "Mods"
 modsrel = ".."
@@ -23,86 +27,35 @@ scope = "Content"
 bakdir = "Backup"
 baktype = ""
 modfile = "modfile.txt"
-luascope = "Content/Scripts"
+comment = ":"
 
 modified = "MODIFIED"
 modified_modrep = " by Mod Importer @ "
 modified_lua = "-- "+modified+" "
+modified_xml = "<!-- "+modified+" -->"
 modified_sjson = "/* "+modified+" */"
 
-defaultto = {"Hades":["\"Scripts/RoomManager.lua\""],
-            "Pyre":["\"Scripts/Campaign.lua\"","\"Scripts/MPScripts.lua\""],
-            "Transistor":["\"Scripts/AllCampaignScripts.txt\""]}
-defaultpriority = 100
+default_to = {"Hades":["Scripts/RoomManager.lua"],
+            "Pyre":["Scripts/Campaign.lua","Scripts/MPScripts.lua"],
+            "Transistor":["Scripts/AllCampaignScripts.txt"]}
+default_priority = 100
 
-kwrd_comment = ":"
-kwrd_include = "Include"
-kwrd_import = "Import"
-kwrd_load = "Load"
-kwrd_reset = "Reset"
-kwrd_sjsonrem = "SJSON Rem".split(" ")
-kwrd_sjsonmap = "SJSON Map".split(" ")
-kwrd_sjsonrep = "SJSON Rep".split(" ")
-kwrd_to = "To"
-kwrd_priorty = "Priority"
+kwrd_to = ["To"]
+kwrd_load = ["Load"]
+kwrd_priority = ["Priority"]
+kwrd_include = ["Include"]
+kwrd_import = ["Import"]
+kwrd_xml = ["XML"]
+kwrd_sjson = ["SJSON"]
 
 reserved_sequence = "_sequence"
 reserved_append = "_append"
+reserved_replace = "_replace"
+reserved_delete = "_delete"
 
-def readsjson(filename):
-    try:
-        return sjson.loads(open(filename).read().replace('\\','\\\\'))
-    except sjson.ParseException as e:
-        print(repr(e))
-        return DNE
+## Data Functionality
 
-def writesjson(filename,content):
-    if not isinstance(filename,str):
-        return
-    if isinstance(content,OrderedDict):
-        content = sjson.dumps(content)
-    else:
-        content = ""
-    with open(filename, 'w') as f:
-        s = '{\n' + content + '}'
-        
-        #indentation styling
-        p = ''
-        S = ''
-        for c in s:
-            if c in ("{","[") and p in ("{","["):
-                S+="\n"
-            if c in ("}","]") and p in ("}","]"):
-                S+="\n"
-            S += c
-            if p in ("{","[") and c not in ("{","[","\n"):
-                S=S[:-1]+"\n"+S[-1]
-            if c in ("}","]") and p not in ("}","]","\n"):
-                S=S[:-1]+"\n"+S[-1]
-            p = c
-        s = S
-        s = s.replace(", ","\n")
-        l = s.split('\n')
-        i = 0
-        L = []
-        for S in l:
-            for c in S:
-                if c in ("}","]"):
-                    i=i-1
-            L.append("  "*i+S)
-            for c in S:
-                if c in ("{","["):
-                    i=i+1
-        s = '\n'.join(L)
-        
-        f.write(s)
-
-def getdataiter(data):
-    if isinstance(data,list):
-        return enumerate(data)
-    if isinstance(data,OrderedDict):
-        return data.items()
-    return DNE
+DNE = ()
 
 def safeget(data,key):
     if isinstance(data,list):
@@ -114,108 +67,166 @@ def safeget(data,key):
         return data.get(key,DNE)
     return DNE
 
-def sequnfold(data):
-    if safeget(data,reserved_sequence):
-        S = []
+def clearDNE(data):
+    if isinstance(data,OrderedDict):
         for k,v in data.items():
-            try:
-                d = int(k)-len(S)
-                if d>=0:
-                    S.extend([DNE]*(d+1))
-                S[int(k)]=v
-            except ValueError:
-                continue
-        data = S
-    for k,v in getdataiter(data):
-        data[k]=sequnfold(v)
-    return data
-
-def sjsonrem(indata,remdata):
-    if remdata is DNE:
-        return indata
-    if type(indata)==type(remdata):
-        it = getdataiter(remdata)
-        if it:     
-            for k,v in it:
-                if not v is DNE:
-                    indata[k] = sjsonrem(safeget(indata,k),v)
-        else:
-            return DNE
-    else:
-        return DNE
-    return DNE
-
-def sjsonmap(indata,mapdata):
-    if mapdata is DNE:
-        return indata
-    if type(indata)==type(mapdata):
-        if safeget(mapdata,0)!=reserved_append or isinstance(mapdata,OrderedDict):
-            if isinstance(mapdata,list):
-                indata.expand([DNE]*(len(mapdata)-len(indata)))
-            for k,v in getdataiter(mapdata):
-                indata[k] = sjsonmap(safeget(indata,k),v)
-            return indata
-        elif isinstance(mapdata,list):
-            for i in range(1,len(mapdata)):
-                indata.append(mapdata[i])
-            return indata
-        return mapdata
-    else:
-        return mapdata
-    return mapdata
-
-def clearDNE(indata):
-    if isinstance(indata,OrderedDict):
-        for k,v in indata.items():
             if v is DNE:
-                del indata[k]
+                del data[k]
                 continue
-            indata[k] = clearDNE(v)
-    if isinstance(indata,list):
+            data[k] = clearDNE(v)
+    if isinstance(data,list):
         L = []
-        for i,v in enumerate(indata):
+        for i,v in enumerate(data):
             if v is DNE:
                 continue
             L.append(clearDNE(v))
-        indata = L
-    return indata
+        data = L
+    return data
+
+### LUA import statement adding
+
+def addimport(base,path):
+    with open(base,'a') as basefile:
+        basefile.write("\nImport "+"\""+modsrel+"/"+path+"\"")
+
+### XML mapping
+
+def readxml(filename):
+    return xml.parse(filename)
+
+def writexml(filename,content):
+    content.write(filename)
+
+def xmlinert(filename,mapfile):
+    content = readxml(filename)
+    writexml(filename,content)
+
+### SJSON mapping
+
+if can_sjson:
     
-def mergesjson(infile,mapfile,remfile):
-    indata = readsjson(infile)
-    if mapfile:
-        mapdata = sequnfold(readsjson(mapfile))
-    else:
-        mapdata = DNE
-    if remfile:
-        remdata = sequnfold(readsjson(remfile))
-    else:
-        remdata = DNE
-    indata = sjsonrem(indata,remdata)
-    indata = sjsonmap(indata,mapdata)
-    indata = clearDNE(indata)
-    writesjson(infile,indata)
+    def readsjson(filename):
+        try:
+            return sjson.loads(open(filename).read().replace('\\','\\\\'))
+        except sjson.ParseException as e:
+            print(repr(e))
+            return DNE
+
+    def writesjson(filename,content):
+        if not isinstance(filename,str):
+            return
+        if isinstance(content,OrderedDict):
+            content = sjson.dumps(content)
+        else:
+            content = ""
+        with open(filename, 'w') as f:
+            s = '{\n' + content + '}'
+            
+            #indentation styling
+            p = ''
+            S = ''
+            for c in s:
+                if c in ("{","[") and p in ("{","["):
+                    S+="\n"
+                if c in ("}","]") and p in ("}","]"):
+                    S+="\n"
+                S += c
+                if p in ("{","[") and c not in ("{","[","\n"):
+                    S=S[:-1]+"\n"+S[-1]
+                if c in ("}","]") and p not in ("}","]","\n"):
+                    S=S[:-1]+"\n"+S[-1]
+                p = c
+            s = S
+            s = s.replace(", ","\n")
+            l = s.split('\n')
+            i = 0
+            L = []
+            for S in l:
+                for c in S:
+                    if c in ("}","]"):
+                        i=i-1
+                L.append("  "*i+S)
+                for c in S:
+                    if c in ("{","["):
+                        i=i+1
+            s = '\n'.join(L)
+            
+            f.write(s)
+
+    def sjsonmap(indata,mapdata):
+        if mapdata is DNE:
+            return indata
+        if safeget(mapdata,reserved_sequence):
+            S = []
+            for k,v in mapdata.items():
+                try:
+                    d = int(k)-len(S)
+                    if d>=0:
+                        S.extend([DNE]*(d+1))
+                    S[int(k)]=v
+                except ValueError:
+                    continue
+            mapdata = S
+        if type(indata)==type(mapdata):
+            if safeget(mapdata,0)!=reserved_append or isinstance(mapdata,OrderedDict):
+                if isinstance(mapdata,list):
+                    if safeget(mapdata,0)==reserved_delete:
+                        return DNE
+                    if safeget(mapdata,0)==reserved_replace:
+                        return mapdata
+                    indata.expand([DNE]*(len(mapdata)-len(indata)))
+                    for k,v in enumerate(mapdata):
+                        indata[k] = sjsonmap(safeget(indata,k),v)
+                else:
+                    if safeget(mapdata,reserved_delete):
+                        return DNE
+                    if safeget(mapdata,reserved_replace):
+                        return mapdata
+                    for k,v in mapdata.items():
+                        indata[k] = sjsonmap(safeget(indata,k),v)
+                return indata
+            elif isinstance(mapdata,list):
+                for i in range(1,len(mapdata)):
+                    indata.append(mapdata[i])
+                return indata
+            return mapdata
+        else:
+            return mapdata
+        return mapdata
+        
+    def mergesjson(infile,mapfile):
+        indata = readsjson(infile)
+        if mapfile:
+            mapdata = readsjson(mapfile)
+        else:
+            mapdata = DNE
+        indata = sjsonmap(indata,mapdata)
+        indata = clearDNE(indata)
+        writesjson(infile,indata)
+
+## FILE/MOD CONTROL
 
 mode_dud = 0
 mode_lua = 1
-mode_sjson_rem = 2
-mode_sjson_map = 3
-mode_sjson_rep = 4
+mode_xml = 2
+mode_sjson = 3
 
 class modcode():
-    ep = defaultpriority
+    ep = None
     ap = None
     before = None
     after = None
     rbefore = None
     rafter = None
+    
     mode = mode_dud
-    def __init__(self,src,data,mode,key,index,ep=defaultpriority):
+    def __init__(self,src,data,mode,key,index,**load):
         self.src = src
         self.data = data
         self.mode = mode
         self.key = key
         self.id = index
-        self.ep = ep
+        self.ep = load.get("ep",default_priority)
 
 def strup(string):
     return string[0].upper()+string[1:]
@@ -225,7 +236,6 @@ gamedir = os.path.join(os.path.realpath(gamerel), '').replace("\\","/")[:-1]
 game = strup(gamedir.split("/")[-1])
 
 def in_directory(file,nobackup=True):
-    #https://stackoverflow.com/questions/3812849/how-to-check-whether-a-directory-is-a-sub-directory-of-another-directory
     if not os.path.isfile(file):
         return False
     file = os.path.realpath(file).replace("\\","/")
@@ -258,29 +268,76 @@ def tokenise(line):
 
     return tokens
 
+## FILE/MOD LOADING
+
 codes = defaultdict(list)
+
+def startswith(tokens,keyword,n):
+    return tokens[:len(keyword)] == keyword and len(tokens)>=len(keyword)+1
+
+def loadcommand(reldir,tokens,to,n,mode,**load):
+    for path in to:
+        if in_directory(path):
+            args = [tokens[i::n] for i in range(n)]
+            for i in range(len(args[-1])):
+                sources = [reldir+"/"+arg[i].replace("\"","").replace("\\","/") for arg in args]
+                paths = []
+                
+                num = -1
+                for source in sources:
+                    if valid_scan(source):
+                        tpath = []
+                        for file in os.scandir(source):
+                            file = file.path.replace("\\","/")
+                            if in_directory(file):
+                                tpath.append(file)
+                        paths.append(tpath)
+                        if num > len(tpath) or num < 0:
+                            num = len(tpath)
+                    elif in_directory(source):
+                        paths.append(source)
+                if paths:
+                    for j in range(abs(num)):
+                        sources = [x[j] if isinstance(x,list) else x for x in paths]
+                        codes[path].append(modcode('\n'.join(sources),tuple(sources),mode,path,len(codes[path]),**load))
 
 def loadmodfile(filename,echo=True):
     if in_directory(filename):
-        if echo:
-            print(filename)
-        reldir = "/".join(filename.split("/")[:-1])
-        ep = 100
-        to = defaultto[game]
-        mode = mode_dud
+        
         try:
             file = open(filename,'r')
         except IOError:
             return
+        if echo:
+            print(filename)
+
+        reldir = "/".join(filename.split("/")[:-1])
+        ep = 100
+        to = default_to[game]
         
         with file:
             for line in file:
-                line = "".join(line.split(kwrd_comment)[::2])
+                line = "".join(line.split(comment)[::2])
                 tokens = tokenise(line)
                 
                 if len(tokens)==0:
                     continue
-                if tokens[0] == kwrd_include and len(tokens)>1:
+
+                elif startswith(tokens,kwrd_to,0):
+                    to = [s.replace("\\","/") for s in tokens[1:]]
+                    if len(to) == 0:
+                        to = default_to[game]
+                elif startswith(tokens,kwrd_load,0):
+                    n = len(kwrd_load)+len(kwrd_priority)
+                    if tokens[len(kwrd_load):n] == kwrd_priority:
+                        if len(tokens)>n:
+                            try:
+                                ep = int(tokens[n])
+                            except ValueError:
+                                pass
+                        else:
+                            ep = default_priority
+                if startswith(tokens,kwrd_include,1):
                     for s in tokens[1:]:
                         path = reldir+"/"+s.replace("\"","").replace("\\","/")
                         if valid_scan(path):
@@ -288,98 +345,18 @@ def loadmodfile(filename,echo=True):
                                 loadmodfile(file.path.replace("\\","/"),echo)
                         else:
                             loadmodfile(path,echo)
-                
-                elif tokens[0] == kwrd_import and len(tokens)>1:
-                    for S in to:
-                        path = S.replace("\"","").replace("\\","/")
-                        if in_directory(path):
-                            for s in tokens[1:]:
-                                path2 = reldir+"/"+s.replace("\"","").replace("\\","/")
-                                if valid_scan(path2):
-                                    for file in os.scandir(path2):
-                                        path2 = file.path.replace("\\","/")
-                                        if in_directory(path2):
-                                            codes[path].append(modcode(path2,modsrel+"/"+path2,mode_lua,path,len(codes[path]),ep))
-                                elif in_directory(path2):
-                                    codes[path].append(modcode(path2,modsrel+"/"+path2,mode_lua,path,len(codes[path]),ep))
-            
-                elif tokens[0] == kwrd_to:
-                    to = tokens[1:]
-                    if len(to) == 0:
-                        to = defaultto[game]
-                
-                elif tokens[:len(kwrd_sjsonrem)] == kwrd_sjsonrem and can_sjson:
-                    for S in to:
-                        path = S.replace("\"","").replace("\\","/")
-                        if in_directory(path):
-                            for s in tokens[2:]:
-                                path2 = reldir+"/"+s.replace("\"","").replace("\\","/")
-                                if valid_scan(path2):
-                                    for file in os.scandir(path2):
-                                        path2 = file.path.replace("\\","/")
-                                        if in_directory(path2):
-                                            codes[path].append(modcode(path2,path2,mode_sjson_rem,path,len(codes[path]),ep))
-                                elif in_directory(path2):
-                                    codes[path].append(modcode(path2,path2,mode_sjson_rem,path,len(codes[path]),ep))
-                
-                elif tokens[:len(kwrd_sjsonmap)] == kwrd_sjsonmap and can_sjson:
-                    for S in to:
-                        path = S.replace("\"","").replace("\\","/")
-                        if in_directory(path):
-                            for s in tokens[2:]:
-                                path2 = reldir+"/"+s.replace("\"","").replace("\\","/")
-                                if valid_scan(path2):
-                                    for file in os.scandir(path2):
-                                        path2 = file.path.replace("\\","/")
-                                        if in_directory(path2):
-                                            codes[path].append(modcode(path2,path2,mode_sjson_map,path,len(codes[path]),ep))
-                                elif in_directory(path2):
-                                    codes[path].append(modcode(path2,path2,mode_sjson_map,path,len(codes[path]),ep))
 
-                elif tokens[:len(kwrd_sjsonrep)] == kwrd_sjsonrep and can_sjson:
-                    for S in to:
-                        path = S.replace("\"","").replace("\\","/")
-                        if in_directory(path):
-                            A = tokens[1::2]
-                            B = tokens[2::2]
-                            for i in range(len(B)):
-                                path2 = reldir+"/"+A[i].replace("\"","").replace("\\","/")
-                                path3 = reldir+"/"+B[i].replace("\"","").replace("\\","/")
-                                if valid_scan(path2) and valid_scan(path3):
-                                    Af = []
-                                    Bf = []
-                                    for file in os.scandir(path2):
-                                        path2 = file.path.replace("\\","/")
-                                        if in_directory(path2):
-                                            Af.append(path2)
-                                    for file in os.scandir(path3):
-                                        path3 = file.path.replace("\\","/")
-                                        if in_directory(path3):
-                                            Bf.append(path3)
-                                    for j in range(min(len(Af),len(Bf))):
-                                        path2 = Af[j]
-                                        path3 = Bf[j]
-                                        codes[path].append(modcode(path2+'\n'+path3,(path2,path3),mode_sjson_rep,path,len(codes[path]),ep))
-                                if in_directory(path2) and in_directory(path3):
-                                    codes[path].append(modcode(path2+'\n'+path3,(path2,path3),mode_sjson_rep,path,len(codes[path]),ep))
+                elif startswith(tokens,kwrd_import,1):
+                    loadcommand(reldir,tokens[len(kwrd_import):],to,1,mode_lua,ep=ep)
+                elif startswith(tokens,kwrd_xml,1):
+                    loadcommand(reldir,tokens[len(kwrd_xml):],to,1,mode_lua,ep=ep)
+                elif can_sjson and startswith(tokens,kwrd_sjson,1):
+                    loadcommand(reldir,tokens[len(kwrd_sjson):],to,1,mode_sjson,ep=ep)
                 
-                elif tokens[0] == kwrd_load and len(tokens)>1:
-                    if tokens[1] == kwrd_priorty:
-                        if len(tokens)>2:
-                            try:
-                                ep = int(tokens[2])
-                            except ValueError:
-                                pass
-                        else:
-                            ep = defaultpriority
 def sortmods(base,mods):
     codes[base].sort(key=lambda x: x.ep)
     for i in range(len(mods)):
         mods[i].id=i
-
-def addimport(base,mod):
-    with open(base,'a') as basefile:
-        basefile.write("\nImport "+"\""+mod.data+"\"")
 
 def makeedit(base,mods,echo=True):
     refresh = False
@@ -398,23 +375,24 @@ def makeedit(base,mods,echo=True):
         print("\n"+base)
     for mod in mods:
         if mod.mode == mode_lua:
-            addimport(base,mod)
-        elif mod.mode == mode_sjson_rem:
-            mergesjson(base,None,mod.data)
-        elif mod.mode == mode_sjson_map:
-            mergesjson(base,mod.data,None)
-        elif mod.mode == mode_sjson_rep:
-            mergesjson(base,mod.data[0],mod.data[1])
+            addimport(base,mod.data[0])
+        elif mod.mode == mode_xml:
+            xmlinert(base,mod.data[0])
+        elif mod.mode == mode_sjson:
+            mergesjson(base,mod.data[0])
         if echo:
+            k = i+1
             for s in mod.src.split('\n'):
                 i+=1
-                print(" #"+str(i)+" "*(6-len(str(i)))+s)
+                print(" #"+str(i)+" +"*(k<i)+" "*((k>=i)+5-len(str(i)))+s)
 
     modifiedstr = ""
     if mods[0].mode == mode_lua:
         modifiedstr = "\n"+modified_lua
-    if mods[0].mode in (mode_sjson_rem,mode_sjson_map):
-       modifiedstr = "\n"+modified_sjson
+    elif mods[0].mode == mode_xml:
+        modifiedstr = "\n"+modified_xml
+    elif mods[0].mode == mode_sjson:
+        modifiedstr = "\n"+modified_sjson
     with open(base,'a') as basefile:
         basefile.write(modifiedstr.replace(modified,modified+modified_modrep+str(datetime.now())))
 
