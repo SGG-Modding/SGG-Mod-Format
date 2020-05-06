@@ -70,7 +70,7 @@ def safeget(data,key):
         if root:
             return root.get(k,DNE)
     if isinstance(data,xml.Element):
-        return data.get(k,DNE)
+        return data.get(key,DNE)
     return DNE
 
 def clearDNE(data):
@@ -135,15 +135,18 @@ def writexml(filename,content,start=None):
                 for s in line:
                     if s == '\"':
                         q = not q
-                    if s == '/' and p == '<' and q:
-                        i-=1
+                    if p == '<' and q:
+                        if s == '/':
+                            i-=1
+                            data = data[:-1]
+                        else:
+                            i+=1
+                        data+=p
                     if s == '>' and p == '/' and q:
                         i-=1
-                    if s == '<' and q:
-                        i+=1
-                    if p == ' ' and q:
+                    if p in (' ') or (s=='>' and p == '\"') and q:
                         data+='\n'+'\t'*(i-(s=='/'))
-                    if s != ' ' or not q:
+                    if s not in (' ','\t','<') or not q:
                         data+=s
                     p=s
     open(filename,"w").write(data)
@@ -163,17 +166,17 @@ def xmlmap(indata,mapdata):
             return indata
         elif isinstance(mapdata,xml.Element):
             mtags = dict()
-            for v in mapdata.findall('*'):
+            for v in mapdata:
                 if not mtags.get(v.tag,False):
                     mtags[v.tag]=True
             for tag in mtags:
                 mes = mapdata.findall(tag)
                 ies = indata.findall(tag)
-                m = min(len(mes),len(ies))
-                mes = mes[:m]
-                ies = ies[:m]
                 for i,me in enumerate(mes):
-                    ie = ies[i]
+                    ie = safeget(ies,i)
+                    if ie is DNE:
+                        indata.append(me)
+                        continue
                     if me.get(reserved_delete,None) not in (None,'0','false','False'):
                         indata.remove(ie)
                         continue
