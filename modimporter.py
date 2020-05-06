@@ -65,6 +65,12 @@ def safeget(data,key):
         return DNE
     if isinstance(data,OrderedDict):
         return data.get(key,DNE)
+    if isinstance(data,xml.ElementTree):
+        root = data.getroot()
+        if root:
+            return root.get(k,DNE)
+    if isinstance(data,xml.Element):
+        return data.get(k,DNE)
     return DNE
 
 def clearDNE(data):
@@ -81,6 +87,17 @@ def clearDNE(data):
                 continue
             L.append(clearDNE(v))
         data = L
+##    if isinstance(data,xml.ElementTree):
+##        root = clearDNE(data.getroot())
+##        if root:
+##            data._setroot(root)
+##    if isinstance(data,xml.Element):
+##        for v in data.findall('*'):
+##            if v.text is DNE:
+##                data.remove(v)
+##                continue
+##            clearDNE(v)
+##        data.attrib = clearDNE(data.attrib)
     return data
 
 ### LUA import statement adding
@@ -92,14 +109,104 @@ def addimport(base,path):
 ### XML mapping
 
 def readxml(filename):
-    return xml.parse(filename)
+    try:
+        return xml.parse(filename)
+    except xml.ParseError:
+        return DNE
 
-def writexml(filename,content):
+def writexml(filename,content,start=None):
+    if not isinstance(filename,str):
+        return
+    if not isinstance(content, xml.ElementTree):
+        return
     content.write(filename)
 
-def xmlinert(filename,mapfile):
-    content = readxml(filename)
-    writexml(filename,content)
+    #indentation styling
+    data = ""
+    if start:
+        data = start
+    with open(filename,'r') as file:
+        i = 0
+        for line in file:
+            nl = False
+            if len(line.replace('\t','').replace(' ',''))>1:
+                q=True
+                p=''
+                for s in line:
+                    if s == '\"':
+                        q = not q
+                    if s == '/' and p == '<' and q:
+                        i-=1
+                    if s == '>' and p == '/' and q:
+                        i-=1
+                    if s == '<' and q:
+                        i+=1
+                    if p == ' ' and q:
+                        data+='\n'+'\t'*(i-(s=='/'))
+                    if s != ' ' or not q:
+                        data+=s
+                    p=s
+    open(filename,"w").write(data)
+
+def xmlmap(indata,mapdata):
+    if mapdata is DNE:
+        return indata
+    if type(indata)==type(mapdata):
+        if isinstance(mapdata,dict):
+            for k,v in mapdata.items():
+                indata[k] = xmlmap(indata.get(k),v)
+            return indata
+        if isinstance(mapdata,xml.ElementTree):
+            root = xmlmap(indata.getroot(),mapdata.getroot())
+            if root:
+                indata._setroot(root)
+            return indata
+        elif isinstance(mapdata,xml.Element):
+            mtags = dict()
+            for v in mapdata.findall('*'):
+                if not mtags.get(v.tag,False):
+                    mtags[v.tag]=True
+            for tag in mtags:
+                mes = mapdata.findall(tag)
+                ies = indata.findall(tag)
+                m = min(len(mes),len(ies))
+                mes = mes[:m]
+                ies = ies[:m]
+                for i,me in enumerate(mes):
+                    ie = ies[i]
+                    if me.get(reserved_delete,None) not in (None,'0','false','False'):
+                        indata.remove(ie)
+                        continue
+                    if me.get(reserved_replace,None) not in (None,'0','false','False'):
+                        ie.text = me.text
+                        ie.tail = me.tail
+                        ie.attrib = me.attrib
+                        del ie.attrib[reserved_replace]
+                        continue
+                    ie.text = xmlmap(ie.text,me.text)
+                    ie.tail = xmlmap(ie.tail,me.tail)
+                    ie.attrib = xmlmap(ie.attrib,me.attrib)
+                    xmlmap(ie,me)
+            return indata
+        return mapdata
+    else:
+        return mapdata
+    return mapdata
+
+def mergexml(infile,mapfile):
+    start = ""
+    with open(infile,'r') as file:
+        for line in file:
+            if line[:5] == "<?xml" and line[-3:] == "?>\n":                
+                start = line
+                break
+    indata = readxml(infile)
+    if mapfile:
+        mapdata = readxml(mapfile)
+    else:
+        mapdata = DNE
+    indata = xmlmap(indata,mapdata)
+    writexml(infile,indata,start)
 
 ### SJSON mapping
 
@@ -189,7 +296,6 @@ if can_sjson:
                 for i in range(1,len(mapdata)):
                     indata.append(mapdata[i])
                 return indata
-            return mapdata
         else:
             return mapdata
         return mapdata
@@ -349,7 +455,7 @@ def loadmodfile(filename,echo=True):
                 elif startswith(tokens,kwrd_import,1):
                     loadcommand(reldir,tokens[len(kwrd_import):],to,1,mode_lua,ep=ep)
                 elif startswith(tokens,kwrd_xml,1):
-                    loadcommand(reldir,tokens[len(kwrd_xml):],to,1,mode_lua,ep=ep)
+                    loadcommand(reldir,tokens[len(kwrd_xml):],to,1,mode_xml,ep=ep)
                 elif can_sjson and startswith(tokens,kwrd_sjson,1):
                     loadcommand(reldir,tokens[len(kwrd_sjson):],to,1,mode_sjson,ep=ep)
                 
@@ -373,18 +479,23 @@ def makeedit(base,mods,echo=True):
     if echo:
         i=0
         print("\n"+base)
-    for mod in mods:
-        if mod.mode == mode_lua:
-            addimport(base,mod.data[0])
-        elif mod.mode == mode_xml:
-            xmlinert(base,mod.data[0])
-        elif mod.mode == mode_sjson:
-            mergesjson(base,mod.data[0])
-        if echo:
-            k = i+1
-            for s in mod.src.split('\n'):
-                i+=1
-                print(" #"+str(i)+" +"*(k<i)+" "*((k>=i)+5-len(str(i)))+s)
+
+    try:
+        for mod in mods:
+            if mod.mode == mode_lua:
+                addimport(base,mod.data[0])
+            elif mod.mode == mode_xml:
+                mergexml(base,mod.data[0])
+            elif mod.mode == mode_sjson:
+                mergesjson(base,mod.data[0])
+            if echo:
+                k = i+1
+                for s in mod.src.split('\n'):
+                    i+=1
+                    print(" #"+str(i)+" +"*(k<i)+" "*((k>=i)+5-len(str(i)))+s)
+    except Exception as e:
+        copyfile(bakdir+"/"+base+baktype,base)
+        raise RuntimeError("Encountered uncaught exception while implementing mod changes") from e
 
     modifiedstr = ""
     if mods[0].mode == mode_lua:
