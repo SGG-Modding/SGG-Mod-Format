@@ -1,4 +1,7 @@
-if ModUtil.Hades then
+if ModUtil.Hades and not ModUtilHades then
+	
+	ModUtil.RegisterMod("ModUtilHades")
+	ModUtilHades = ModUtil.Hades
 	
 	-- Screen Handling
 	
