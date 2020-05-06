@@ -30,9 +30,9 @@ modified_modrep = " by Mod Importer @ "
 modified_lua = "-- "+modified+" "
 modified_sjson = "/* "+modified+" */"
 
-defaultto = {"Hades":"\"Scripts/RoomManager.lua\"",
-            "Pyre":"\"Scripts/Campaign.lua\" \"Content/Scripts/MPScripts.lua\"",
-            "Transistor":"\"Scripts/AllCampaignScripts.txt\""}
+defaultto = {"Hades":["\"Scripts/RoomManager.lua\""],
+            "Pyre":["\"Scripts/Campaign.lua\"","\"Scripts/MPScripts.lua\""],
+            "Transistor":["\"Scripts/AllCampaignScripts.txt\""]}
 defaultpriority = 100
 
 kwrd_comment = ":"
@@ -224,13 +224,16 @@ selffile = "".join(os.path.realpath(__file__).replace("\\","/").split(".")[:-1])
 gamedir = os.path.join(os.path.realpath(gamerel), '').replace("\\","/")[:-1]
 game = strup(gamedir.split("/")[-1])
 
-def in_directory(file):
+def in_directory(file,nobackup=True):
     #https://stackoverflow.com/questions/3812849/how-to-check-whether-a-directory-is-a-sub-directory-of-another-directory
     if not os.path.isfile(file):
         return False
     file = os.path.realpath(file).replace("\\","/")
     if file == selffile:
         return False
+    if nobackup:
+        if os.path.commonprefix([file, gamedir+"/"+scope+"/"+bakdir]) == gamedir+"/"+scope+"/"+bakdir:
+            return False
     return os.path.commonprefix([file, gamedir+"/"+scope]) == gamedir+"/"+scope
 
 def valid_scan(file):
@@ -238,6 +241,22 @@ def valid_scan(file):
         if os.path.isdir(file):
             return True
     return False
+
+def tokenise(line):
+    groups = line.strip().split("\"")
+    for i,group in enumerate(groups):
+        if i%2:
+            groups[i] = [group]
+        else:
+            groups[i] = group.split(" ")
+    
+    tokens = []
+    for group in groups:
+        for x in group:
+            if x != '':
+                tokens.append(x)
+
+    return tokens
 
 codes = defaultdict(list)
 
@@ -247,7 +266,7 @@ def loadmodfile(filename,echo=True):
             print(filename)
         reldir = "/".join(filename.split("/")[:-1])
         ep = 100
-        to = [defaultto[game]]
+        to = defaultto[game]
         mode = mode_dud
         try:
             file = open(filename,'r')
@@ -257,14 +276,7 @@ def loadmodfile(filename,echo=True):
         with file:
             for line in file:
                 line = "".join(line.split(kwrd_comment)[::2])
-                tokens = line.strip().split(" ")
-                
-                t = []
-                for x in tokens:
-                    if x != '':
-                        t.append(x)
-                tokens = t
-                del t
+                tokens = tokenise(line)
                 
                 if len(tokens)==0:
                     continue
@@ -294,7 +306,7 @@ def loadmodfile(filename,echo=True):
                 elif tokens[0] == kwrd_to:
                     to = tokens[1:]
                     if len(to) == 0:
-                        to = [defaultto[game]]
+                        to = defaultto[game]
                 
                 elif tokens[:len(kwrd_sjsonrem)] == kwrd_sjsonrem and can_sjson:
                     for S in to:
@@ -377,7 +389,7 @@ def makeedit(base,mods,echo=True):
                   refresh = True
                   break
     Path(bakdir+"/"+"/".join(base.split("/")[:-1])).mkdir(parents=True, exist_ok=True)
-    if refresh and in_directory(bakdir+"/"+base+baktype):
+    if refresh and in_directory(bakdir+"/"+base+baktype,False):
         copyfile(bakdir+"/"+base+baktype,base)
     else:
         copyfile(base,bakdir+"/"+base+baktype)
