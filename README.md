@@ -17,12 +17,14 @@ The unedited base files will be stored in `Content/Backups`.
 *tells you how to do stuff*   
 
 - [Installing Mods | The Mods Folder](https://github.com/MagicGonads/sgg-mod-format/wiki/Installing-Mods-%7C-The-Mods-Folder)
-- [Import Type: LUA](https://github.com/MagicGonads/sgg-mod-format/wiki/Import-Type:-LUA)
 
 ### Guides
 *tells you both how to do stuff and what you can do*   
 
 - [The Mod Importer](https://github.com/MagicGonads/sgg-mod-format/wiki/The-Mod-Importer)
+- [Import Type: LUA](https://github.com/MagicGonads/sgg-mod-format/wiki/Import-Type:-LUA)
+- [Import Type: SJSON](https://github.com/MagicGonads/sgg-mod-format/wiki/Import-Type:-SJSON)
+- [Import Type: XML](https://github.com/MagicGonads/sgg-mod-format/wiki/Import-Type:-XML)
 
 ### Documentation
 *tells you what you can do*   
@@ -32,4 +34,4 @@ The unedited base files will be stored in `Content/Backups`.
 ### Articles
 *tells you about stuff*
 
-- [Importing Mods](https://github.com/MagicGonads/sgg-mod-format/wiki/Importing-Mods)
+- [On Importing Mods](https://github.com/MagicGonads/sgg-mod-format/wiki/On-Importing-Mods)
