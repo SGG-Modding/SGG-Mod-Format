@@ -11,6 +11,7 @@ The unedited base files will be stored in `Content/Backups`.
 
 **Check the [Wiki](https://github.com/MagicGonads/ssg-mod-format/wiki) for the important information!**
 
+[Format Specification](https://github.com/MagicGonads/sgg-mod-format/wiki/Format-Specification)
 [List of Mods in the Format](https://github.com/MagicGonads/sgg-mod-format/wiki/Importable-Mods)
 
 ### Tutorials
@@ -29,6 +30,7 @@ The unedited base files will be stored in `Content/Backups`.
 ### Documentation
 *tells you what you can do*   
 
+- [Modfiles | modfile.txt](https://github.com/MagicGonads/sgg-mod-format/wiki/Modfiles-%7C-modfile.txt)
 - [ModUtil Documentation](https://github.com/MagicGonads/sgg-mod-format/wiki/ModUtil-Documentation)
 
 ### Articles
