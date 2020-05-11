@@ -25,7 +25,6 @@ local config = -- (set to nil or false to disable any of them)
 	ChooseMultipleUpgrades = 1,		-- Choose multiple upgrades at any given choice (multiplier of available number)
 	PlayerDamageMult = 0.5,			-- Multiply damage the player recieves
 	EnemyDamageMult = 1.5,			-- Multiply damage enemies recieve
-	ExtraRarity = 0.65,				-- Global boost to rarity (100% best rarity if 1 or more, 0 unchanged)
 	ExtraMoney = 5,					-- Global multiplier of charon coins gained
 	MoneyCost = 0,					-- Global Multiplier of coin prices
 	PurchaseCost = {				-- Multiplier of purchase costs (except using darkness on mirror)
@@ -40,6 +39,13 @@ local config = -- (set to nil or false to disable any of them)
 		GiftPoints = 5,		-- Nectar
 		LockKeys = 5,		-- Chthonic Keys
 		Gems = 20,			-- Gemstones
+	},
+	ExtraRarity = {					-- boosts to rarity (100% best rarity if 1 or more, 0 unchanged)
+		Legendary = 0.65,
+		Heroic = 0.65,
+		Epic = 0.65,
+		Rare = 0.65,
+		Common = 0.65,
 	}
 }
 
@@ -146,30 +152,30 @@ end
 if config.ExtraRarity then
 
 	ModUtil.WrapBaseFunction( "SetTraitsOnLoot", function( baseFunc, lootData )
-		if lootData.RarityChances.Legendary and config.ExtraRarity < 1 then
-			lootData.RarityChances.Legendary = lootData.RarityChances.Legendary*(1-config.ExtraRarity) + config.ExtraRarity
+		if lootData.RarityChances.Legendary and config.ExtraRarity.Legendary < 1 then
+			lootData.RarityChances.Legendary = lootData.RarityChances.Legendary*(1-config.ExtraRarity.Legendary) + config.ExtraRarity.Legendary
 		else
-			lootData.RarityChances.Legendary = config.ExtraRarity
+			lootData.RarityChances.Legendary = config.ExtraRarity.Legendary
 		end
-		if lootData.RarityChances.Heroic and config.ExtraRarity < 1 then
-			lootData.RarityChances.Heroic = lootData.RarityChances.Heroic*(1-config.ExtraRarity) + config.ExtraRarity
+		if lootData.RarityChances.Heroic and config.ExtraRarity.Heroic < 1 then
+			lootData.RarityChances.Heroic = lootData.RarityChances.Heroic*(1-config.ExtraRarity.Heroic) + config.ExtraRarity.Heroic
 		else
-			lootData.RarityChances.Heroic = config.ExtraRarity
+			lootData.RarityChances.Heroic = config.ExtraRarity.Heroic
 		end
-		if lootData.RarityChances.Epic and config.ExtraRarity < 1 then
-			lootData.RarityChances.Epic = lootData.RarityChances.Epic*(1-config.ExtraRarity) + config.ExtraRarity
+		if lootData.RarityChances.Epic and config.ExtraRarity.Epic < 1 then
+			lootData.RarityChances.Epic = lootData.RarityChances.Epic*(1-config.ExtraRarity.Epic) + config.ExtraRarity.Epic
 		else
-			lootData.RarityChances.Epic = config.ExtraRarity
+			lootData.RarityChances.Epic = config.ExtraRarity.Epic
 		end
-		if lootData.RarityChances.Rare and config.ExtraRarity < 1 then
-			lootData.RarityChances.Rare = lootData.RarityChances.Rare*(1-config.ExtraRarity) + config.ExtraRarity
+		if lootData.RarityChances.Rare and config.ExtraRarity.Rare < 1 then
+			lootData.RarityChances.Rare = lootData.RarityChances.Rare*(1-config.ExtraRarity.Rare) + config.ExtraRarity.Rare
 		else
-			lootData.RarityChances.Rare = config.ExtraRarity
+			lootData.RarityChances.Rare = config.ExtraRarity.Rare
 		end
-		if lootData.RarityChances.Common and config.ExtraRarity < 1 then
-			lootData.RarityChances.Common = lootData.RarityChances.Common*(1-config.ExtraRarity) + config.ExtraRarity
+		if lootData.RarityChances.Common and config.ExtraRarity.Common < 1 then
+			lootData.RarityChances.Common = lootData.RarityChances.Common*(1-config.ExtraRarity.Common) + config.ExtraRarity.Common
 		else
-			lootData.RarityChances.Common = config.ExtraRarity
+			lootData.RarityChances.Common = config.ExtraRarity.Common
 		end
 		baseFunc( lootData )
 	end, MagicEdits)
