@@ -283,7 +283,7 @@ if can_sjson:
                     if safeget(mapdata,0)==reserved_delete:
                         return DNE
                     if safeget(mapdata,0)==reserved_replace:
-                        mapdata = mapdata[1:]
+                        del mapdata[0]
                         return mapdata
                     indata.expand([DNE]*(len(mapdata)-len(indata)))
                     for k,v in enumerate(mapdata):
