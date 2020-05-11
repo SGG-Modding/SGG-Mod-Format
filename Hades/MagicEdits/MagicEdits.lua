@@ -1,10 +1,3 @@
---[[ Installation Instructions:
-	Place this file in /Content/Mods/MagicEdits/Scripts
-	Add 'Import "../Mods/MagicEdits/Scripts/MagicEdits.lua"' to the bottom of RoomManager.lua
-	Configure by changing values in the config table below
-	Load/reload a save
---]]
-
 --[[
 Mod: Magic Edits
 Author: MagicGonads
