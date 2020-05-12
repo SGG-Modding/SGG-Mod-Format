@@ -42,6 +42,17 @@ OnAnyLoad{function()
 	end
 end}
 
+function ClimbOfSisyphus.ShowLevelIndicator()
+	if ClimbOfSisyphus.LevelIndicator then
+		Destroy({Ids = ClimbOfSisyphus.LevelIndicator.Id})
+	end
+	if CurrentRun.TotalFalls > 0 then
+		ClimbOfSisyphus.LevelIndicator = CreateScreenComponent({Name = "BlankObstacle", Group = "LevelIndicator", X = 2*ScreenCenterX-55, Y = 110 })
+		CreateTextBox({ Id = ClimbOfSisyphus.LevelIndicator.Id, Text = tostring(CurrentRun.TotalFalls), OffsetX = -40, FontSize = 22, Color = color, Font = "AlegreyaSansSCExtraBold"})
+		SetAnimation({ Name = "EasyModeIcon", DestinationId = ClimbOfSisyphus.LevelIndicator.Id, Scale = 1 })
+	end
+end
+
 function ClimbOfSisyphus.EndFallFunc( currentRun, exitDoor)
 	AddInputBlock({ Name = "LeaveRoomPresentation" })
 	ToggleControl({ Names = { "AdvancedTooltip", }, Enabled = false })
@@ -142,6 +153,11 @@ ModUtil.WrapBaseFunction("GetBiomeDepth", function(baseFunc, currentRun, ...)
 	return baseFunc( currentRun )
 end, ClimbOfSisyphus)
 
+ModUtil.WrapBaseFunction( "ShowHealthUI", function( baseFunc )
+	ClimbOfSisyphus.ShowLevelIndicator()
+	baseFunc()
+end, ClimbOfSisyphus)
+
 ModUtil.WrapBaseFunction("GenerateEncounter", function (baseFunc, currentRun, room, encounter )
 	if not CurrentRun.TotalFalls then
 		CurrentRun.TotalFalls = config.BaseFalls
@@ -149,10 +165,15 @@ ModUtil.WrapBaseFunction("GenerateEncounter", function (baseFunc, currentRun, ro
 	end
 
 	encounter.DifficultyModifier = (encounter.DifficultyModifier or 0) + config.EncounterDifficultyRate * CurrentRun.TotalFalls
-	
-	encounter.ActiveEnemyCapDepthRamp = (encounter.ActiveEnemyCapDepthRamp or 0) + config.EncounterDifficultyRate * CurrentRun.TotalFalls
-	encounter.ActiveEnemyCapMax = (encounter.ActiveEnemyCapMax or encounter.ActiveEnemyCapBase or 1) + config.EncounterEnemyCapRate * CurrentRun.TotalFalls
-
+	if encounter.ActiveEnemyCapDepthRamp then
+		encounter.ActiveEnemyCapDepthRamp = encounter.ActiveEnemyCapDepthRamp + config.EncounterDifficultyRate * CurrentRun.TotalFalls
+	end
+	if encounter.ActiveEnemyCapBase then
+		encounter.ActiveEnemyCapBase = encounter.ActiveEnemyCapBase + config.EncounterEnemyCapRate * CurrentRun.TotalFalls
+	end
+	if encounter.ActiveEnemyCapMax then
+		encounter.ActiveEnemyCapMax = encounter.ActiveEnemyCapMax + config.EncounterEnemyCapRate * CurrentRun.TotalFalls
+	end
 	
 	local waveCap = #WaveDifficultyPatterns
 	encounter.MinWaves = lerp((encounter.MinWaves or 1),waveCap,falloff(config.EncounterMinWaveRate * CurrentRun.TotalFalls))
@@ -164,8 +185,10 @@ ModUtil.WrapBaseFunction("GenerateEncounter", function (baseFunc, currentRun, ro
 	else
 		encounter.MaxTypes = (encounter.MaxTypes or 1) + config.EncounterTypesRate * CurrentRun.TotalFalls
 	end
-	encounter.MaxEliteTypes = (encounter.MaxEliteTypes or 0) + config.EncounterTypesRate * CurrentRun.TotalFalls
-
+	if encounter.MaxEliteTypes then
+		encounter.MaxEliteTypes = encounter.MaxEliteTypes + config.EncounterTypesRate * CurrentRun.TotalFalls
+	end
+	
 	return baseFunc(currentRun, room, encounter)
 end, ClimbOfSisyphus)
 
