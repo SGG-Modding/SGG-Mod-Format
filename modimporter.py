@@ -27,7 +27,9 @@ scope = "Content"
 bakdir = "Backup"
 baktype = ""
 modfile = "modfile.txt"
-comment = ":"
+mlcom_start = "-:"
+mlcom_end = ":-"
+comment = "::"
 linebreak = ";"
 delimiter = ","
 
@@ -90,17 +92,6 @@ def clearDNE(data):
                 continue
             L.append(clearDNE(v))
         data = L
-##    if isinstance(data,xml.ElementTree):
-##        root = clearDNE(data.getroot())
-##        if root:
-##            data._setroot(root)
-##    if isinstance(data,xml.Element):
-##        for v in data.findall('*'):
-##            if v.text is DNE:
-##                data.remove(v)
-##                continue
-##            clearDNE(v)
-##        data.attrib = clearDNE(data.attrib)
     return data
 
 ### LUA import statement adding
@@ -366,37 +357,51 @@ def valid_scan(file):
             return True
     return False
 
-def splitline(line):
-    groups = line.strip().split("\"")
-    brk = 0
-    lines = [""]
-    li = 0
-    even = False
-    for group in groups:
+def splitlines(body):
+    glines = map(lambda s: s.strip().split("\""),body.split("\n"))
+    lines = []
+    li = -1
+    mlcom = False
+    def gp(group,lines,li,mlcom,even):
+        if mlcom:
+            tgroup = group.split(mlcom_end,1)
+            if len(tgroup)==1: #still commented, carry on
+                even = not even
+                return (lines,li,mlcom,even)
+            else: #comment ends, if a quote, even is disrupted
+                even = False
+                mlcom = False
+                group = tgroup[1]
         if even:
             lines[li]+="\""+group+"\""
         else:
-            group = group.split(linebreak)
-            lines[li]+=group[0]
-            for s in group[1:]:
+            tgroup = group.split(comment,1)
+            tline = tgroup[0].split(mlcom_start,1)
+            tgroup = tline[0].split(linebreak)
+            lines[li]+=tgroup[0] #uncommented line
+            for g in tgroup[1:]: #new uncommented lines
+                lines.append(g)
                 li+=1
-                lines.append(s)
-        even = not even
+            if len(tline)>1: #comment begins
+                mlcom = True
+                lines,li,mlcom,even = gp(tline[1],lines,li,mlcom,even)
+        return (lines,li,mlcom,even)
+    for groups in glines:
+        even = False
+        li += 1
+        lines.append("")
+        for group in groups:
+            lines,li,mlcom,even = gp(group,lines,li,mlcom,even)
+            even = not even
     return lines
 
 def tokenise(line):
     groups = line.strip().split("\"")
-    com = 0
     for i,group in enumerate(groups):
         if i%2:
-            if com:
-                groups[i] = ''
-            else:
-                groups[i] = [group]
+            groups[i] = [group]
         else:
-            group = group.split(comment)
-            groups[i] = "".join(group[com::2]).replace(" ",delimiter).split(delimiter)
-            com = (1+com+len(group)%2)%2
+            groups[i] = group.replace(" ",delimiter).split(delimiter)
     tokens = []
     for group in groups:
         for x in group:
@@ -451,44 +456,41 @@ def loadmodfile(filename,echo=True):
         ep = 100
         to = default_to[game]
         
-        with file:
-            for line in file:
-                lines = splitline(line)
-                for line in lines:
-                    tokens = tokenise(line)
-                    
-                    if len(tokens)==0:
-                        continue
+        with file:    
+            for line in splitlines(file.read()):
+                tokens = tokenise(line) 
+                if len(tokens)==0:
+                    continue
 
-                    elif startswith(tokens,kwrd_to,0):
-                        to = [s.replace("\\","/") for s in tokens[1:]]
-                        if len(to) == 0:
-                            to = default_to[game]
-                    elif startswith(tokens,kwrd_load,0):
-                        n = len(kwrd_load)+len(kwrd_priority)
-                        if tokens[len(kwrd_load):n] == kwrd_priority:
-                            if len(tokens)>n:
-                                try:
-                                    ep = int(tokens[n])
-                                except ValueError:
-                                    pass
-                            else:
-                                ep = default_priority
-                    if startswith(tokens,kwrd_include,1):
-                        for s in tokens[1:]:
-                            path = reldir+"/"+s.replace("\"","").replace("\\","/")
-                            if valid_scan(path):
-                                for file in os.scandir(path):
-                                    loadmodfile(file.path.replace("\\","/"),echo)
-                            else:
-                                loadmodfile(path,echo)
+                elif startswith(tokens,kwrd_to,0):
+                    to = [s.replace("\\","/") for s in tokens[1:]]
+                    if len(to) == 0:
+                        to = default_to[game]
+                elif startswith(tokens,kwrd_load,0):
+                    n = len(kwrd_load)+len(kwrd_priority)
+                    if tokens[len(kwrd_load):n] == kwrd_priority:
+                        if len(tokens)>n:
+                            try:
+                                ep = int(tokens[n])
+                            except ValueError:
+                                pass
+                        else:
+                            ep = default_priority
+                if startswith(tokens,kwrd_include,1):
+                    for s in tokens[1:]:
+                        path = reldir+"/"+s.replace("\"","").replace("\\","/")
+                        if valid_scan(path):
+                            for file in os.scandir(path):
+                                loadmodfile(file.path.replace("\\","/"),echo)
+                        else:
+                            loadmodfile(path,echo)
 
-                    elif startswith(tokens,kwrd_import,1):
-                        loadcommand(reldir,tokens[len(kwrd_import):],to,1,mode_lua,ep=ep)
-                    elif startswith(tokens,kwrd_xml,1):
-                        loadcommand(reldir,tokens[len(kwrd_xml):],to,1,mode_xml,ep=ep)
-                    elif can_sjson and startswith(tokens,kwrd_sjson,1):
-                        loadcommand(reldir,tokens[len(kwrd_sjson):],to,1,mode_sjson,ep=ep)
+                elif startswith(tokens,kwrd_import,1):
+                    loadcommand(reldir,tokens[len(kwrd_import):],to,1,mode_lua,ep=ep)
+                elif startswith(tokens,kwrd_xml,1):
+                    loadcommand(reldir,tokens[len(kwrd_xml):],to,1,mode_xml,ep=ep)
+                elif can_sjson and startswith(tokens,kwrd_sjson,1):
+                    loadcommand(reldir,tokens[len(kwrd_sjson):],to,1,mode_sjson,ep=ep)
                 
 def sortmods(base,mods):
     codes[base].sort(key=lambda x: x.ep)
