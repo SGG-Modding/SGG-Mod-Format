@@ -16,7 +16,7 @@ try:
     can_sjson = True
 except ModuleNotFoundError:
     print("SJSON python module not found! SJSON changes will be skipped!")
-    print("Get the SJSON module at https://pypi.org/project/SJSON/")
+    print("Get the SJSON module at https://pypi.org/project/SJSON/\n")
 
 ## Global Settings
 
@@ -28,6 +28,8 @@ bakdir = "Backup"
 baktype = ""
 modfile = "modfile.txt"
 comment = ":"
+linebreak = ";"
+delimiter = ","
 
 modified = "MODIFIED"
 modified_modrep = " by Mod Importer @ "
@@ -35,9 +37,10 @@ modified_lua = "-- "+modified+" "
 modified_xml = "<!-- "+modified+" -->"
 modified_sjson = "/* "+modified+" */"
 
-default_to = {"Hades":["Scripts/RoomManager.lua"],
+default_to = defaultdict(str)
+default_to.update({"Hades":["Scripts/RoomManager.lua"],
             "Pyre":["Scripts/Campaign.lua","Scripts/MPScripts.lua"],
-            "Transistor":["Scripts/AllCampaignScripts.txt"]}
+            "Transistor":["Scripts/AllCampaignScripts.txt"]})
 default_priority = 100
 
 kwrd_to = ["To"]
@@ -363,20 +366,42 @@ def valid_scan(file):
             return True
     return False
 
+def splitline(line):
+    groups = line.strip().split("\"")
+    brk = 0
+    lines = [""]
+    li = 0
+    even = False
+    for group in groups:
+        if even:
+            lines[li]+="\""+group+"\""
+        else:
+            group = group.split(linebreak)
+            lines[li]+=group[0]
+            for s in group[1:]:
+                li+=1
+                lines.append(s)
+        even = not even
+    return lines
+
 def tokenise(line):
     groups = line.strip().split("\"")
+    com = 0
     for i,group in enumerate(groups):
         if i%2:
-            groups[i] = [group]
+            if com:
+                groups[i] = ''
+            else:
+                groups[i] = [group]
         else:
-            groups[i] = group.split(" ")
-    
+            group = group.split(comment)
+            groups[i] = "".join(group[com::2]).replace(" ",delimiter).split(delimiter)
+            com = (1+com+len(group)%2)%2
     tokens = []
     for group in groups:
         for x in group:
             if x != '':
                 tokens.append(x)
-
     return tokens
 
 ## FILE/MOD LOADING
@@ -428,41 +453,42 @@ def loadmodfile(filename,echo=True):
         
         with file:
             for line in file:
-                line = "".join(line.split(comment)[::2])
-                tokens = tokenise(line)
-                
-                if len(tokens)==0:
-                    continue
+                lines = splitline(line)
+                for line in lines:
+                    tokens = tokenise(line)
+                    
+                    if len(tokens)==0:
+                        continue
 
-                elif startswith(tokens,kwrd_to,0):
-                    to = [s.replace("\\","/") for s in tokens[1:]]
-                    if len(to) == 0:
-                        to = default_to[game]
-                elif startswith(tokens,kwrd_load,0):
-                    n = len(kwrd_load)+len(kwrd_priority)
-                    if tokens[len(kwrd_load):n] == kwrd_priority:
-                        if len(tokens)>n:
-                            try:
-                                ep = int(tokens[n])
-                            except ValueError:
-                                pass
-                        else:
-                            ep = default_priority
-                if startswith(tokens,kwrd_include,1):
-                    for s in tokens[1:]:
-                        path = reldir+"/"+s.replace("\"","").replace("\\","/")
-                        if valid_scan(path):
-                            for file in os.scandir(path):
-                                loadmodfile(file.path.replace("\\","/"),echo)
-                        else:
-                            loadmodfile(path,echo)
+                    elif startswith(tokens,kwrd_to,0):
+                        to = [s.replace("\\","/") for s in tokens[1:]]
+                        if len(to) == 0:
+                            to = default_to[game]
+                    elif startswith(tokens,kwrd_load,0):
+                        n = len(kwrd_load)+len(kwrd_priority)
+                        if tokens[len(kwrd_load):n] == kwrd_priority:
+                            if len(tokens)>n:
+                                try:
+                                    ep = int(tokens[n])
+                                except ValueError:
+                                    pass
+                            else:
+                                ep = default_priority
+                    if startswith(tokens,kwrd_include,1):
+                        for s in tokens[1:]:
+                            path = reldir+"/"+s.replace("\"","").replace("\\","/")
+                            if valid_scan(path):
+                                for file in os.scandir(path):
+                                    loadmodfile(file.path.replace("\\","/"),echo)
+                            else:
+                                loadmodfile(path,echo)
 
-                elif startswith(tokens,kwrd_import,1):
-                    loadcommand(reldir,tokens[len(kwrd_import):],to,1,mode_lua,ep=ep)
-                elif startswith(tokens,kwrd_xml,1):
-                    loadcommand(reldir,tokens[len(kwrd_xml):],to,1,mode_xml,ep=ep)
-                elif can_sjson and startswith(tokens,kwrd_sjson,1):
-                    loadcommand(reldir,tokens[len(kwrd_sjson):],to,1,mode_sjson,ep=ep)
+                    elif startswith(tokens,kwrd_import,1):
+                        loadcommand(reldir,tokens[len(kwrd_import):],to,1,mode_lua,ep=ep)
+                    elif startswith(tokens,kwrd_xml,1):
+                        loadcommand(reldir,tokens[len(kwrd_xml):],to,1,mode_xml,ep=ep)
+                    elif can_sjson and startswith(tokens,kwrd_sjson,1):
+                        loadcommand(reldir,tokens[len(kwrd_sjson):],to,1,mode_sjson,ep=ep)
                 
 def sortmods(base,mods):
     codes[base].sort(key=lambda x: x.ep)
@@ -517,6 +543,7 @@ def start():
     codes = defaultdict(list)
     
     print("Reading mod files...\n")
+    Path(modsdir).mkdir(parents=True, exist_ok=True)
     for mod in os.scandir(modsdir):
         loadmodfile(mod.path.replace("\\","/")+"/"+modfile)
 
