@@ -411,7 +411,7 @@ if not ModUtil then
 		table.insert(tempTable, {id=#tempTable+1,mod=modObject,value=Value,base=baseValue})
 		
 		if wrapCallbacks then if wrapCallbacks[1] then
-			ModUtil.RewrapFunctions( baseTable, IndexArray )
+			ModUtil.RewrapFunction( baseTable, IndexArray )
 			return end
 		else
 			ModUtil.SafeSet( baseTable, IndexArray, Value )
