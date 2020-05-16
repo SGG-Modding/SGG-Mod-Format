@@ -1,20 +1,17 @@
 ModUtil.RegisterMod("LootChoiceExt")
 
 local config = {
-	MinLootChoices = 3,
-	MaxLootChoices = 5
+	MinExtraLootChoices = 0,
+	MaxExtraLootChoices = 0
 }
 LootChoiceExt.config = config
 
-function LootChoiceExt.DecideLootChoices()
-	-- Mods should wrap or override this function but not the others
-	return RandomInt( config.MinLootChoices, config.MaxLootChoices )
-end
+LootChoiceExt.BaseChoices = GetTotalLootChoices()
 
+-- Mods should wrap or override these functions but not the final one
 ModUtil.BaseOverride("GetTotalLootChoices", function()
-	return LootChoiceExt.DecideLootChoices()
+	return LootChoiceExt.BaseChoices + RandomInt( config.MinExtraLootChoices, config.MaxExtraLootChoices )
 end, LootChoiceExt)
-
 ModUtil.BaseOverride("CalcNumLootChoices", function()
 	local numChoices = GetTotalLootChoices() - GetNumMetaUpgrades("ReducedLootChoicesShrineUpgrade")
 	return numChoices
@@ -22,6 +19,7 @@ end, LootChoiceExt)
 
 ModUtil.BaseOverride("CreateBoonLootButtons", function( lootData )
 
+	-- BASE CODE ...
 	local components = ScreenAnchors.ChoiceScreen.Components
 	local upgradeName = lootData.Name
 	local upgradeChoiceData = LootData[upgradeName]
@@ -42,55 +40,54 @@ ModUtil.BaseOverride("CreateBoonLootButtons", function( lootData )
 	local firstOption = true
 	local buttonOffsetX = 350
 
-	if true then
-
-		if IsEmpty( upgradeOptions ) then
-			table.insert(upgradeOptions, { ItemName = "FallbackMoneyDrop", Type = "Consumable", Rarity = "Common" })
-		end
-
-		local blockedIndexes = {}
-		for i = 1, TableLength(upgradeOptions) do
-			table.insert( blockedIndexes, i )
-		end
-		for i = 1, CalcNumLootChoices() do
-			RemoveRandomValue( blockedIndexes )
-		end
-
-		-- Sort traits in the following order: Melee, Secondary, Rush, Range
-		table.sort(upgradeOptions, function (x, y)
-			local slotToInt = function( slot )
-				if slot ~= nil then
-					local slotType = slot.Slot
-
-					if slotType == "Melee" then
-						return 0
-					elseif slotType == "Secondary" then
-						return 1
-					elseif slotType == "Ranged" then
-						return 2
-					elseif slotType == "Rush" then
-						return 3
-					elseif slotType == "Shout" then
-						return 4
-					end
-				end
-				return 99
-			end
-			return slotToInt(TraitData[x.ItemName]) < slotToInt(TraitData[y.ItemName])
-		end)
-
-		if TableLength( upgradeOptions ) > 1 then
-			-- Only create the "Choose One" textbox if there's something to choose
-			CreateTextBox({ Id = components.ShopBackground.Id, Text = "UpgradeChoiceMenu_SubTitle",
-				FontSize = 30,
-				OffsetX = -435, OffsetY = -318,
-				Color = Color.White,
-				Font = "AlegreyaSansSCRegular",
-				ShadowBlur = 0, ShadowColor = {0,0,0,1}, ShadowOffset={0, 2},
-				Justification = "Left"
-			})
-		end
+	if IsEmpty( upgradeOptions ) then
+		table.insert(upgradeOptions, { ItemName = "FallbackMoneyDrop", Type = "Consumable", Rarity = "Common" })
 	end
+
+	local blockedIndexes = {}
+	for i = 1, TableLength(upgradeOptions) do
+		table.insert( blockedIndexes, i )
+	end
+	for i = 1, CalcNumLootChoices() do
+		RemoveRandomValue( blockedIndexes )
+	end
+
+	-- Sort traits in the following order: Melee, Secondary, Rush, Range
+	table.sort(upgradeOptions, function (x, y)
+		local slotToInt = function( slot )
+			if slot ~= nil then
+				local slotType = slot.Slot
+
+				if slotType == "Melee" then
+					return 0
+				elseif slotType == "Secondary" then
+					return 1
+				elseif slotType == "Ranged" then
+					return 2
+				elseif slotType == "Rush" then
+					return 3
+				elseif slotType == "Shout" then
+					return 4
+				end
+			end
+			return 99
+		end
+		return slotToInt(TraitData[x.ItemName]) < slotToInt(TraitData[y.ItemName])
+	end)
+
+	if TableLength( upgradeOptions ) > 1 then
+		-- Only create the "Choose One" textbox if there's something to choose
+		CreateTextBox({ Id = components.ShopBackground.Id, Text = "UpgradeChoiceMenu_SubTitle",
+			FontSize = 30,
+			OffsetX = -435, OffsetY = -318,
+			Color = Color.White,
+			Font = "AlegreyaSansSCRegular",
+			ShadowBlur = 0, ShadowColor = {0,0,0,1}, ShadowOffset={0, 2},
+			Justification = "Left"
+		})
+	end
+
+	-- NEW CODE ...
 	
 	local excess = math.max(3,#upgradeOptions)-3
 	itemLocationY = itemLocationY-12.5*excess
@@ -103,6 +100,9 @@ ModUtil.BaseOverride("CreateBoonLootButtons", function( lootData )
 		local itemBackingKey = "Backing"..itemIndex
 		components[itemBackingKey] = CreateScreenComponent({ Name = "TraitBacking", Group = "Combat_Menu", X = ScreenCenterX, Y = itemLocationY })
 		SetScaleY({ Id = components[itemBackingKey].Id, Fraction = 1.25*squashY })
+		
+		-- BASE CODE ...
+		
 		local upgradeData = nil
 		local upgradeTitle = nil
 		local upgradeDescription = nil
@@ -210,6 +210,8 @@ ModUtil.BaseOverride("CreateBoonLootButtons", function( lootData )
 		-- Setting button graphic based on boon type
 		local purchaseButtonKey = "PurchaseButton"..itemIndex
 
+
+		-- NEW CODE ...
 
 		local iconOffsetX = -323
 		local iconOffsetY = -2*squashY
@@ -439,52 +441,53 @@ ModUtil.BaseOverride("CreateBoonLootButtons", function( lootData )
 		itemLocationY = itemLocationY + 220*squashY
 	end
 
-	if true then
-		if IsMetaUpgradeActive("RerollPanelMetaUpgrade") then
-			local cost = -1
-			if lootData.BlockReroll then
-				cost = -1
-			elseif lootData.Name == "WeaponUpgrade" then
-				cost = RerollCosts.Hammer
-			else
-				cost = RerollCosts.Boon
+	-- BASE CODE ...
+
+	if IsMetaUpgradeActive("RerollPanelMetaUpgrade") then
+		local cost = -1
+		if lootData.BlockReroll then
+			cost = -1
+		elseif lootData.Name == "WeaponUpgrade" then
+			cost = RerollCosts.Hammer
+		else
+			cost = RerollCosts.Boon
+		end
+		local baseCost = cost 
+
+		local name = "RerollPanelMetaUpgrade_ShortTotal"
+		local tooltip = "MetaUpgradeRerollHint"
+		if cost >= 0 then
+
+			local increment = 0
+			if CurrentRun.CurrentRoom.SpentRerolls then
+				increment = CurrentRun.CurrentRoom.SpentRerolls[lootData.ObjectId] or 0
 			end
-			local baseCost = cost 
+			cost = cost + increment
+		else
+			name = "RerollPanel_Blocked"
+			tooltip = "MetaUpgradeRerollBlockedHint"
+		end
+		local color = Color.White
+		if CurrentRun.NumRerolls < cost or cost < 0 then
+			color = Color.CostUnaffordable
+		end
 
-			local name = "RerollPanelMetaUpgrade_ShortTotal"
-			local tooltip = "MetaUpgradeRerollHint"
-			if cost >= 0 then
+		if baseCost > 0 then
+			components["RerollPanel"] = CreateScreenComponent({ Name = "ShopRerollButton", Scale = 1.0, Group = "Combat_Menu" })
+			Attach({ Id = components["RerollPanel"].Id, DestinationId = components.ShopBackground.Id, OffsetX = 0, OffsetY = 410 })
+			components["RerollPanel"].OnPressedFunctionName = "AttemptPanelReroll"
+			components["RerollPanel"].RerollFunctionName = "RerollBoonLoot"
+			components["RerollPanel"].RerollColor = lootData.LootColor
+			components["RerollPanel"].RerollId = lootData.ObjectId
 
-				local increment = 0
-				if CurrentRun.CurrentRoom.SpentRerolls then
-					increment = CurrentRun.CurrentRoom.SpentRerolls[lootData.ObjectId] or 0
-				end
-				cost = cost + increment
-			else
-				name = "RerollPanel_Blocked"
-				tooltip = "MetaUpgradeRerollBlockedHint"
-			end
-			local color = Color.White
-			if CurrentRun.NumRerolls < cost or cost < 0 then
-				color = Color.CostUnaffordable
-			end
+			components["RerollPanel"].Cost = cost
 
-			if baseCost > 0 then
-				components["RerollPanel"] = CreateScreenComponent({ Name = "ShopRerollButton", Scale = 1.0, Group = "Combat_Menu" })
-				Attach({ Id = components["RerollPanel"].Id, DestinationId = components.ShopBackground.Id, OffsetX = 0, OffsetY = 410 })
-				components["RerollPanel"].OnPressedFunctionName = "AttemptPanelReroll"
-				components["RerollPanel"].RerollFunctionName = "RerollBoonLoot"
-				components["RerollPanel"].RerollColor = lootData.LootColor
-				components["RerollPanel"].RerollId = lootData.ObjectId
-
-				components["RerollPanel"].Cost = cost
-
-				CreateTextBox({ Id = components["RerollPanel"].Id, Text = name, OffsetX = 28, OffsetY = -5,
-				ShadowColor = {0,0,0,1}, ShadowOffset={0,3}, OutlineThickness = 3, OutlineColor = {0,0,0,1},
-				FontSize = 28, Color = color, Font = "AlegreyaSansSCExtraBold", LuaKey = "TempTextData", LuaValue = { Amount = cost }})
-				SetInteractProperty({ DestinationId = components["RerollPanel"].Id, Property = "TooltipOffsetX", Value = 350 })
-				CreateTextBox({ Id = components["RerollPanel"].Id, Text = tooltip, FontSize = 1, Color = Color.Transparent, Font = "AlegreyaSansSCExtraBold", LuaKey = "TempTextData", LuaValue = { Amount = cost }})
-			end
+			CreateTextBox({ Id = components["RerollPanel"].Id, Text = name, OffsetX = 28, OffsetY = -5,
+			ShadowColor = {0,0,0,1}, ShadowOffset={0,3}, OutlineThickness = 3, OutlineColor = {0,0,0,1},
+			FontSize = 28, Color = color, Font = "AlegreyaSansSCExtraBold", LuaKey = "TempTextData", LuaValue = { Amount = cost }})
+			SetInteractProperty({ DestinationId = components["RerollPanel"].Id, Property = "TooltipOffsetX", Value = 350 })
+			CreateTextBox({ Id = components["RerollPanel"].Id, Text = tooltip, FontSize = 1, Color = Color.Transparent, Font = "AlegreyaSansSCExtraBold", LuaKey = "TempTextData", LuaValue = { Amount = cost }})
 		end
 	end
+
 end, LootChoiceExt)
