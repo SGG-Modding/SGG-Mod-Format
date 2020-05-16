@@ -7,13 +7,16 @@ local config = {
 LootChoiceExt.config = config
 
 LootChoiceExt.BaseChoices = GetTotalLootChoices()
-
--- Mods should wrap or override these functions but not the final one
-ModUtil.BaseOverride("GetTotalLootChoices", function()
+LootChoiceExt.DecideChoices = function()
 	return LootChoiceExt.BaseChoices + RandomInt( config.MinExtraLootChoices, config.MaxExtraLootChoices )
+end
+
+-- Mods should wrap or override these functions only
+ModUtil.BaseOverride("GetTotalLootChoices", function()
+	return LootChoiceExt.DecideChoices()
 end, LootChoiceExt)
 ModUtil.BaseOverride("CalcNumLootChoices", function()
-	local numChoices = GetTotalLootChoices() - GetNumMetaUpgrades("ReducedLootChoicesShrineUpgrade")
+	local numChoices = LootChoiceExt.DecideChoices() - GetNumMetaUpgrades("ReducedLootChoicesShrineUpgrade")
 	return numChoices
 end, LootChoiceExt)
 
