@@ -292,7 +292,7 @@ if ModUtil.Hades and not ModUtilHades then
 	
 	function ModUtil.Hades.PrintStackChunks( text, linespan, ... )
 		if not linespan then linespan = 90 end
-		for _,s in ipairs(ModUtil.ChunkText(ModUtil.ToString(text),linespan)) do
+		for _,s in ipairs(ModUtil.ChunkText(ModUtil.ToString(text),linespan,ModUtil.Hades.PrintStackCapacity)) do
 			ModUtil.Hades.PrintStack(s,...)
 		end
 	end
