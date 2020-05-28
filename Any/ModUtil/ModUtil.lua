@@ -99,6 +99,29 @@ if not ModUtil then
 		end
 	end
 
+	function ModUtil.ChunkText( text, chunkSize, maxChunks )
+		local chunks = {""}
+		local cs = 0
+		local ncs = 1
+		for chr in text:gmatch(".") do
+			cs = cs + 1
+			if cs > chunkSize or chr == "\n" then
+				ncs = ncs + 1
+				if maxChunks then
+					if ncs > maxChunks then
+						return chunks
+					end
+				end
+				chunks[ncs] = ""
+				cs = 0
+			end
+			if chr ~= "\n" then
+				chunks[ncs] = chunks[ncs] .. chr
+			end
+		end
+		return chunks
+	end
+
 	function ModUtil.InvertTable( Table )
 		local inverseTable = {}
 		for key,value in ipairs(tableArg) do

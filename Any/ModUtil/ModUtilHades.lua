@@ -1,5 +1,10 @@
 if ModUtil.Hades and not ModUtilHades then
 	
+	ModUtil.Hades={
+		PrintStackHeight = 10,
+		PrintStackCapacity = 80
+	}
+	
 	ModUtil.RegisterMod("ModUtilHades")
 	ModUtilHades = ModUtil.Hades
 	
@@ -152,15 +157,35 @@ if ModUtil.Hades and not ModUtilHades then
 
 	local function OrderPrintStack(screen,components)
 		
-		for k,v in pairs(screen.CullPrintStack) do
+		if screen.CullPrintStack then 
+			local v = screen.TextStack[1]
 			if v.obj then
 				Destroy({ Ids = v.obj.Id })
 				components["TextStack_" .. v.tid] = nil
 				v.obj = nil
 				screen.TextStack[v.tid]=nil
 			end
+			thread( function()
+				local v = screen.TextStack[2]
+				if v then
+					wait(v.data.Delay)
+					if v.obj then
+						screen.CullPrintStack = true
+					end
+				end
+			end)
+		else
+			thread( function()
+				local v = screen.TextStack[1]
+				if v then 
+					wait(v.data.Delay)
+					if v.obj then
+						screen.CullPrintStack = true
+					end
+				end
+			end)
 		end
-		screen.CullPrintStack = {}
+		screen.CullPrintStack = false
 		
 		for k,v in pairs(screen.TextStack) do
 			components["TextStack_" .. k] = nil
@@ -175,23 +200,23 @@ if ModUtil.Hades and not ModUtilHades then
 			return ClosePrintStack()
 		end
 		
-		local Ymul = 9
+		local Ymul = ModUtil.Hades.PrintStackHeight+1
 		local Ygap = 30
-		local Yoff = 260
+		local Yoff = 26*ModUtil.Hades.PrintStackHeight+22
 		local n =#screen.TextStack
 		
 		if n then
-			for k=n,math.max(1,n-Ymul+1),-1 do
+			for k=1,math.min(n,Ymul) do
 				v = screen.TextStack[k]
 				if v then
 					local data = v.data
 					screen.TextStack[k].obj = CreateScreenComponent({ Name = "rectangle01", Group = "PrintStack", X = -1000, Y = -1000})
 					local textStack = screen.TextStack[k].obj
 					components["TextStack_" .. k] = textStack
-					SetScaleX({Id = textStack.Id, Fraction = 1.55})
-					SetScaleY({Id = textStack.Id, Fraction = 0.085})
+					SetScaleX({Id = textStack.Id, Fraction = 10/6})
+					SetScaleY({Id = textStack.Id, Fraction = 0.1})
 					SetColor({ Id = textStack.Id, Color = data.Bgcol })
-					CreateTextBox({ Id = textStack.Id, Text = data.Text, FontSize = 15, OffsetX = 0, OffsetY = 0, Color = data.Color, Font = "UbuntuMonoBold", Justification = "Center" })
+					CreateTextBox({ Id = textStack.Id, Text = data.Text, FontSize = data.FontSize, OffsetX = 0, OffsetY = 0, Color = data.Color, Font = data.Font, Justification = "Center" })
 					Attach({ Id = textStack.Id, DestinationId = components.Background.Id, OffsetX = 220, OffsetY = -Yoff })
 					Yoff = Yoff - Ygap
 				end
@@ -200,23 +225,19 @@ if ModUtil.Hades and not ModUtilHades then
 		
 	end
 	
-	function ModUtil.Hades.PrintStack( text, delay, color, bgcol, sound)
-		if type(text) ~= "string" then
+	function ModUtil.Hades.PrintStack( text, delay, color, bgcol, fontsize, font, sound )		
+		if color == nil then color = {1,1,1,1} end
+		if bgcol == nil then bgcol = {0.590, 0.555, 0.657,0.125} end
+		if fontsize == nil then fontsize = 13 end
+		if font == nil then font = "UbuntuMonoBold" end
+		if sound == nil then sound = "/Leftovers/SFX/AuraOff" end
+		if delay == nil then delay = 3 end
+		
+		if type(text) ~= "string" then 
 			text = ModUtil.ToString(text)
 		end
 		text = " "..text.." "
-		if color == nil then
-			color = {1,1,1,1}
-		end
-		if bgcol == nil then
-			bgcol = {0,0,0,0}
-		end
-		if sound == nil then
-			sound = "/Leftovers/SFX/AuraOff"
-		end
-		if delay == nil then
-			delay = 4
-		end
+		
 		local first = false
 		if not ModUtil.Anchors.PrintStack then
 			first = true
@@ -229,20 +250,20 @@ if ModUtil.Hades and not ModUtilHades then
 			PlaySound({ Name = "/SFX/Menu Sounds/DialoguePanelOutMenu" })
 			components.Background = CreateScreenComponent({ Name = "BlankObstacle", Group = "PrintStack", X = ScreenCenterX, Y = 2*ScreenCenterY})
 			components.Backing = CreateScreenComponent({ Name = "TraitTray_Center", Group = "PrintStack"})
-			Attach({ Id = components.Backing.Id, DestinationId = components.Background.Id, OffsetX = -180, OffsetY = -150 })
+			Attach({ Id = components.Backing.Id, DestinationId = components.Background.Id, OffsetX = -180, OffsetY = 0 })
 			SetColor({ Id = components.Backing.Id, Color = {0.590, 0.555, 0.657, 0.8} })
 			SetScaleX({Id = components.Backing.Id, Fraction = 6.25})
-			SetScaleY({Id = components.Backing.Id, Fraction = 0.60})
+			SetScaleY({Id = components.Backing.Id, Fraction = 6/55*(2+ModUtil.Hades.PrintStackHeight)})
 			screen.KeepOpen = true
 			screen.TextStack = {}
-			screen.CullPrintStack = {}
-			screen.MaxStacks = 32
+			screen.CullPrintStack = false
+			screen.MaxStacks = ModUtil.Hades.PrintStackCapacity
 			
 			thread( function()
 				while screen do
 					wait(0.5)
 					if screen.CullEnabled then
-						if screen.CullPrintStack[1] then
+						if screen.CullPrintStack then
 							OrderPrintStack(screen,components)
 						end
 					end
@@ -250,23 +271,14 @@ if ModUtil.Hades and not ModUtilHades then
 			end)
 			
 		end
+	
+		if #screen.TextStack >= screen.MaxStacks then return end
 		
 		screen.CullEnabled = false
 		
-		local n =#screen.TextStack + 1
-		if n > screen.MaxStacks then
-			for i,v in ipairs(screen.TextStack) do
-				if i > n-screen.MaxStacks then break end
-				Destroy({ Ids = v.obj.Id })
-				v.obj = nil
-				components["TextStack_" .. v.tid] = nil
-				screen.TextStack[v.tid] = nil
-			end
-		end
-		
 		local newText = {}
 		newText.obj = CreateScreenComponent({ Name = "rectangle01", Group = "PrintStack"})
-		newText.data = {Text = text, Color = color, Bgcol = bgcol}
+		newText.data = {Delay = delay, Text = text, Color = color, Bgcol = bgcol, Font = font, FontSize = fontsize}
 		SetColor({ Id = newText.obj.Id, Color = {0,0,0,0}})
 		table.insert(screen.TextStack, newText)
 		
@@ -274,15 +286,15 @@ if ModUtil.Hades and not ModUtilHades then
 		
 		OrderPrintStack(screen,components)
 		
-		thread( function()
-			wait(delay)
-			if newText.obj then
-				table.insert(screen.CullPrintStack,newText)
-			end
-		end)
-		
 		screen.CullEnabled = true
 		
+	end
+	
+	function ModUtil.Hades.PrintStackChunks( text, linespan, ... )
+		if not linespan then linespan = 90 end
+		for _,s in ipairs(ModUtil.ChunkText(ModUtil.ToString(text),linespan)) do
+			ModUtil.Hades.PrintStack(s,...)
+		end
 	end
 	
 	-- Custom Menus
