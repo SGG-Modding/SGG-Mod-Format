@@ -85,17 +85,66 @@ if not ModUtil then
 
 	-- Data Misc
 
+	function ModUtil.ValueString(o)
+		if type(o) == 'string' then
+			return '"'..o..'"'
+		end
+		return tostring(o)
+	end
+	
+	function ModUtil.KeyString(o)
+		if type(o) == 'number' then o = o..'.' end
+		return tostring(o)
+	end
+
+	function ModUtil.TableKeysString(o)
+		if type(o) == 'table' then
+			local first = true
+			local s = ''
+			for k,v in pairs(o) do
+				if not first then s = s .. ', ' else first = false end
+				s = s .. ModUtil.KeyString(k)
+			end
+			return s
+		end
+	end
+
 	function ModUtil.ToString(o)
 		--https://stackoverflow.com/a/27028488
 		if type(o) == 'table' then
-			local s = '{ '
+			local first = true
+			local s = '{'
 			for k,v in pairs(o) do
-				if type(k) ~= 'number' then k = '"'..k..'"' end
-				s = s .. '['..k..'] = ' .. ModUtil.ToString(v) .. ','
+				if not first then s = s .. ', ' else first = false end
+				s = s .. ModUtil.KeyString(k) ..' = ' .. ModUtil.ToString(v)
 			end
-			return s .. '} '
+			return s .. '}'
 		else
-			return tostring(o)
+			return ModUtil.ValueString(o)
+		end
+	end
+
+	function ModUtil.ToStringLimited(o,m,n,t,j)
+		if type(o) == 'table' then
+			local first = true
+			local s = ''
+			local i = 0
+			if not j then j = 1 end
+			for k,v in pairs(o) do
+				if type(v) == t[j] then
+					i = i + 1
+					if n then if i > n+m and m < i then return s end end
+					if not first then s = s .. ', ' else first = false end
+					if #t>j then
+						s = s .. ModUtil.KeyString(k) ..' = ('..ModUtil.ToStringLimited(v,m,n,t,j+1)..')'
+					else
+						s = s .. ModUtil.KeyString(k) ..' = '..ModUtil.ValueString(v)
+					end
+				end
+			end
+			return s
+		else
+			return ModUtil.ValueString(o)
 		end
 	end
 

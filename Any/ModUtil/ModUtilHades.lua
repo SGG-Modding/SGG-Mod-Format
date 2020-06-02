@@ -91,7 +91,7 @@ if ModUtil.Hades and not ModUtilHades then
 
 	function ModUtil.Hades.PrintDisplay( text , delay, color )
 		if type(text) ~= "string" then
-			text = ModUtil.ToString(text)
+			text = tostring(text)
 		end
 		text = " "..text.." "
 		if color == nil then
@@ -117,7 +117,7 @@ if ModUtil.Hades and not ModUtilHades then
 
 	function ModUtil.Hades.PrintOverhead(text, delay, color, dest)
 		if type(text) ~= "string" then
-			text = ModUtil.ToString(text)
+			text = tostring(text)
 		end
 		text = " "..text.." "
 		if dest == nil then
@@ -200,9 +200,9 @@ if ModUtil.Hades and not ModUtilHades then
 			return ClosePrintStack()
 		end
 		
-		local Ymul = ModUtil.Hades.PrintStackHeight+1
+		local Ymul = screen.StackHeight+1
 		local Ygap = 30
-		local Yoff = 26*ModUtil.Hades.PrintStackHeight+22
+		local Yoff = 26*screen.StackHeight+22
 		local n =#screen.TextStack
 		
 		if n then
@@ -234,7 +234,7 @@ if ModUtil.Hades and not ModUtilHades then
 		if delay == nil then delay = 3 end
 		
 		if type(text) ~= "string" then 
-			text = ModUtil.ToString(text)
+			text = tostring(text)
 		end
 		text = " "..text.." "
 		
@@ -247,17 +247,19 @@ if ModUtil.Hades and not ModUtilHades then
 		local components = screen.Components
 		
 		if first then 
+		
+			screen.KeepOpen = true
+			screen.TextStack = {}
+			screen.CullPrintStack = false
+			screen.MaxStacks = ModUtil.Hades.PrintStackCapacity
+			screen.StackHeight = ModUtil.Hades.PrintStackHeight
 			PlaySound({ Name = "/SFX/Menu Sounds/DialoguePanelOutMenu" })
 			components.Background = CreateScreenComponent({ Name = "BlankObstacle", Group = "PrintStack", X = ScreenCenterX, Y = 2*ScreenCenterY})
 			components.Backing = CreateScreenComponent({ Name = "TraitTray_Center", Group = "PrintStack"})
 			Attach({ Id = components.Backing.Id, DestinationId = components.Background.Id, OffsetX = -180, OffsetY = 0 })
 			SetColor({ Id = components.Backing.Id, Color = {0.590, 0.555, 0.657, 0.8} })
 			SetScaleX({Id = components.Backing.Id, Fraction = 6.25})
-			SetScaleY({Id = components.Backing.Id, Fraction = 6/55*(2+ModUtil.Hades.PrintStackHeight)})
-			screen.KeepOpen = true
-			screen.TextStack = {}
-			screen.CullPrintStack = false
-			screen.MaxStacks = ModUtil.Hades.PrintStackCapacity
+			SetScaleY({Id = components.Backing.Id, Fraction = 6/55*(2+screen.StackHeight)})
 			
 			thread( function()
 				while screen do
@@ -292,7 +294,7 @@ if ModUtil.Hades and not ModUtilHades then
 	
 	function ModUtil.Hades.PrintStackChunks( text, linespan, ... )
 		if not linespan then linespan = 90 end
-		for _,s in ipairs(ModUtil.ChunkText(ModUtil.ToString(text),linespan,ModUtil.Hades.PrintStackCapacity)) do
+		for _,s in ipairs(ModUtil.ChunkText(text,linespan,ModUtil.Hades.PrintStackCapacity)) do
 			ModUtil.Hades.PrintStack(s,...)
 		end
 	end
