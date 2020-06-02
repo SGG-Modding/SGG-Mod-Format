@@ -124,21 +124,27 @@ if not ModUtil then
 		end
 	end
 
-	function ModUtil.ToStringLimited(o,m,n,t,j)
+	function ModUtil.ToStringLimited(o,n,m,t,j)
 		if type(o) == 'table' then
 			local first = true
 			local s = ''
 			local i = 0
+			local go = true
 			if not j then j = 1 end
+			if not m then m = 0 end
+			if not t then t = {} end
 			for k,v in pairs(o) do
-				if type(v) == t[j] then
+				if t[j] then go = type(v) == t[j] or t[j] == true end
+				if go then
 					i = i + 1
-					if n then if i > n+m and m < i then return s end end
-					if not first then s = s .. ', ' else first = false end
-					if #t>j then
-						s = s .. ModUtil.KeyString(k) ..' = ('..ModUtil.ToStringLimited(v,m,n,t,j+1)..')'
-					else
-						s = s .. ModUtil.KeyString(k) ..' = '..ModUtil.ValueString(v)
+					if n then if i > n+m then return s end end
+					if m < i then
+						if not first then s = s .. ', ' else first = false end
+						if type(v) == "table" and t[j+1] then
+							s = s .. ModUtil.KeyString(k) ..' = ('..ModUtil.ToStringLimited(v,n,m,t,j+1)..')'
+						else
+							s = s .. ModUtil.KeyString(k) ..' = '..ModUtil.ValueString(v)
+						end
 					end
 				end
 			end
