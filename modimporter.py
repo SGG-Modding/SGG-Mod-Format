@@ -491,21 +491,22 @@ def loadmodfile(filename,echo=True):
                     loadcommand(reldir,tokens[len(kwrd_xml):],to,1,mode_xml,ep=ep)
                 elif can_sjson and startswith(tokens,kwrd_sjson,1):
                     loadcommand(reldir,tokens[len(kwrd_sjson):],to,1,mode_sjson,ep=ep)
-                
+
+def isedited(base):
+    with open(base,'r') as basefile:
+        for line in basefile:
+              if modified+modified_modrep in line:
+                  return True
+    return False
+         
 def sortmods(base,mods):
     codes[base].sort(key=lambda x: x.ep)
     for i in range(len(mods)):
         mods[i].id=i
 
 def makeedit(base,mods,echo=True):
-    refresh = False
-    with open(base,'r') as basefile:
-        for line in basefile:
-              if modified+modified_modrep in line:
-                  refresh = True
-                  break
     Path(bakdir+"/"+"/".join(base.split("/")[:-1])).mkdir(parents=True, exist_ok=True)
-    if refresh and in_directory(bakdir+"/"+base+baktype,False):
+    if isedited(base) and in_directory(bakdir+"/"+base+baktype,False):
         copyfile(bakdir+"/"+base+baktype,base)
     else:
         copyfile(base,bakdir+"/"+base+baktype)
@@ -540,11 +541,34 @@ def makeedit(base,mods,echo=True):
     with open(base,'a') as basefile:
         basefile.write(modifiedstr.replace(modified,modified+modified_modrep+str(datetime.now())))
 
+def cleanup(folder=bakdir,echo=True):
+    if valid_scan(folder):
+        empty = True
+        for content in os.scandir(folder):
+            if cleanup(content,echo):
+                empty = False
+        if empty:
+            os.rmdir(folder)
+            return False
+        return True
+    path = folder.path[len(bakdir)+1:]
+    if isedited(path):
+        if echo:
+            print(path)
+        copyfile(folder.path,path)
+        os.remove(folder.path)
+        return False
+    os.remove(folder.path)
+    return False
+
 def start():
     global codes
     codes = defaultdict(list)
+
+    print("Cleaning edits... (if there are issues validate/reinstall files)\n")
+    cleanup()
     
-    print("Reading mod files...\n")
+    print("\nReading mod files...\n")
     Path(modsdir).mkdir(parents=True, exist_ok=True)
     for mod in os.scandir(modsdir):
         loadmodfile(mod.path.replace("\\","/")+"/"+modfile)
