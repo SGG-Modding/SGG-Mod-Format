@@ -493,11 +493,10 @@ def loadmodfile(filename,echo=True):
                     loadcommand(reldir,tokens[len(kwrd_sjson):],to,1,mode_sjson,ep=ep)
 
 def isedited(base):
-    if os.path.exists(base):
-        with open(base,'r') as basefile:
-            for line in basefile:
-                  if modified+modified_modrep in line:
-                      return True
+    with open(base,'r') as basefile:
+        for line in basefile:
+              if modified+modified_modrep in line:
+                  return True
     return False
          
 def sortmods(base,mods):
@@ -553,14 +552,16 @@ def cleanup(folder=bakdir,echo=True):
             return False
         return True
     path = folder.path[len(bakdir)+1:]
-    if isedited(path):
-        if echo:
-            print(path)
-        copyfile(folder.path,path)
+    if os.path.isfile(path):
+        if isedited(path):
+            if echo:
+                print(path)
+            copyfile(folder.path,path)
+            os.remove(folder.path)
+            return False
         os.remove(folder.path)
         return False
-    os.remove(folder.path)
-    return False
+    return True
 
 def start():
     global codes
