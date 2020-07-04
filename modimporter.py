@@ -4,6 +4,7 @@ import os
 from collections import defaultdict
 from pathlib import Path
 
+import logging
 from collections import OrderedDict
 from shutil import copyfile
 from datetime import datetime
@@ -19,6 +20,8 @@ except ModuleNotFoundError:
     print("Get the SJSON module at https://pypi.org/project/SJSON/\n")
 
 ## Global Settings
+
+logging.basicConfig(filename="modimporter.log.txt",filemode='w')
 
 modsdir = "Mods"
 modsrel = ".."
@@ -587,5 +590,12 @@ def start():
     print("\n"+str(bs)+" base file"+"s"*(bs!=1)+" import"+"s"*(bs==1)+" a total of "+str(ms)+" mod file"+"s"*(ms!=1)+".")
 
 if __name__ == '__main__':
-    start()
+    try:
+        start()
+    except Exception as e:
+        print("There was a critical error, now attempting to display the error")
+        print("(Run this program again in a terminal that does not close or check the log file if this doesn't work)")
+        logging.getLogger("MainExceptions").exception(e)
+        input("Press any key to see the error...")
+        raise RuntimeError("Encountered uncaught exception during program") from e
     input("Press any key to end program...")
