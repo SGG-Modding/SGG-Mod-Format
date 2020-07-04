@@ -493,10 +493,11 @@ def loadmodfile(filename,echo=True):
                     loadcommand(reldir,tokens[len(kwrd_sjson):],to,1,mode_sjson,ep=ep)
 
 def isedited(base):
-    with open(base,'r') as basefile:
-        for line in basefile:
-              if modified+modified_modrep in line:
-                  return True
+    if os.path.exists(base):
+        with open(base,'r') as basefile:
+            for line in basefile:
+                  if modified+modified_modrep in line:
+                      return True
     return False
          
 def sortmods(base,mods):
@@ -566,6 +567,7 @@ def start():
     codes = defaultdict(list)
 
     print("Cleaning edits... (if there are issues validate/reinstall files)\n")
+    Path(bakdir).mkdir(parents=True, exist_ok=True)
     cleanup()
     
     print("\nReading mod files...\n")
