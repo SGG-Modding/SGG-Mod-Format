@@ -16,9 +16,11 @@ if ModUtil.Hades and not ModUtilHades then
 		thread( function()
 			while ModUtil.UnfreezeLoop do
 				wait(15)
-				if (not AreScreensActive()) and (not IsInputAllowed({})) then
-					UnfreezePlayerUnit()
-					DisableShopGamepadCursor()
+				if ModUtil.SafeGet(CurrentRun,{'Hero'}) then
+					if (not AreScreensActive()) and (not IsInputAllowed({})) then
+						UnfreezePlayerUnit()
+						DisableShopGamepadCursor()
+					end
 				end
 			end
 		end)
@@ -78,13 +80,16 @@ if ModUtil.Hades and not ModUtilHades then
 		SetColor({ Id = screen.Components.BackgroundDim.Id, Color = {0.090, 0.090, 0.090, 0} })
 	end
 	
-	function ModUtil.Hades.PostOpenMenu( group )
-		local screen = ModUtil.Anchors.Menu[group]
+	function ModUtil.Hades.PostOpenMenu( screen )
 		FreezePlayerUnit()
 		EnableShopGamepadCursor()
 		thread(HandleWASDInput, screen)
 		HandleScreenInput(screen)
 		return screen
+	end
+
+	function ModUtil.Hades.GetMenuScreen( group )
+		return ModUtil.Anchors.Menu[group]
 	end
 
 	-- Debug Printing
@@ -377,7 +382,7 @@ if ModUtil.Hades and not ModUtilHades then
 			ShadowBlur = 0, ShadowColor = {0,0,0,1}, ShadowOffset={0, 2}, Justification = "Center"
 		})
 		
-		return ModUtil.Hades.PostOpenMenu( group )
+		return ModUtil.Hades.PostOpenMenu( screen )
 	end
 	
 	function ModUtil.Hades.CloseMenuYesNo( screen, button )
