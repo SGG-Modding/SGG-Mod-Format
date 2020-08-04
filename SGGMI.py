@@ -7,7 +7,7 @@ https://github.com/MagicGonads/sgg-mod-format
 __all__ = [
     #functions
         "main", "globalsconfig", "start", "preplogfile", "cleanup",
-        "safeget", "safeset", "dictmap",
+        "safeget", "safeset", "dictmap", "hashfile",
         "lua_addimport",
         "xml_safget", "xml_read", "xml_write", "xml_map", "xml_merge",
         "sjson_safeget", "sjson_clearDNE", "sjson_read", "sjson_write",
@@ -19,22 +19,22 @@ __all__ = [
         "deploydir", "modsdir", "basedir", "editdir",
         "logsdir", "logfile_prefix", "logfile_suffix",
     #modules
-        "logging","xml","sjson","cli","yaml",
+        "logging","xml","sjson","yaml","hashlib"
     #other
         "DNE",
         ]
-__version__ = '1.0a-r1'
+__version__ = '1.0a-r2'
 __author__ = 'Andre Issa'
 
 # Dependencies
 
-import os
+import os, sys, stat
 import logging
 import warnings
-from sys import argv
+import hashlib
 from getopt import getopt
 from pathlib import Path
-from shutil import copyfile
+from shutil import copyfile, rmtree
 from datetime import datetime
 from collections import defaultdict
 
@@ -68,6 +68,7 @@ editrel = "Edit Cache"
 logsrel = "Logs"
 logfile_prefix = "log-modimp "
 logfile_suffix = ".txt"
+edited_suffix = ".hash"
 
 # Data Functionality
 
@@ -400,6 +401,23 @@ class Signal():
         return self.__class__.__name__ + \
                "("+self.truth.__repr__() + ',' + self.message.__repr__() + ')'
 
+hashes = ['md5']
+def hashfile(file,out=None,modes=hashes,blocksize=65536):
+    lines = []
+    for mode in modes:
+        hasher = hashlib.new(mode)
+        with open(file, 'rb') as afile:
+            buf = afile.read(blocksize)
+            while len(buf) > 0:
+                hasher.update(buf)
+                buf = afile.read(blocksize)
+            lines.append(mode+'\t'+hasher.hexdigest())
+    content = "\n".join(lines)
+    if out:
+        with open(out, 'w') as ofile:
+            ofile.write(content)
+    return content
+
 def is_subfile(file,folder):
     if os.path.exists(file):
         if os.path.commonprefix([file, folder]) == folder:
@@ -635,12 +653,11 @@ def modfile_load(filename,echo=True):
             modfile_load(file.path.replace("\\","/"),echo)
 
 def isedited(base):
-    if os.path.exists(editdir+'/'+base):
-        return False # future: hashed/compressed database
-    with open(scopedir+'/'+scope+'/'+base,'r') as basefile:
-        for line in basefile:
-              if EDTAG in line:
-                  return True
+    if os.path.isfile(editdir+'/'+base+edited_suffix):
+        efile = open(editdir+'/'+base+edited_suffix,'r')
+        data = efile.read()
+        efile.close()
+        return data != hashfile(scopedir+'/'+scope+'/'+base)
     return False
 
 def sortmods(base,mods):
@@ -674,17 +691,9 @@ def makeedit(base,mods,echo=True):
     except Exception as e:
         copyfile(basedir+"/"+base,scopedir+'/'+scope+'/'+base)
         raise RuntimeError("Encountered uncaught exception while implementing mod changes") from e
-
-    modifiedstr = ""
-    if mods[0].mode == 'lua':
-        modifiedstr = "\n"+EDTAG_lua
-    elif mods[0].mode == 'xml':
-        modifiedstr = "\n"+EDTAG_xml
-    elif mods[0].mode == 'sjson':
-        modifiedstr = "\n"+EDTAG_sjson
-    with open(scopedir+'/'+scope+'/'+base,'a') as basefile:
-        basefile.write(modifiedstr.replace(EDTAG,EDTAG+thetime()))
-
+    
+    Path(editdir+"/"+"/".join(base.split("/")[:-1])).mkdir(parents=True, exist_ok=True)
+    hashfile(scopedir+'/'+scope+'/'+base,editdir+'/'+base+edited_suffix)
 
 def cleanup(folder=None,echo=True):
     if os.path.isdir(folder):
@@ -697,7 +706,7 @@ def cleanup(folder=None,echo=True):
             return False
         return True
     folderpath = folder.path.replace("\\","/")
-    path = folderpath[len(basedir):]
+    path = folderpath[len(basedir)+1:]
     if os.path.isfile(scopedir+'/'+scope+'/'+path):
         if isedited(path):
             copyfile(folderpath,scopedir+'/'+scope+'/'+path)
@@ -744,6 +753,9 @@ def globalsconfig(condict={}):
     logsdir = os.path.join(os.path.realpath(logsrel), '').replace("\\","/")
     preplogfile()
 
+    global hashes
+    hashes = safeget(condict,'hashes',hashes)
+
     global  thisfile, localdir, localparent            
     thisfile = os.path.realpath(__file__).replace("\\","/")
     localdir = '/'.join(thisfile.split('/')[:-1])
@@ -762,6 +774,9 @@ def globalsconfig(condict={}):
         alt_warn(MSG_MissingFolderProfile.format(folderprofile,configfile))
     updatescope(safeget(profile,'game_dir_path','..'))
 
+    global default_target
+    default_target = profile.get('default_target',default_target)
+
     global scopemods, modsrel, modsabs, baserel, baseabs, editrel, editabs
     scopemods = safeget(profile,'folder_deployed',scopemods)
     modsrel = safeget(profile,'folder_mods',modsrel)
@@ -771,21 +786,20 @@ def globalsconfig(condict={}):
     global basedir
     basedir = os.path.join( \
         os.path.realpath(scopedir+'/'+scope+'/'+baserel) \
-        , '').replace("\\","/")
+        , '').replace("\\","/")[:-1]
     global editdir
     editdir = os.path.join( \
         os.path.realpath(scopedir+'/'+scope+'/'+editrel) \
-        , '').replace("\\","/")
+        , '').replace("\\","/")[:-1]
     global modsdir
     modsdir = os.path.join( \
         os.path.realpath(scopedir+'/'+scope+'/'+modsrel) \
-        , '').replace("\\","/")
+        , '').replace("\\","/")[:-1]
     global deploydir
     deploydir = os.path.join( \
         os.path.realpath(scopedir+'/'+scope+'/'+scopemods) \
-        , '').replace("\\","/")
+        , '').replace("\\","/")[:-1]
     
-
     global local_in_scope, base_in_scope, edit_in_scope, \
            mods_in_scope, deploy_in_scope, game_has_scope
     local_in_scope = base_in_scope = edit_in_scope \
@@ -811,7 +825,7 @@ def globalsconfig(condict={}):
 
 def configsetup(predict={},postdict={}):
     condict = YML_framework
-    if yaml and not CFG_overwrite:
+    if yaml and not cfg_overwrite:
         try:
             with open(configfile) as f:
                 condict.update(yaml.load(f, Loader=yaml.FullLoader))
@@ -819,14 +833,14 @@ def configsetup(predict={},postdict={}):
             pass
 
     dictmap(condict,predict)
-    if CFG_modify:
+    if cfg_modify:
         dictmap(condict,postdict)
 
     if yaml:
         with open(configfile, 'w') as f:
             yaml.dump(condict, f)
 
-    if CFG_modify:
+    if cfg_modify:
         exit()
     
     dictmap(condict,postdict)
@@ -869,9 +883,11 @@ MSG_CommandLineHelp = """
     -e --echo
         disable echo
     -i --input
-        disable input (input given defaults)
+        disable input (input gets passed defaults)
     -c --config <relative file path>
         choose config file
+    -H --hashes <space separated hash names>
+        hashes used to compare files in edit cache (ie, "md5 sha1")
     -g --gamedir <relative folder path>
         temporarily use a different game directory
     -p --profile <profile name>
@@ -880,11 +896,6 @@ MSG_CommandLineHelp = """
         map parsable json to the default profile
         
 """
-
-EDTAG = "MODIFIED by Mod Importer @ "
-EDTAG_lua = "-- "+EDTAG+" "
-EDTAG_xml = "<!-- "+EDTAG+" -->"
-EDTAG_sjson = "/* "+EDTAG+" */"
 
 default_target = []
 default_priority = 100
@@ -947,6 +958,7 @@ YML_framework = {
     'echo':True,
     'input':True,
     'log':True,
+    'hashes':hashes,
     'profile':None,
     'profile_default': {
         'default_target':None,
@@ -970,11 +982,20 @@ def start(*args,**kwargs):
         
     global codes
     codes = defaultdict(list)
-    global default_target
-    default_target = profile.get('default_target',default_target)
 
+    # remove anything in the base cache that is not in the edit cache
     alt_print("Cleaning edits... (if there are issues validate/reinstall files)")
     cleanup(basedir)
+
+    # remove the edit cache from the last run
+    def onerror(func, path, exc_info):
+        if not os.access(path, os.W_OK):
+            os.chmod(path, stat.S_IWUSR)
+            func(path)
+        else:
+            raise
+    rmtree(editdir, onerror)
+    Path(editdir).mkdir(parents=True, exist_ok=True)
     
     alt_print("\nReading mod files...")
     for mod in os.scandir(modsdir):
@@ -988,14 +1009,16 @@ def start(*args,**kwargs):
     bs = len(codes)
     ms = sum(map(len,codes.values()))
 
-    alt_print("\n"+str(bs)+" base file"+"s"*(bs!=1)+" import"+"s"*(bs==1)+" a total of "+str(ms)+" mod file"+"s"*(ms!=1)+".")
+    alt_print("\n"+str(bs)+" base file"+"s"*(bs!=1)+" import"+"s"*(bs==1)
+              +" a total of "+str(ms)+" mod file"+"s"*(ms!=1)+".")
 
 def main_action(*args,**kwargs):
     try:
         start(*args,**kwargs)
     except Exception as e:
         alt_print("There was a critical error, now attempting to display the error")
-        alt_print("(Run this program again in a terminal that does not close or check the log file if this doesn't work)")
+        alt_print("(Run this program again in a terminal that does not close"
+                    +" or check the log file if this doesn't work)")
         logging.getLogger("MainExceptions").exception(e)
         alt_input("Press any key to see the error...")
         raise RuntimeError("Encountered uncaught exception during program") from e
@@ -1005,21 +1028,22 @@ def main(*args,**kwargs):
     predict = {}
     postdict = {}
     
-    opts,_ = getopt(args,'hmdoleic:g:p:s:',
+    opts,_ = getopt(args,'hmdoleic:g:p:s:H:',
                          ['config=','log_folder=','echo','input','default',
                           'log','log-prefix=','log-suffix=','profile=,help',
-                          'default-set=','gamedir=','modify','overwrite'])
+                          'default-set=','gamedir=','modify','overwrite',
+                          '--hash='])
 
-    global CFG_modify, CFG_overwrite, default_profile, configfile, gamedir
+    global cfg_modify, cfg_overwrite, default_profile, configfile, gamedir
     
     for k,v in opts:
         if k in {'-h','--help'}:
             print(MSG_CommandLineHelp)
             return
         elif k in {'-m','--modify'}:
-            CFG_modify = True
+            cfg_modify = True
         elif k in {'-o','--overwrite'}:
-            CFG_overwrite = True
+            cfg_overwrite = True
         elif k in {'-d','--default'}:
             default_profile = True
         elif k in {'-l','--log'}:
@@ -1034,20 +1058,22 @@ def main(*args,**kwargs):
             gamedir = v
         elif k in {'-p','--profile'}:
             postdict['profile']=v
+        elif k in {'-p','--profile'}:
+            postdict['hashes']=v.split(' ')
         elif k in {'-s','--default-set'}:
             import json
             predict.setdefault('profile_default',{})
-            predict['profile_default']=json.loads(v)
+            predict['profile_default']=json.loads(v) 
 
     main_action(*args,predict=predict,postdict=postdict)
 
 do_echo = True
 do_log = True
 do_input = True
-CFG_modify = False
-CFG_overwrite = False
+cfg_modify = False
+cfg_overwrite = False
 default_profile = False
 gamedir = None
 
 if __name__ == '__main__':
-    main(*argv[1:])
+    main(*sys.argv[1:])
