@@ -657,7 +657,7 @@ def isedited(base):
         efile = open(editdir+'/'+base+edited_suffix,'r')
         data = efile.read()
         efile.close()
-        return data != hashfile(scopedir+'/'+scope+'/'+base)
+        return data == hashfile(scopedir+'/'+scope+'/'+base)
     return False
 
 def sortmods(base,mods):
@@ -1042,6 +1042,8 @@ def main(*args,**kwargs):
             return
         elif k in {'-m','--modify'}:
             cfg_modify = True
+            if yaml is None:
+                alt_warn("PyYAML module not found! Config cannot be written.")
         elif k in {'-o','--overwrite'}:
             cfg_overwrite = True
         elif k in {'-d','--default'}:
@@ -1067,13 +1069,16 @@ def main(*args,**kwargs):
 
     main_action(*args,predict=predict,postdict=postdict)
 
-do_echo = True
 do_log = True
-do_input = True
 cfg_modify = False
 cfg_overwrite = False
 default_profile = False
 gamedir = None
 
 if __name__ == '__main__':
+    do_echo = True
+    do_input = True
     main(*sys.argv[1:])
+else:
+    do_echo = False
+    do_input = False
