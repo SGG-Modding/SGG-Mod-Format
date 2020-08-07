@@ -6,7 +6,7 @@ https://github.com/MagicGonads/sgg-mod-format
 
 __all__ = [
     #functions
-        "main", "globalsconfig", "start", "preplogfile", "cleanup",
+        "main", "configure_globals", "start", "preplogfile", "cleanup",
         "safeget", "safeset", "dictmap", "hashfile",
         "lua_addimport",
         "xml_safget", "xml_read", "xml_write", "xml_map", "xml_merge",
@@ -15,7 +15,7 @@ __all__ = [
     #variables
         "scopedir", "thisfile", "localdir", "localparent", "configfile",
         "local_in_scope", "base_in_scope", "edit_in_scope", "deploy_in_scope",
-        "profiles", "profile", "folderprofile", "codes", "game_has_scope",
+        "profiles", "profile", "codes", "game_has_scope", "deploy_from_scope",
         "deploydir", "modsdir", "basedir", "editdir",
         "logsdir", "logfile_prefix", "logfile_suffix",
     #modules
@@ -23,7 +23,7 @@ __all__ = [
     #other
         "DNE",
         ]
-__version__ = '1.0a-r2'
+__version__ = '1.0a-r3'
 __author__ = 'Andre Issa'
 
 # Dependencies
@@ -37,6 +37,8 @@ from pathlib import Path
 from shutil import copyfile, rmtree
 from datetime import datetime
 from collections import defaultdict
+from distutils.dir_util import copy_tree
+from distutils.errors import DistutilsFileError
 
 ## Importer Config
 
@@ -99,7 +101,7 @@ def safeset(data,key,value):
             data[key]=value
 
 def dictmap(indict,mapdict):
-    if mapdict is DNE:
+    if mapdict is DNE or mapdict is indict:
         return indict
     if type(indict)==type(mapdict):
         if isinstance(mapdict,dict):
@@ -112,7 +114,7 @@ def dictmap(indict,mapdict):
 
 def lua_addimport(base,path):
     with open(base,'a') as basefile:
-        basefile.write("\nImport \"../"+scopemods+"/"+path+"\"")
+        basefile.write("\nImport \"../"+path+"\"")
 
 ## XML mapping
 
@@ -418,30 +420,30 @@ def hashfile(file,out=None,modes=hashes,blocksize=65536):
             ofile.write(content)
     return content
 
-def is_subfile(file,folder):
-    if os.path.exists(file):
-        if os.path.commonprefix([file, folder]) == folder:
-            if os.path.isfile(file):
+def is_subfile(filename,folder):
+    if os.path.exists(filename):
+        if os.path.commonprefix([filename, folder]) == folder:
+            if os.path.isfile(filename):
                 return Signal(True,"SubFile")
             return Signal(False,"SubDir")
         return Signal(False,"NonSub")
     return Signal(False,"DoesNotExist")
 
-def in_scope(file):
-    if os.path.exists(file):
+def in_scope(filename,permit_DNE=False):
+    if os.path.exists(filename) or permit_DNE:
         if local_in_scope:
-            tfile = file[len(os.path.commonprefix([file, localdir+'/'+scope])):]
+            tfile = filename[len(os.path.commonprefix([filename, localdir+'/'+scope])):]
             tfile = tfile.split("/")[1]
             if tfile in localsources:
                 return Signal(False,"IsLocalSource")
         if base_in_scope:
-            if os.path.commonprefix([file, basedir]) == basedir:
+            if os.path.commonprefix([filename, basedir]) == basedir:
                 return Signal(False,"InBase")
         if edit_in_scope:
-            if os.path.commonprefix([file, editdir]) == editdir:
+            if os.path.commonprefix([filename, editdir]) == editdir:
                 return Signal(False,"InEdits")
-        if os.path.commonprefix([file, scopedir]) == scopedir:
-            if os.path.isfile(file):
+        if os.path.commonprefix([filename, scopedir]) == scopedir:
+            if os.path.isfile(filename):
                 return Signal(True,"FileInScope")
             return Signal(False,"DirInScope")
         return Signal(False,"OutOfScope")
@@ -461,8 +463,8 @@ def alt_print(*args,**kwargs):
         os.remove(tlog)
         return logging.getLogger(__name__).info(data)
 
-def alt_warn(message,**kwargs):
-    warnings.warn(message,**kwargs)
+def alt_warn(message):
+    warnings.warn(message,stacklevel = 2)
     if do_log and do_echo:
         logging.getLogger(__name__).warning(message)
 
@@ -485,6 +487,10 @@ def alt_input(*args,**kwargs):
         if do_input:
             return input()
         return kwargs.get('default',None)
+
+def alt_exit(code=None):
+    alt_input("Press any key to end program...")
+    exit(code)
 
 def modfile_splitlines(body):
     glines = map(lambda s: s.strip().split("\""),body.split("\n"))
@@ -541,11 +547,7 @@ def modfile_tokenise(line):
 
 class Mod():
     """ modcode data structure """
-    priority = None
-    before = None
-    after = None
-    rbefore = None
-    rafter = None
+    
     mode = ""
     
     def __init__(self,src,data,mode,key,index,**load):
@@ -554,7 +556,8 @@ class Mod():
         self.mode = mode
         self.key = key
         self.id = index
-        self.priority = load.get("priority",default_priority)
+        self.load = {"priority":default_priority}
+        self.load.update(load)
 
 
 # FILE/MOD LOADING
@@ -562,9 +565,9 @@ class Mod():
 def modfile_startswith(tokens,keyword,n):
     return tokens[:len(keyword)] == keyword and len(tokens)>=len(keyword)+1
 
-def modfile_loadcommand(reldir,tokens,to,n,mode,**load):
+def modfile_loadcommand(reldir,tokens,to,n,mode,cfg={},**load):
     for scopepath in to:
-        path = scopedir+'/'+scope+'/'+scopepath
+        path = scopedir+'/'+scopepath
         if in_scope(path):
             args = [tokens[i::n] for i in range(n)]
             for i in range(len(args[-1])):
@@ -589,15 +592,17 @@ def modfile_loadcommand(reldir,tokens,to,n,mode,**load):
                     for j in range(abs(num)):
                         sources = [x[j] if isinstance(x,list) \
                                    else x for x in paths]
+                        for src in sources:
+                            todeploy[src]=dictmap(todeploy.get(src,cfg),cfg)
+                        f = lambda x: map(lambda y: deploy_from_scope+'/'+y,x)
                         codes[scopepath].append(Mod('\n'.join(sources),
-                                               tuple(sources),mode,scopepath,
+                                               tuple(f(sources)),mode,scopepath,
                                                len(codes[scopepath]),**load))
 
 def modfile_load(filename,echo=True):
     sig = is_subfile(filename,modsdir)
     if sig:
-        prefix = os.path.commonprefix(
-            [filename,os.path.realpath(modsdir).replace("\\","/")])
+        prefix = os.path.commonprefix([filename,modsdir])
         relname = filename[len(prefix)+1:]
         try:
             file = open(filename,'r')
@@ -609,6 +614,7 @@ def modfile_load(filename,echo=True):
         reldir = "/".join(relname.split("/")[:-1])
         p = default_priority
         to = default_target
+        cfg = {}
         
         with file:    
             for line in modfile_splitlines(file.read()):
@@ -634,17 +640,26 @@ def modfile_load(filename,echo=True):
                     for s in tokens[1:]:
                         modfile_load(reldir+"/"+
                                      s.replace("\"","").replace("\\","/"),echo)
-
+                elif modfile_startswith(tokens,KWRD_deploy,1):
+                    for s in tokens[1:]:
+                        check = is_subfile(s,modsdir)
+                        if check:
+                            todeploy[s]=dictmap(todeploy.get(s,cfg),cfg)
+                        elif check.message == "SubDir":
+                            for f in os.scandir(s):
+                                S=f.path.replace("\\","/")
+                                todeploy[S]=dictmap(todeploy.get(S,cfg),cfg)
+                            
                 elif modfile_startswith(tokens,KWRD_import,1):
                     modfile_loadcommand(reldir,tokens[len(KWRD_import):],
-                                        to,1,'lua',priority=p)
+                                        to,1,'lua',cfg,priority=p)
                 elif modfile_startswith(tokens,KWRD_xml,1):
                     modfile_loadcommand(reldir,tokens[len(KWRD_xml):],
-                                        to,1,'xml',priority=p)
+                                        to,1,'xml',cfg,priority=p)
                 elif modfile_startswith(tokens,KWRD_sjson,1):
                     if sjson:
                         modfile_loadcommand(reldir,tokens[len(KWRD_sjson):],
-                                        to,1,'sjson',priority=p)
+                                        to,1,'sjson',cfg,priority=p)
                     else:
                         alt_warn("SJSON module not found! Skipped command: "+line)
                         
@@ -652,25 +667,27 @@ def modfile_load(filename,echo=True):
         for file in os.scandir(filename):
             modfile_load(file.path.replace("\\","/"),echo)
 
-def isedited(base):
+def is_edited(base):
     if os.path.isfile(editdir+'/'+base+edited_suffix):
         efile = open(editdir+'/'+base+edited_suffix,'r')
         data = efile.read()
         efile.close()
-        return data == hashfile(scopedir+'/'+scope+'/'+base)
+        return data == hashfile(scopedir+'/'+base)
     return False
 
-def sortmods(base,mods):
-    codes[base].sort(key=lambda x: x.priority)
+def deploy_mods():
+    for fs,cfg in todeploy.items():
+        Path(deploydir+"/"+"/".join(fs.split("/")[:-1])).mkdir(parents=True, exist_ok=True)
+        copyfile(modsdir+'/'+fs,deploydir+"/"+fs)
+
+def sort_mods(base,mods):
+    codes[base].sort(key=lambda x: x.load['priority'])
     for i in range(len(mods)):
         mods[i].id=i
 
-def makeedit(base,mods,echo=True):
+def make_base_edits(base,mods,echo=True):
     Path(basedir+"/"+"/".join(base.split("/")[:-1])).mkdir(parents=True, exist_ok=True)
-    if isedited(base) and in_scope(basedir+"/"+base).message == "InBase" :
-        copyfile(basedir+"/"+base,scopedir+'/'+scope+'/'+base)
-    else:
-        copyfile(scopedir+'/'+scope+'/'+base,basedir+"/"+base)
+    copyfile(scopedir+'/'+base,basedir+"/"+base)
     if echo:
         i=0
         alt_print("\n"+base)
@@ -678,22 +695,22 @@ def makeedit(base,mods,echo=True):
     try:
         for mod in mods:
             if mod.mode == 'lua':
-                lua_addimport(scopedir+'/'+scope+'/'+base,mod.data[0])
+                lua_addimport(scopedir+'/'+base,mod.data[0])
             elif mod.mode == 'xml':
-                xml_merge(scopedir+'/'+scope+'/'+base,mod.data[0])
+                xml_merge(scopedir+'/'+base,mod.data[0])
             elif mod.mode == 'sjson':
-                sjson_merge(scopedir+'/'+scope+'/'+base,mod.data[0])
+                sjson_merge(scopedir+'/'+base,mod.data[0])
             if echo:
                 k = i+1
                 for s in mod.src.split('\n'):
                     i+=1
                     alt_print(" #"+str(i)+" +"*(k<i)+" "*((k>=i)+5-len(str(i)))+s)
     except Exception as e:
-        copyfile(basedir+"/"+base,scopedir+'/'+scope+'/'+base)
+        copyfile(basedir+"/"+base,scopedir+'/'+base)
         raise RuntimeError("Encountered uncaught exception while implementing mod changes") from e
     
     Path(editdir+"/"+"/".join(base.split("/")[:-1])).mkdir(parents=True, exist_ok=True)
-    hashfile(scopedir+'/'+scope+'/'+base,editdir+'/'+base+edited_suffix)
+    hashfile(scopedir+'/'+base,editdir+'/'+base+edited_suffix)
 
 def cleanup(folder=None,echo=True):
     if os.path.isdir(folder):
@@ -707,14 +724,21 @@ def cleanup(folder=None,echo=True):
         return True
     folderpath = folder.path.replace("\\","/")
     path = folderpath[len(basedir)+1:]
-    if os.path.isfile(scopedir+'/'+scope+'/'+path):
-        if isedited(path):
-            copyfile(folderpath,scopedir+'/'+scope+'/'+path)
+    if os.path.isfile(scopedir+'/'+path):
+        if is_edited(path):
+            copyfile(folderpath,scopedir+'/'+path)
         if echo:
             alt_print(path)
         os.remove(folderpath)
         return False
     return True
+
+def restorebase(echo=True):
+    cleanup(basedir,echo)
+    try:
+        copy_tree(basedir,scopedir)
+    except DistutilsFileError:
+        pass    
 
 # Global Preprocessing
 
@@ -729,15 +753,17 @@ def preplogfile():
                             level = logging.INFO)
     logging.captureWarnings(do_log and not do_echo)
 
-def updatescope(rel='..'):
-    if gamedir is not None:
-        rel = gamedir
-    global scopedir
-    scopedir = os.path.join(os.path.realpath(rel), '').replace("\\","/")[:-1]
+def update_scope(rel='..'):
+    if gamerel is not None:
+        rel = gamerel
+    global gamedir
+    gamedir = os.path.join(os.path.realpath(rel), '').replace("\\","/")[:-1]
     global scopeparent
-    scopeparent = scopedir.split('/')[-1]
+    scopeparent = gamedir.split('/')[-1]
+    global scopedir
+    scopedir = gamedir+'/'+scope
 
-def globalsconfig(condict={}):
+def configure_globals(condict={},flow=True):
 
     global do_echo,do_log,do_input
     do_echo = safeget(condict,'echo',do_echo)
@@ -764,15 +790,25 @@ def globalsconfig(condict={}):
     global profiles, profile, folderprofile
     profiles = {}
     profiles.update(safeget(condict,'profiles',{}))
+    profile = None
 
     folderprofile = safeget(condict,'profile',localparent)
-    profile = safeget(profiles,folderprofile,None)
-    if default_profile:
-        profile = safeget(condict,'profile_default',profile)
-    if profile is None:
-        profile = {}
-        alt_warn(MSG_MissingFolderProfile.format(folderprofile,configfile))
-    updatescope(safeget(profile,'game_dir_path','..'))
+    if profile_use_special:
+            profile = safeget(condict,'profile_special',profile)
+    while profile is None:
+        profile = safeget(profiles,folderprofile,None)
+        if profile is None:
+            if not flow:
+                alt_warn(MSG_MissingFolderProfile.format(configfile))
+                profile = {}
+                break
+            folderprofile = alt_input("Type the name of a profile, "+
+                                      "or leave empty to cancel:\n\t> ")
+            if not folderprofile:
+                alt_warn(MSG_MissingFolderProfile.format(configfile))
+                alt_exit(1)
+
+    update_scope(safeget(profile,'game_dir_path','..'))
 
     global default_target
     default_target = profile.get('default_target',default_target)
@@ -785,19 +821,19 @@ def globalsconfig(condict={}):
 
     global basedir
     basedir = os.path.join( \
-        os.path.realpath(scopedir+'/'+scope+'/'+baserel) \
+        os.path.realpath(scopedir+'/'+baserel) \
         , '').replace("\\","/")[:-1]
     global editdir
     editdir = os.path.join( \
-        os.path.realpath(scopedir+'/'+scope+'/'+editrel) \
+        os.path.realpath(scopedir+'/'+editrel) \
         , '').replace("\\","/")[:-1]
     global modsdir
     modsdir = os.path.join( \
-        os.path.realpath(scopedir+'/'+scope+'/'+modsrel) \
+        os.path.realpath(scopedir+'/'+modsrel) \
         , '').replace("\\","/")[:-1]
     global deploydir
     deploydir = os.path.join( \
-        os.path.realpath(scopedir+'/'+scope+'/'+scopemods) \
+        os.path.realpath(scopedir+'/'+scopemods) \
         , '').replace("\\","/")[:-1]
     
     global local_in_scope, base_in_scope, edit_in_scope, \
@@ -805,27 +841,30 @@ def globalsconfig(condict={}):
     local_in_scope = base_in_scope = edit_in_scope \
                      = mods_in_scope = deploy_in_scope = None
 
-    game_has_scope = in_scope(scopedir+'/'+scope).message == "DirInScope"
+    game_has_scope = in_scope(scopedir).message == "DirInScope"
     local_in_scope = in_scope(thisfile).message == "FileInScope"
-    Path(basedir).mkdir(parents=True, exist_ok=True)
-    base_in_scope = in_scope(basedir).message == "DirInScope"
-    Path(editdir).mkdir(parents=True, exist_ok=True)
-    edit_in_scope = in_scope(editdir).message == "DirInScope"
-    Path(modsdir).mkdir(parents=True, exist_ok=True)
-    mods_in_scope = in_scope(basedir).message == "DirInScope"
-    Path(deploydir).mkdir(parents=True, exist_ok=True)
-    deploy_in_scope = in_scope(deploydir).message == "DirInScope"
 
     if not game_has_scope:
-        alt_warn(MSG_GameHasNoScope.format(scopedir,scope))
+        alt_warn(MSG_GameHasNoScope.format(scopedir,scopeparent,configfile))
+        if flow:
+            alt_exit(1)
+
+    base_in_scope = in_scope(basedir,True).message == "DirInScope"
+    edit_in_scope = in_scope(editdir,True).message == "DirInScope"
+    mods_in_scope = in_scope(basedir,True).message == "DirInScope"    
+    deploy_in_scope = in_scope(deploydir,True).message == "DirInScope"
         
     if not deploy_in_scope:
-        alt_warn(MSG_DeployNotInScope.format(deploydir,scopedir+'/'+scope))
+        alt_warn(MSG_DeployNotInScope.format(deploydir,scopedir,configfile))
+        if flow:
+            alt_exit(1)
 
+    global deploy_from_scope
+    deploy_from_scope = deploydir[len(os.path.commonprefix([scopedir,deploydir]))+1:]
 
 def configsetup(predict={},postdict={}):
     condict = YML_framework
-    if yaml and not cfg_overwrite:
+    if yaml is not None and not cfg_overwrite:
         try:
             with open(configfile) as f:
                 condict.update(yaml.load(f, Loader=yaml.FullLoader))
@@ -836,38 +875,50 @@ def configsetup(predict={},postdict={}):
     if cfg_modify:
         dictmap(condict,postdict)
 
-    if yaml:
+    if yaml is not None:
         with open(configfile, 'w') as f:
             yaml.dump(condict, f)
 
     if cfg_modify:
-        exit()
+        alt_print("Config modification successful.")
+        alt_exit(0)
     
     dictmap(condict,postdict)
-    globalsconfig(condict)
+    configure_globals(condict)
 
 # Private Globals
 
-MSG_MissingFolderProfile = """
-{0} is not a default or configured folder profile or is configured incorrectly.
-Create a folder profile for {0} using:
- * config file (requires PyYAML): `profiles` in '{1}'
+MSG_ConfigHelp = """
+Create or configure a folder profile using:
+ * config file (requires PyYAML): `profiles` in '{0}'
 Or change the active folder profile using:
- * config file (requires PyYAML): `profile` in '{1}'
- * terminal options: --profile
-Use and modify the default profile:
- * terminal options: --default, --default-set, --gamedir
+ * config file (requires PyYAML): `profile` in '{0}'
+ * terminal option: --profile
+Use and modify the special profile:
+ * terminal options:
+        --special
+        --special-set <profile YAML> (requires PyYAML)
+Override the game path temporarily:
+ * terminal option: --game <path to game>
 """
+
+MSG_MissingFolderProfile = """
+The selected profile is not a default or configured folder profile or is configured incorrectly.
+Make sure the profile is configured to the actual game directory.
+Alternatively, make sure this program is in the appropriate location.
+"""+MSG_ConfigHelp
 
 MSG_GameHasNoScope = """
-The Game at '{0}' is missing subfolder '{1}'
-This means deploying mods is impossible!
-"""
+The folder '{0}' does not exist.
+Are you sure {1} is the game's proper location?
+You may need to change the path 'game_dir_path' in the profile's config.
+"""+MSG_ConfigHelp.format('{2}')
 
 MSG_DeployNotInScope = """
-Deployment folder '{0}' is not a subfolder of '{1}'
+Deployment folder '{0}' is not a subfolder of '{1}'.
 This means deploying mods is impossible!
-"""
+Configure the deployment path 'folder_deployed' to be within the content.
+"""+MSG_ConfigHelp.format('{2}')
 
 MSG_CommandLineHelp = """
     -h --help
@@ -876,8 +927,8 @@ MSG_CommandLineHelp = """
         modify the config and halt
     -o --overwrite
         overwrite the config with default
-    -d --default
-        use default (runtime) profile
+    -s --special
+        use special profile
     -l --log
         disable logging
     -e --echo
@@ -888,12 +939,12 @@ MSG_CommandLineHelp = """
         choose config file
     -H --hashes <space separated hash names>
         hashes used to compare files in edit cache (ie, "md5 sha1")
-    -g --gamedir <relative folder path>
+    -g --game <relative folder path>
         temporarily use a different game directory
     -p --profile <profile name>
         use a particular folder profile
-    -s --default-set <parsable json>
-        map parsable json to the default profile
+    -S --special-set <profile YAML>
+        map YAML to the special profile (requires PyYAML)
         
 """
 
@@ -911,6 +962,7 @@ KWRD_to = ["To"]
 KWRD_load = ["Load"]
 KWRD_priority = ["Priority"]
 KWRD_include = ["Include"]
+KWRD_deploy = ["Deploy"]
 KWRD_import = ["Import"]
 KWRD_xml = ["XML"]
 KWRD_sjson = ["SJSON"]
@@ -919,40 +971,31 @@ scope = "Content"
 importscope = "Scripts"
 localsources = {"sggmodimp.py","sjson.py","cli","yaml"}
 
+profile_template = {
+    'default_target':None,
+    'game_dir_path':None,
+    'folder_deployed':None,
+    'folder_mods':None,
+    'folder_basecache':None,
+    'folder_editcache':None,
+    }
+
 default_profiles = {
     "Hades": {
         'default_target':["Scripts/RoomManager.lua"],
-        'game_dir_path':None,
-        'folder_deployed':None,
-        'folder_mods':None,
-        'folder_basecache':None,
-        'folder_editcache':None,
         },
     "Pyre": {
         'default_target':["Scripts/Campaign.lua","Scripts/MPScripts.lua"],
-        'game_dir_path':None,
-        'folder_deployed':None,
-        'folder_mods':None,
-        'folder_basecache':None,
-        'folder_editcache':None,
         },
     "Transistor": {
         'default_target':["Scripts/AllCampaignScripts.txt"],
-        'game_dir_path':None,
-        'folder_deployed':None,
-        'folder_mods':None,
-        'folder_basecache':None,
-        'folder_editcache':None,
         },
     "Bastion": {
-        'default_target':None,
-        'game_dir_path':None,
-        'folder_deployed':None,
-        'folder_mods':None,
-        'folder_basecache':None,
-        'folder_editcache':None,
         },
 }
+
+for k,v in default_profiles.items():
+    default_profiles[k]=dictmap(profile_template.copy(),v)
 
 YML_framework = {
     'echo':True,
@@ -960,14 +1003,7 @@ YML_framework = {
     'log':True,
     'hashes':hashes,
     'profile':None,
-    'profile_default': {
-        'default_target':None,
-        'game_dir_path':None,
-        'folder_deployed':None,
-        'folder_mods':None,
-        'folder_basecache':None,
-        'folder_editcache':None,
-        },
+    'profile_special':profile_template,
     'profiles':default_profiles,
     'log_folder':None,
     'log_prefix':None,
@@ -982,12 +1018,14 @@ def start(*args,**kwargs):
         
     global codes
     codes = defaultdict(list)
+    global todeploy
+    todeploy = {}
 
     # remove anything in the base cache that is not in the edit cache
     alt_print("Cleaning edits... (if there are issues validate/reinstall files)")
-    cleanup(basedir)
+    restorebase()
 
-    # remove the edit cache from the last run
+    # remove the edit cache and base cache from the last run
     def onerror(func, path, exc_info):
         if not os.access(path, os.W_OK):
             os.chmod(path, stat.S_IWUSR)
@@ -996,20 +1034,26 @@ def start(*args,**kwargs):
             raise
     rmtree(editdir, onerror)
     Path(editdir).mkdir(parents=True, exist_ok=True)
+    rmtree(basedir, onerror)
+    Path(basedir).mkdir(parents=True, exist_ok=True)
+    Path(modsdir).mkdir(parents=True, exist_ok=True)
+    Path(deploydir).mkdir(parents=True, exist_ok=True)
     
     alt_print("\nReading mod files...")
     for mod in os.scandir(modsdir):
         modfile_load(mod.path.replace("\\","/")+"/"+modfile)
 
+    deploy_mods()
+    
     alt_print("\nModified files for "+folderprofile+" mods:")
     for base, mods in codes.items():
-        sortmods(base,mods)
-        makeedit(base,mods)
+        sort_mods(base,mods)
+        make_base_edits(base,mods)
 
     bs = len(codes)
     ms = sum(map(len,codes.values()))
 
-    alt_print("\n"+str(bs)+" base file"+"s"*(bs!=1)+" import"+"s"*(bs==1)
+    alt_print("\n"+str(bs)+" file"+("s are"," is")[bs==1]+" modified by"
               +" a total of "+str(ms)+" mod file"+"s"*(ms!=1)+".")
 
 def main_action(*args,**kwargs):
@@ -1017,8 +1061,8 @@ def main_action(*args,**kwargs):
         start(*args,**kwargs)
     except Exception as e:
         alt_print("There was a critical error, now attempting to display the error")
-        alt_print("(Run this program again in a terminal that does not close"
-                    +" or check the log file if this doesn't work)")
+        alt_print("(if this doesn't work, try again in a terminal"
+                  +" which doesn't close, or check the log files)")
         logging.getLogger("MainExceptions").exception(e)
         alt_input("Press any key to see the error...")
         raise RuntimeError("Encountered uncaught exception during program") from e
@@ -1028,13 +1072,13 @@ def main(*args,**kwargs):
     predict = {}
     postdict = {}
     
-    opts,_ = getopt(args,'hmdoleic:g:p:s:H:',
-                         ['config=','log_folder=','echo','input','default',
+    opts,_ = getopt(args,'hmsoleic:g:p:S:H:',
+                         ['config=','log_folder=','echo','input','special',
                           'log','log-prefix=','log-suffix=','profile=,help',
-                          'default-set=','gamedir=','modify','overwrite',
+                          'special-set=','game=','modify','overwrite',
                           '--hash='])
 
-    global cfg_modify, cfg_overwrite, default_profile, configfile, gamedir
+    global cfg_modify, cfg_overwrite, profile_use_special, configfile, gamerel
     
     for k,v in opts:
         if k in {'-h','--help'}:
@@ -1046,8 +1090,8 @@ def main(*args,**kwargs):
                 alt_warn("PyYAML module not found! Config cannot be written.")
         elif k in {'-o','--overwrite'}:
             cfg_overwrite = True
-        elif k in {'-d','--default'}:
-            default_profile = True
+        elif k in {'-s','--special'}:
+            profile_use_special = True
         elif k in {'-l','--log'}:
             postdict['log']
         elif k in {'-e','--echo'}:
@@ -1056,24 +1100,26 @@ def main(*args,**kwargs):
             postdict['input']=False
         elif k in {'-c','--config'}:
             configfile = v
-        elif k in {'-g','--gamedir'}:
-            gamedir = v
+        elif k in {'-g','--game'}:
+            gamerel = v
         elif k in {'-p','--profile'}:
             postdict['profile']=v
         elif k in {'-p','--profile'}:
             postdict['hashes']=v.split(' ')
-        elif k in {'-s','--default-set'}:
-            import json
-            predict.setdefault('profile_default',{})
-            predict['profile_default']=json.loads(v) 
+        elif k in {'-S','--special-set'}:
+            if yaml is not None:
+                predict.setdefault('profile_special',{})
+                predict['profile_special']=yaml.load(v, Loader=yaml.FullLoader)
+            else:
+                alt_warn("PyYAML module not found! cannot parse command.")
 
     main_action(*args,predict=predict,postdict=postdict)
 
 do_log = True
 cfg_modify = False
 cfg_overwrite = False
-default_profile = False
-gamedir = None
+profile_use_special = False
+gamerel = None
 
 if __name__ == '__main__':
     do_echo = True
