@@ -9,21 +9,19 @@ __all__ = [
         "main", "configure_globals", "start", "preplogfile", "cleanup",
         "safeget", "safeset", "dictmap", "hashfile",
         "lua_addimport",
-        "xml_safget", "xml_read", "xml_write", "xml_map", "xml_merge",
+        "xml_safeget", "xml_read", "xml_write", "xml_map", "xml_merge",
         "sjson_safeget", "sjson_clearDNE", "sjson_read", "sjson_write",
         "sjson_map", "sjson_merge", 
     #variables
-        "scopedir", "thisfile", "localdir", "localparent", "configfile",
-        "local_in_scope", "base_in_scope", "edit_in_scope", "deploy_in_scope",
-        "profiles", "profile", "codes", "game_has_scope", "deploy_from_scope",
-        "deploydir", "modsdir", "basedir", "editdir",
-        "logsdir", "logfile_prefix", "logfile_suffix",
+        "configfile", "logfile_prefix", "logfile_suffix", "edited_suffix",
+        "scopemods", "modsrel", "baserel", "editrel", "logsrel", "gamerel",
+        "do_log", "cfg_modify", "cfg_overwrite", "profile_use_special",
     #modules
-        "logging","xml","sjson","yaml","hashlib"
+        "logging","xml","sjson","yaml","hashlib",
     #other
         "DNE",
         ]
-__version__ = '1.0a-r3'
+__version__ = '1.0a-r4'
 __author__ = 'Andre Issa'
 
 # Dependencies
@@ -432,7 +430,7 @@ def is_subfile(filename,folder):
 def in_scope(filename,permit_DNE=False):
     if os.path.exists(filename) or permit_DNE:
         if local_in_scope:
-            tfile = filename[len(os.path.commonprefix([filename, localdir+'/'+scope])):]
+            tfile = filename[len(os.path.commonprefix([filename, localdir])):]
             tfile = tfile.split("/")[1]
             if tfile in localsources:
                 return Signal(False,"IsLocalSource")
@@ -713,6 +711,8 @@ def make_base_edits(base,mods,echo=True):
     hashfile(scopedir+'/'+base,editdir+'/'+base+edited_suffix)
 
 def cleanup(folder=None,echo=True):
+    if not os.path.exists(folder):
+        return True
     if os.path.isdir(folder):
         empty = True
         for content in os.scandir(folder):
@@ -722,6 +722,8 @@ def cleanup(folder=None,echo=True):
             os.rmdir(folder)
             return False
         return True
+    if isinstance(folder,str):
+        return None
     folderpath = folder.path.replace("\\","/")
     path = folderpath[len(basedir)+1:]
     if os.path.isfile(scopedir+'/'+path):
@@ -734,11 +736,11 @@ def cleanup(folder=None,echo=True):
     return True
 
 def restorebase(echo=True):
-    cleanup(basedir,echo)
-    try:
-        copy_tree(basedir,scopedir)
-    except DistutilsFileError:
-        pass    
+    if not cleanup(basedir,echo):
+        try:
+            copy_tree(basedir,scopedir)
+        except DistutilsFileError:
+            pass    
 
 # Global Preprocessing
 
@@ -754,8 +756,6 @@ def preplogfile():
     logging.captureWarnings(do_log and not do_echo)
 
 def update_scope(rel='..'):
-    if gamerel is not None:
-        rel = gamerel
     global gamedir
     gamedir = os.path.join(os.path.realpath(rel), '').replace("\\","/")[:-1]
     global scopeparent
@@ -808,7 +808,7 @@ def configure_globals(condict={},flow=True):
                 alt_warn(MSG_MissingFolderProfile.format(configfile))
                 alt_exit(1)
 
-    update_scope(safeget(profile,'game_dir_path','..'))
+    update_scope(safeget(profile,'game_dir_path',gamerel))
 
     global default_target
     default_target = profile.get('default_target',default_target)
@@ -820,21 +820,32 @@ def configure_globals(condict={},flow=True):
     editrel = safeget(profile,'folder_editcache',editrel)
 
     global basedir
-    basedir = os.path.join( \
-        os.path.realpath(scopedir+'/'+baserel) \
-        , '').replace("\\","/")[:-1]
+    basedir = (scopedir+'/'+baserel).replace("\\","/")
+    if not os.path.isabs(basedir):
+        basedir = os.path.join( \
+            os.path.realpath(basedir) \
+            , '').replace("\\","/")[:-1]
+    
     global editdir
-    editdir = os.path.join( \
-        os.path.realpath(scopedir+'/'+editrel) \
-        , '').replace("\\","/")[:-1]
+    editdir = (scopedir+'/'+editrel).replace("\\","/")
+    if not os.path.isabs(editdir):
+        editdir = os.path.join( \
+            os.path.realpath(editdir) \
+            , '').replace("\\","/")[:-1]
+    
     global modsdir
-    modsdir = os.path.join( \
-        os.path.realpath(scopedir+'/'+modsrel) \
-        , '').replace("\\","/")[:-1]
+    modsdir = (scopedir+'/'+modsrel).replace("\\","/")
+    if not os.path.isabs(modsdir):
+        modsdir = os.path.join( \
+            os.path.realpath(modsdir) \
+            , '').replace("\\","/")[:-1]
+        
     global deploydir
-    deploydir = os.path.join( \
-        os.path.realpath(scopedir+'/'+scopemods) \
-        , '').replace("\\","/")[:-1]
+    deploydir = (scopedir+'/'+scopemods).replace("\\","/")
+    if not os.path.isabs(deploydir):
+        deploydir = os.path.join( \
+            os.path.realpath(deploydir) \
+            , '').replace("\\","/")[:-1]
     
     global local_in_scope, base_in_scope, edit_in_scope, \
            mods_in_scope, deploy_in_scope, game_has_scope
@@ -1119,7 +1130,7 @@ do_log = True
 cfg_modify = False
 cfg_overwrite = False
 profile_use_special = False
-gamerel = None
+gamerel = '..'
 
 if __name__ == '__main__':
     do_echo = True
