@@ -16,14 +16,14 @@ __all__ = [
         "scopedir", "thisfile", "localdir", "localparent", "configfile",
         "local_in_scope", "base_in_scope", "edit_in_scope", "deploy_in_scope",
         "profiles", "profile", "codes", "game_has_scope", "deploy_from_scope",
-        "deploydir", "modsdir", "basedir", "editdir",
+        "deploydir", "modsdir", "basedir", "editdir", "todeploy",
         "logsdir", "logfile_prefix", "logfile_suffix",
     #modules
         "logging","xml","sjson","yaml","hashlib"
     #other
         "DNE",
         ]
-__version__ = '1.0a-r3'
+__version__ = '1.0a-r4'
 __author__ = 'Andre Issa'
 
 # Dependencies
@@ -713,6 +713,8 @@ def make_base_edits(base,mods,echo=True):
     hashfile(scopedir+'/'+base,editdir+'/'+base+edited_suffix)
 
 def cleanup(folder=None,echo=True):
+    if not os.path.exists(folder):
+        return True
     if os.path.isdir(folder):
         empty = True
         for content in os.scandir(folder):
@@ -722,6 +724,8 @@ def cleanup(folder=None,echo=True):
             os.rmdir(folder)
             return False
         return True
+    if isinstance(folder,str):
+        return None
     folderpath = folder.path.replace("\\","/")
     path = folderpath[len(basedir)+1:]
     if os.path.isfile(scopedir+'/'+path):
@@ -729,16 +733,16 @@ def cleanup(folder=None,echo=True):
             copyfile(folderpath,scopedir+'/'+path)
         if echo:
             alt_print(path)
-        os.remove(folderpath)
+        os.remove(basedir+'/'+path)
         return False
     return True
 
 def restorebase(echo=True):
-    cleanup(basedir,echo)
-    try:
-        copy_tree(basedir,scopedir)
-    except DistutilsFileError:
-        pass    
+    if not cleanup(basedir,echo):
+        try:
+            copy_tree(basedir,scopedir)
+        except DistutilsFileError:
+            pass    
 
 # Global Preprocessing
 
