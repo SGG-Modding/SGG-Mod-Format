@@ -1,19 +1,29 @@
 ModUtil.RegisterMod("LootChoiceExt")
 
 local config = {
-	MinExtraLootChoices = 0,
-	MaxExtraLootChoices = 0
+	MinExtraLootChoices = 1,
+	MaxExtraLootChoices = 2
 }
 LootChoiceExt.config = config
 
-LootChoiceExt.BaseChoices = GetTotalLootChoices()
+local baseChoices = GetTotalLootChoices()
 
--- Mods should wrap or override these functions but not the final one
+-- Other mods should override this value
+LootChoiceExt.Choices = baseChoices
+
+LootChoiceExt.GetBaseChoices = function()
+	return baseChoices
+end
+
+OnAnyLoad{ function()
+	LootChoiceExt.LastLootChoices = LootChoiceExt.Choices + RandomInt( config.MinExtraLootChoices, config.MaxExtraLootChoices )
+end}
+
 ModUtil.BaseOverride("GetTotalLootChoices", function()
-	return LootChoiceExt.BaseChoices + RandomInt( config.MinExtraLootChoices, config.MaxExtraLootChoices )
+	return LootChoiceExt.LastLootChoices
 end, LootChoiceExt)
 ModUtil.BaseOverride("CalcNumLootChoices", function()
-	local numChoices = GetTotalLootChoices() - GetNumMetaUpgrades("ReducedLootChoicesShrineUpgrade")
+	local numChoices = LootChoiceExt.LastLootChoices - GetNumMetaUpgrades("ReducedLootChoicesShrineUpgrade")
 	return numChoices
 end, LootChoiceExt)
 
@@ -242,7 +252,7 @@ ModUtil.BaseOverride("CreateBoonLootButtons", function( lootData )
 			Color = Color.Transparent,
 			Width = 615,
 			})
-			thread( TraitLockedPresentation, { Components = components, Id = purchaseButtonKey, OffsetX = itemLocationX + buttonOffsetX, OffsetY = iconOffsetY + itemLocationY } )
+			thread( TraitLockedPresentation, { squashY = squashY, squashTI = squashTI, Components = components, Id = purchaseButtonKey, OffsetX = itemLocationX + buttonOffsetX, OffsetY = iconOffsetY + itemLocationY })
 		end
 
 		if upgradeData.Icon ~= nil then
