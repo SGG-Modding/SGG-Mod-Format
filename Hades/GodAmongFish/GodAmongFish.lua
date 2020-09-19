@@ -28,10 +28,11 @@ ModUtil.LoadOnce( function()
 				[c]={
 						FishingPointChance = config.FishingPointChance,
 						FishingPointRequirements = {
-							RequiredMinRoomsSinceFishingPoint = config.FishingPointRequirements,
+							RequiredMinRoomsSinceFishingPoint = config.RequiredMinRoomsSinceFishingPoint,
 						},
 					}
 			})
 		end
+		OverwriteTableKeys( RoomData, RoomSetData[k] )
 	end
 end)
