@@ -7,6 +7,9 @@ local config = {
 	MaxFakeDunks = 0,
 	FishingPointChance = 1,
 	RequiredMinRoomsSinceFishingPoint = 1,
+	ClearFishingPointRequirements = true,
+	GiveUnlimitedSkeletalLure = true,
+	GiveHugeCatch = true
 }
 
 ModUtil.LoadOnce( function()
@@ -17,22 +20,32 @@ ModUtil.LoadOnce( function()
 		WayLateInterval = config.WayLateInterval,
 	})
 	for k,v in pairs(RoomSetData) do
-		local c = "Base"..k
-		if k == "Base" then
-			c = "BaseRoom"
-		end
-		local room = ModUtil.SafeGet( RoomData, {c,"FishingPointChance"})
+		local room = ModUtil.SafeGet( RoomSetData, {k,"FishingPointChance"})
 		if room then
-			ModUtil.SafeSet( RoomData, {c,"FishingPointRequirements","RequiredCosmetics"}, {} )
-			ModUtil.MapSetTable( RoomData , {
-				[c]={
-						FishingPointChance = config.FishingPointChance,
-						FishingPointRequirements = {
-							RequiredMinRoomsSinceFishingPoint = config.RequiredMinRoomsSinceFishingPoint,
-						},
-					}
+			if config.ClearFishingPointRequirements then
+				ModUtil.SafeSet( v, {"FishingPointRequirements"}, {} )
+			end
+			ModUtil.MapSetTable( v, {
+				FishingPointChance = config.FishingPointChance,
+				FishingPointRequirements = {
+					RequiredMinRoomsSinceFishingPoint = config.RequiredMinRoomsSinceFishingPoint,
+				},
 			})
+			OverwriteTableKeys( RoomData, v )
 		end
-		OverwriteTableKeys( RoomData, RoomSetData[k] )
 	end
 end)
+
+ModUtil.WrapBaseFunction( "StartNewRun", function( StartNewRun, ... )
+	local ret = StartNewRun( ... )
+	if config.GiveUnlimitedSkeletalLure then
+		local traitData = GetProcessedTraitData({ Unit = ret.Hero, TraitName = "TemporaryForcedFishingPointTrait", Rarity = "Common" })
+		traitData.RemainingUses = math.inf
+		TraitData[traitData.Name].RemainingUses = traitData.RemainingUses
+		AddTraitToHero({ TraitData = traitData })
+	end
+	if config.GiveHugeCatch then
+		AddTraitToHero({ TraitData = GetProcessedTraitData({ Unit = ret.Hero, TraitName = "FishingTrait", Rarity = "Legendary" }) })
+	end
+	return ret
+end, "GodAmongFish")
