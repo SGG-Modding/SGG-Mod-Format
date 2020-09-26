@@ -501,3 +501,44 @@ ModUtil.BaseOverride("CreateBoonLootButtons", function( lootData )
 	end
 
 end, LootChoiceExt)
+
+ModUtil.BaseOverride("DestroyBoonLootButtons", function( lootData )
+	local components = ScreenAnchors.ChoiceScreen.Components
+	local toDestroy = {}
+	for index = 1, GetTotalLootChoices() do
+		local destroyIndexes = {
+			"PurchaseButton"..index,
+			"PurchaseButton"..index.. "Lock",
+			"PurchaseButton"..index.. "Icon",
+			"PurchaseButton"..index.. "ExchangeIcon",
+			"PurchaseButton"..index.. "ExchangeIconFrame",
+			"PurchaseButton"..index.. "QuestIcon",
+			"Backing"..index,
+			"PurchaseButton"..index.. "Frame",
+			"PurchaseButton"..index.. "Patch"
+		}
+		for i, indexName in pairs( destroyIndexes ) do
+			if components[indexName] then
+				table.insert(toDestroy, components[indexName].Id)
+				components[indexName] = nil
+			end
+		end
+	end
+	if components["RerollPanel"] then
+		table.insert(toDestroy, components["RerollPanel"].Id)
+		components["RerollPanel"] = nil
+	end
+	if ScreenAnchors.ChoiceScreen.SacrificedTraitId then
+		table.insert(toDestroy, ScreenAnchors.ChoiceScreen.SacrificedTraitId )
+		ScreenAnchors.ChoiceScreen.SacrificedTraitId = nil
+	end
+	if ScreenAnchors.ChoiceScreen.SacrificedFrameId then
+		table.insert(toDestroy, ScreenAnchors.ChoiceScreen.SacrificedFrameId )
+		ScreenAnchors.ChoiceScreen.SacrificedFrameId = nil
+	end
+	if ScreenAnchors.ChoiceScreen.ActivateSwapId then
+		table.insert(toDestroy, ScreenAnchors.ChoiceScreen.ActivateSwapId )
+		ScreenAnchors.ChoiceScreen.ActivateSwapId = nil
+	end
+	Destroy({ Ids = toDestroy })
+end, LootChoiceExt)
