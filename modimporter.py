@@ -53,6 +53,7 @@ kwrd_load = ["Load"]
 kwrd_priority = ["Priority"]
 kwrd_include = ["Include"]
 kwrd_import = ["Import"]
+kwrd_topimport = ["Top","Import"]
 kwrd_xml = ["XML"]
 kwrd_sjson = ["SJSON"]
 
@@ -102,6 +103,13 @@ def clearDNE(data):
 def addimport(base,path):
     with open(base,'a') as basefile:
         basefile.write("\nImport "+"\""+modsrel+"/"+path+"\"")
+
+def addtopimport(base,path):
+    with open(base,'r+') as basefile:
+        lines = basefile.readlines()     
+        lines.insert(0, "Import "+"\""+modsrel+"/"+path+"\"\n")  
+        basefile.seek(0)                 
+        basefile.writelines(lines)
 
 ### XML mapping
 
@@ -282,10 +290,10 @@ if can_sjson:
                     if safeget(mapdata,0)==reserved_replace:
                         del mapdata[0]
                         return mapdata
-                    indata.expand([DNE]*(len(mapdata)-len(indata)))
+                    indata.extend([DNE]*(len(mapdata)-len(indata)))
                     for k,v in enumerate(mapdata):
                         indata[k] = sjsonmap(safeget(indata,k),v)
-                else:
+                elif isinstance(mapdata,dict):
                     if safeget(mapdata,reserved_delete):
                         return DNE
                     if safeget(mapdata,reserved_replace):
@@ -316,8 +324,9 @@ if can_sjson:
 
 mode_dud = 0
 mode_lua = 1
-mode_xml = 2
-mode_sjson = 3
+mode_lua_alt = 2
+mode_xml = 3
+mode_sjson = 4
 
 class modcode():
     ep = None
@@ -490,6 +499,8 @@ def loadmodfile(filename,echo=True):
 
                 elif startswith(tokens,kwrd_import,1):
                     loadcommand(reldir,tokens[len(kwrd_import):],to,1,mode_lua,ep=ep)
+                elif startswith(tokens,kwrd_topimport,1):
+                    loadcommand(reldir,tokens[len(kwrd_topimport):],to,1,mode_lua_alt,ep=ep)
                 elif startswith(tokens,kwrd_xml,1):
                     loadcommand(reldir,tokens[len(kwrd_xml):],to,1,mode_xml,ep=ep)
                 elif can_sjson and startswith(tokens,kwrd_sjson,1):
@@ -521,6 +532,8 @@ def makeedit(base,mods,echo=True):
         for mod in mods:
             if mod.mode == mode_lua:
                 addimport(base,mod.data[0])
+            elif mod.mode == mode_lua_alt:
+                addtopimport(base,mod.data[0])
             elif mod.mode == mode_xml:
                 mergexml(base,mod.data[0])
             elif mod.mode == mode_sjson:
@@ -535,7 +548,7 @@ def makeedit(base,mods,echo=True):
         raise RuntimeError("Encountered uncaught exception while implementing mod changes") from e
 
     modifiedstr = ""
-    if mods[0].mode == mode_lua:
+    if mods[0].mode in {mode_lua,mode_lua_alt}:
         modifiedstr = "\n"+modified_lua
     elif mods[0].mode == mode_xml:
         modifiedstr = "\n"+modified_xml
