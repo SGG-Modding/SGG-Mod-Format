@@ -1,8 +1,8 @@
-: Mod Utility
+:: Mod Utility
 
 Load Priority 0
-	Import "ModUtil.lua"
+	Top Import "ModUtil.lua"
 
-Load Priority 0.5
+Load Priority 0
 	Import "ModUtilPyre.lua"
 	Import "ModUtilHades.lua"
