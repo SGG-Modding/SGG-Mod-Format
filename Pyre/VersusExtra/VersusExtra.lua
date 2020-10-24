@@ -53,7 +53,7 @@ ModUtil.WrapBaseFunction( "PrepareLocalMPDraft", function(baseFunc, TeamAid, Tea
 		local nB = #TeamBbench
 		for i,v in ipairs(config.TeamA) do
 			local bench = TeamAbench
-			if v.Bench then bench = League[v.Bench] end
+			if v.Bench then bench = League[v.Bench].TeamBench end
 			local character = DeepCopyTable(bench[v.Base])
 			ModUtil.MapNilTable(character,v.NilTable)
 			ModUtil.MapSetTable(character,v.SetTable)
@@ -62,7 +62,7 @@ ModUtil.WrapBaseFunction( "PrepareLocalMPDraft", function(baseFunc, TeamAid, Tea
 		end
 		for i,v in ipairs(config.TeamB) do
 			local bench = TeamBbench
-			if v.Bench then bench = League[v.Bench] end
+			if v.Bench then bench = League[v.Bench].TeamBench end
 			local character = DeepCopyTable(bench[v.Base])
 			ModUtil.MapNilTable(character,v.NilTable)
 			ModUtil.MapSetTable(character,v.SetTable)
