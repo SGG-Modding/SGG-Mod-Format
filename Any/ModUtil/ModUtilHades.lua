@@ -5,16 +5,18 @@ if ModUtil.Hades and not ModUtilHades then
 		PrintStackCapacity = 80
 	}
 	
+	ModUtil.Anchors.PrintOverhead = {}
+	
 	ModUtil.RegisterMod("ModUtilHades")
 	ModUtilHades = ModUtil.Hades
 	
 	-- Screen Handling
 	
 	OnAnyLoad{ function() 
-		if ModUtil.UnfreezeLoop then return end
-		ModUtil.UnfreezeLoop = true
+		if ModUtil.Hades.UnfreezeLoop then return end
+		ModUtil.Hades.UnfreezeLoop = true
 		thread( function()
-			while ModUtil.UnfreezeLoop do
+			while ModUtil.Hades.UnfreezeLoop do
 				wait(15)
 				if ModUtil.SafeGet(CurrentRun,{'Hero','FreezeInputKeys'}) then
 					if (not AreScreensActive()) and (not IsInputAllowed({})) then
@@ -106,7 +108,7 @@ if ModUtil.Hades and not ModUtilHades then
 			delay = 5
 		end
 		if ModUtil.Anchors.PrintDisplay then
-			Destroy({Ids = ModUtil.Anchors.PrintDisplay.Id})
+			Destroy({Ids = {ModUtil.Anchors.PrintDisplay.Id}})
 		end
 		ModUtil.Anchors.PrintDisplay = CreateScreenComponent({Name = "BlankObstacle", Group = "PrintDisplay", X = ScreenCenterX, Y = 40 })
 		CreateTextBox({ Id = ModUtil.Anchors.PrintDisplay.Id, Text = text, FontSize = 22, Color = color, Font = "UbuntuMonoBold"})
@@ -114,7 +116,7 @@ if ModUtil.Hades and not ModUtilHades then
 		if delay > 0 then
 			thread(function()
 				wait(delay)
-				Destroy({Ids = ModUtil.Anchors.PrintDisplay.Id})
+				Destroy({Ids = {ModUtil.Anchors.PrintDisplay.Id}})
 				ModUtil.Anchors.PrintDisplay = nil
 			end)
 		end
@@ -134,15 +136,18 @@ if ModUtil.Hades and not ModUtilHades then
 		if delay == nil then
 			delay = 5
 		end
-		Destroy({Ids = ModUtil.Anchors.PrintOverhead})
-		ModUtil.Anchors.PrintOverhead = SpawnObstacle({ Name = "BlankObstacle", Group = "Events", DestinationId = dest })
-		Attach({ Id = ModUtil.Anchors.PrintOverhead, DestinationId = dest })
-		CreateTextBox({ Id = ModUtil.Anchors.PrintOverhead, Text = text, FontSize = 32, OffsetX = 0, OffsetY = -150, Color = color, Font = "AlegreyaSansSCBold", Justification = "Center" })
+		Destroy({Ids = {ModUtil.Anchors.PrintOverhead[dest]}})
+		local id = SpawnObstacle({ Name = "BlankObstacle", Group = "PrintOverhead", DestinationId = dest })
+		ModUtil.Anchors.PrintOverhead[dest] = id
+		Attach({ Id = id, DestinationId = dest })
+		CreateTextBox({ Id = id, Text = text, FontSize = 32, OffsetX = 0, OffsetY = -150, Color = color, Font = "AlegreyaSansSCBold", Justification = "Center" })
 		if delay > 0 then
 			thread(function()
 				wait(delay)
-				Destroy({Ids = ModUtil.Anchors.PrintOverhead})
-				ModUtil.Anchors.PrintOverhead = nil
+				if ModUtil.Anchors.PrintOverhead[dest] then
+					Destroy({Ids = {id}})
+					ModUtil.Anchors.PrintOverhead[dest] = nil
+				end
 			end)
 		end
 	end
