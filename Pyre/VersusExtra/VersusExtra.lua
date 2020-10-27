@@ -2,86 +2,91 @@ ModUtil.RegisterMod( "VersusExtra" )
 
 local config = {
 	TeamA = {
+		BaseCount = 21
 		{
-			Base = 1,
-			Bench = nil,
+			Base = 20,
+			Bench = 12,
 			NilTable = {},
 			SetTable = {},
 		},
 		{
 			Base = 2,
-			Bench = nil,
+			Bench = 11,
 			NilTable = {},
 			SetTable = {},
 		},
-		{
-			Base = 20,
-			Bench = nil,
-			NilTable = {},
-			SetTable = {},
-		},
-	},
-	TeamB = {
 		{
 			Base = 8,
-			Bench = nil,
-			NilTable = {},
-			SetTable = {},
-		},
-		{
-			Base = 11,
-			Bench = nil,
-			NilTable = {},
-			SetTable = {},
-		},
-		{
-			Base = 4,
-			Bench = nil,
+			Bench = 5,
 			NilTable = {},
 			SetTable = {},
 		},
 	},
 }
+config.TeamB = config.TeamA
 VersusExtra.config = config
 
-local TeamExpansion = true
-ModUtil.WrapBaseFunction( "PrepareLocalMPDraft", function(baseFunc, TeamAid, TeamBid )
-	if TeamExpansion then
-		local TeamAbench = League[TeamAid].TeamBench
-		local TeamBbench = League[TeamBid].TeamBench
-		local nA = #TeamAbench
-		local nB = #TeamBbench
-		for i,v in ipairs(config.TeamA) do
-			local bench = TeamAbench
-			if v.Bench then bench = League[v.Bench].TeamBench end
-			local character = DeepCopyTable(bench[v.Base])
-			ModUtil.MapNilTable(character,v.NilTable)
-			ModUtil.MapSetTable(character,v.SetTable)
-			character.CharacterIndex = nA+i
-			TeamAbench[character.CharacterIndex] = character
-		end
-		for i,v in ipairs(config.TeamB) do
-			local bench = TeamBbench
-			if v.Bench then bench = League[v.Bench].TeamBench end
-			local character = DeepCopyTable(bench[v.Base])
-			ModUtil.MapNilTable(character,v.NilTable)
-			ModUtil.MapSetTable(character,v.SetTable)
-			character.CharacterIndex = nB+i
-			TeamBbench[character.CharacterIndex] = character
+function VersusExtra.CopyCharacterTeamData( character, copyteam )
+	character.MaskHue = copyteam.MaskHue 
+	character.MaskSaturationAddition = copyteam.MaskSaturationAddition
+	character.MaskValueAddition = copyteam.MaskValueAddition
+	character.MaskHue2 = copyteam.MaskHue2
+	character.MaskSaturationAddition2 = copyteam.MaskSaturationAddition2
+	character.MaskValueAddition2 = copyteam.MaskValueAddition2
+	character.UsePhantomShader = copyteam.UsePhantomShader
+end
+
+function VersusExtra.AddCharacter( addteam, data, index )
+	local copyteam = League[data.Bench]
+	local character = DeepCopyTable(copyteam.TeamBench[data.Base])
+	
+	VersusExtra.CopyCharacterTeamData( character, copyteam )
+	
+	ModUtil.MapNilTable(character,data.NilTable)
+	ModUtil.MapSetTable(character,data.SetTable)
+			
+	if index == nil then
+		index = #addteam.TeamBench + 1
+	else
+		for i = index, #addteam.TeamBench, 1 do
+			addteam.TeamBench[i].CharacterIndex = addteam.TeamBench[i].CharacterIndex + 1
 		end
 	end
-	TeamExpansion = false
+		
+	character.TeamIndex = addteam.LeagueIndex
+	character.CharacterIndex = index
+	
+	table.insert(addteam.TeamBench,character,index)
+end
+
+ModUtil.WrapBaseFunction( "PrepareLocalMPDraft", function(baseFunc, TeamAid, TeamBid )
+	if #League[TeamAid].TeamBench == config.TeamA.BaseCount and #League[TeamAid].TeamBench == config.TeamA.BaseCount then
+		local TeamA = League[TeamAid]
+		local TeamB = League[TeamBid]
+		for i,v in ipairs(config.TeamA) do
+			if not v.Bench then v.Bench = TeamAid end
+			VersusExtra.AddCharacter( TeamA, v )
+		end
+		for i,v in ipairs(config.TeamB) do
+			if not v.Bench then v.Bench = TeamBid end
+			VersusExtra.AddCharacter( TeamB, v )
+		end
+	end
 	return baseFunc( TeamAid, TeamBid )
 end, VersusExtra)
 
-ModUtil.WrapBaseFunction( "DisplayDraftScreen", function(baseFunc )
-    local ret = baseFunc()
-    SetMenuOptions({ Name = "RosterScreen", Item = "YButton", Properties = {OffsetY = 400} })
+ModUtil.WrapBaseFunction( "DisplayDraftScreen", function(baseFunc, ...)
+    local ret = baseFunc(...)
+	if IsMultiplayerMatch() then
+		SetMenuOptions({ Name = "RosterScreen", Item = "YButton", Properties = {OffsetY = 400} })
+	end
     return ret
 end, VersusExtra)
 
-ModUtil.WrapBaseFunction( "ViewTeam", function(baseFunc, team )
-	local ret = baseFunc(team)
-	SetMenuOptions({ Name = "RosterScreen", Item = "YButton", Properties = {OffsetY = 400} })
+ModUtil.WrapBaseFunction( "ViewTeam", function(baseFunc, ...)
+	local ret = baseFunc(...)
+	if IsMultiplayerMatch() then
+		SetMenuOptions({ Name = "RosterScreen", Item = "YButton", Properties = {OffsetY = 400} })
+	end
 	return ret
 end, VersusExtra)
