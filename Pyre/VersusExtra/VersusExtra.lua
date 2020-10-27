@@ -2,7 +2,7 @@ ModUtil.RegisterMod( "VersusExtra" )
 
 local config = {
 	TeamA = {
-		BaseCount = 21
+		BaseCount = 21,
 		{
 			Base = 20,
 			Bench = 12,
