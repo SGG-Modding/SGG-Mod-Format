@@ -63,13 +63,15 @@ ModUtil.WrapBaseFunction( "PrepareLocalMPDraft", function(baseFunc, TeamAid, Tea
 	if #League[TeamAid].TeamBench == config.TeamA.BaseCount and #League[TeamAid].TeamBench == config.TeamA.BaseCount then
 		local TeamA = League[TeamAid]
 		local TeamB = League[TeamBid]
-		for i,v in ipairs(config.TeamA) do
-			if not v.Bench then v.Bench = TeamAid end
-			VersusExtra.AddCharacter( TeamA, v )
+		for i = 1, #config.TeamA, 1 do
+			local data = config.TeamA[i]
+			if not data.Bench then data.Bench = TeamAid end
+			VersusExtra.AddCharacter( TeamA, data )
 		end
-		for i,v in ipairs(config.TeamB) do
-			if not v.Bench then v.Bench = TeamBid end
-			VersusExtra.AddCharacter( TeamB, v )
+		for i = 1, #config.TeamB, 1 do
+			local data = config.TeamB[i]
+			if not data.Bench then data.Bench = TeamBid end
+			VersusExtra.AddCharacter( TeamB, data )
 		end
 	end
 	return baseFunc( TeamAid, TeamBid )
