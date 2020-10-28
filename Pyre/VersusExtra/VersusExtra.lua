@@ -4,20 +4,26 @@ local config = {
 	TeamA = {
 		BaseCount = 21,
 		{
-			Base = 20,
-			Bench = 12,
-			NilTable = {},
-			SetTable = {},
-		},
-		{
 			Base = 2,
 			Bench = 11,
 			NilTable = {},
 			SetTable = {},
 		},
 		{
-			Base = 8,
-			Bench = 5,
+			Base = 3,
+			Bench = 11,
+			NilTable = {},
+			SetTable = {},
+		},
+		{
+			Base = 2,
+			Bench = 10,
+			NilTable = {},
+			SetTable = {},
+		},
+		{
+			Base = 3,
+			Bench = 10,
 			NilTable = {},
 			SetTable = {},
 		},
@@ -48,21 +54,22 @@ function VersusExtra.AddCharacter( addteam, data, index )
 	if index == nil then
 		index = #addteam.TeamBench + 1
 	else
-		for i = index, #addteam.TeamBench, 1 do
-			addteam.TeamBench[i].CharacterIndex = addteam.TeamBench[i].CharacterIndex + 1
+		for i = #addteam.TeamBench, index, -1 do
+			addteam.TeamBench[i].CharacterIndex = i+1
+			addteam.TeamBench[i+1] = addteam.TeamBench[i]
 		end
 	end
 		
 	character.TeamIndex = addteam.LeagueIndex
 	character.CharacterIndex = index
 	
-	table.insert(addteam.TeamBench,character,index)
+	addteam.TeamBench[index] = character
 end
 
 ModUtil.WrapBaseFunction( "PrepareLocalMPDraft", function(baseFunc, TeamAid, TeamBid )
-	if #League[TeamAid].TeamBench == config.TeamA.BaseCount and #League[TeamAid].TeamBench == config.TeamA.BaseCount then
-		local TeamA = League[TeamAid]
-		local TeamB = League[TeamBid]
+	local TeamA = League[TeamAid]
+	local TeamB = League[TeamBid]
+	if #TeamA.TeamBench == config.TeamA.BaseCount and #TeamB.TeamBench == config.TeamB.BaseCount then
 		for i = 1, #config.TeamA, 1 do
 			local data = config.TeamA[i]
 			if not data.Bench then data.Bench = TeamAid end
