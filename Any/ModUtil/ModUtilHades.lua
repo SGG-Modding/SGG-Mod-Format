@@ -170,7 +170,7 @@ if ModUtil.Hades and not ModUtilHades then
 		if screen.CullPrintStack then 
 			local v = screen.TextStack[1]
 			if v.obj then
-				Destroy({ Ids = v.obj.Id })
+				Destroy({Ids = {v.obj.Id}})
 				components["TextStack_" .. v.tid] = nil
 				v.obj = nil
 				screen.TextStack[v.tid]=nil
@@ -199,7 +199,7 @@ if ModUtil.Hades and not ModUtilHades then
 		
 		for k,v in pairs(screen.TextStack) do
 			components["TextStack_" .. k] = nil
-			Destroy({Ids = v.obj.Id})
+			Destroy({Ids = {v.obj.Id}})
 		end
 		
 		screen.TextStack = CollapseTable(screen.TextStack)
