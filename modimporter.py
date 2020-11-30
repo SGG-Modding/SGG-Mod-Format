@@ -222,7 +222,7 @@ if can_sjson:
     
     def readsjson(filename):
         try:
-            return sjson.loads(open(filename).read().replace('\\','\\\\'))
+            return sjson.loads(open(filename).read())
         except sjson.ParseException as e:
             print(repr(e))
             return DNE
@@ -235,38 +235,7 @@ if can_sjson:
         else:
             content = ""
         with open(filename, 'w') as f:
-            s = '{\n' + content + '}'
-            
-            #indentation styling
-            p = ''
-            S = ''
-            for c in s:
-                if c in ("{","[") and p in ("{","["):
-                    S+="\n"
-                if c in ("}","]") and p in ("}","]"):
-                    S+="\n"
-                S += c
-                if p in ("{","[") and c not in ("{","[","\n"):
-                    S=S[:-1]+"\n"+S[-1]
-                if c in ("}","]") and p not in ("}","]","\n"):
-                    S=S[:-1]+"\n"+S[-1]
-                p = c
-            s = S
-            s = s.replace(", ","\n")
-            l = s.split('\n')
-            i = 0
-            L = []
-            for S in l:
-                for c in S:
-                    if c in ("}","]"):
-                        i=i-1
-                L.append("  "*i+S)
-                for c in S:
-                    if c in ("{","["):
-                        i=i+1
-            s = '\n'.join(L)
-            
-            f.write(s)
+            f.write(content)
 
     def sjsonmap(indata,mapdata):
         if mapdata is DNE:
