@@ -1,6 +1,7 @@
 """Module to parse SJSON files."""
 # coding=utf8
 # @author: Matthäus G. Chajdas
+# @author: paradigmsort
 # @license: 3-clause BSD
 
 import collections.abc
@@ -208,17 +209,6 @@ def _is_identifier(obj):
     return chr(obj[0]) in _IDENTIFIER_SET
 
 
-def _decode_escaped_character(char):
-    if char == b'b':
-        return b'\b'
-    elif char == b'n':
-        return b'\n'
-    elif char == b't':
-        return b'\t'
-    elif char == b'\\' or char == b'\"':
-        return char
-
-
 def _decode_string(stream, allow_identifier=False):
     _skip_whitespace(stream)
 
@@ -256,14 +246,14 @@ def _decode_string(stream, allow_identifier=False):
             if next_char == b'\"':
                 stream.read()
                 break
-            elif next_char == b'\\':
-                stream.skip()
-                result += _decode_escaped_character(stream.read())
             else:
                 result += next_char
                 stream.skip()
 
-    return str(result, encoding='utf-8')
+    if raw_quotes:
+      return result # defer encoding so we can tell the difference
+    else:
+      return str(result, encoding='utf-8')
 
 _NUMBER_SEPARATOR_SET = _WHITESPACE_SET.union(set({b',', b']', b'}', None}))
 
@@ -408,32 +398,8 @@ def dump(obj, fp, indent=None):
     for e in _encode(obj, indent=_indent):
         fp.write(e)
 
-_ESCAPE_CHARACTER_SET = {'\n': '\\n', '\b': '\\b', '\t': '\\t', '\"': '\\"'}
 
-
-def _escape_string(obj, quote=True):
-    """Escape a string.
-
-    If quote is set, the string will be returned with quotation marks at the
-    beginning and end. If quote is set to false, quotation marks will be only
-    added if needed(that is, if the string is not an identifier.)"""
-    if any([c not in _IDENTIFIER_SET for c in obj]):
-        # String must be quoted, even if quote was not requested
-        quote = True
-
-    if quote:
-        yield '"'
-
-    for key, value in _ESCAPE_CHARACTER_SET.items():
-        obj = obj.replace(key, value)
-
-    yield obj
-
-    if quote:
-        yield '"'
-
-
-def _encode(obj, separators=(', ', '\n', ' = '), indent=0, level=0):
+def _encode(obj, separators=('', '\n', ' = '), indent=0, level=0):
     if obj is None:
         yield 'null'
     # Must check for true, false before number, as boolean is an instance of
@@ -446,7 +412,14 @@ def _encode(obj, separators=(', ', '\n', ' = '), indent=0, level=0):
         yield str(obj)
     # Strings are also Sequences, but we don't want to encode as lists
     elif isinstance(obj, str):
-        yield from _escape_string(obj)
+        yield '"'
+        yield obj
+        yield '"'
+    # Raw string
+    elif isinstance(obj, bytearray):
+        yield '"""'
+        yield str(obj, 'utf-8')
+        yield '"""'
     elif isinstance(obj, collections.abc.Sequence):
         yield from _encode_list(obj, separators, indent, level)
     elif isinstance(obj, collections.abc.Mapping):
@@ -459,8 +432,28 @@ def _indent(level, indent):
     return indent * level
 
 
+_ESCAPE_CHARACTER_SET = {'\n': '\\n', '\b': '\\b', '\t': '\\t', '\"': '\\"'}
+
+
 def _encode_key(k):
-    yield from _escape_string(k, False)
+    """Encode a key.
+
+    Quotation marks will be only added if needed."""
+
+    quote=False
+    if any([c not in _IDENTIFIER_SET for c in obj]):
+        quote = True
+
+    if quote:
+        yield '"'
+
+    for key, value in _ESCAPE_CHARACTER_SET.items():
+        obj = obj.replace(key, value)
+
+    yield obj
+
+    if quote:
+        yield '"'
 
 
 def _encode_list(obj, separators, indent, level):
@@ -476,19 +469,19 @@ def _encode_list(obj, separators, indent, level):
 
 
 def _encode_dict(obj, separators, indent, level):
-    if level > 0:
-        yield '{\n'
+    yield '\n'
+    yield _indent(level, indent)
+    yield '{\n'
     first = True
     for key, value in obj.items():
         if first:
             first = False
         else:
             yield '\n'
-        yield _indent(level, indent)
+        yield _indent(level+1, indent)
         yield from _encode_key(key)
         yield separators[2]
         yield from _encode(value, separators, indent, level+1)
     yield '\n'
-    yield _indent(level-1, indent)
-    if level > 0:
-        yield '}'
+    yield _indent(level, indent)
+    yield '}'

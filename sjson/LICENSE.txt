@@ -1,5 +1,5 @@
 Copyright (c) 2014-2018, Matthäus G. Chajdas
-Triple-quote support (c) 2020, paradigmsort
+Copyright (c) 2020, paradigmsort
 
 All rights reserved.
 
