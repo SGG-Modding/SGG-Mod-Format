@@ -231,7 +231,7 @@ if can_sjson:
         if not isinstance(filename,str):
             return
         if isinstance(content,OrderedDict):
-            content = sjson.dumps(content)
+            content = sjson.dumps(content, 2)
         else:
             content = ""
         with open(filename, 'w') as f:
