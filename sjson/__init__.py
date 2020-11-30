@@ -441,16 +441,16 @@ def _encode_key(k):
     Quotation marks will be only added if needed."""
 
     quote=False
-    if any([c not in _IDENTIFIER_SET for c in obj]):
+    if any([c not in _IDENTIFIER_SET for c in k]):
         quote = True
 
     if quote:
         yield '"'
 
     for key, value in _ESCAPE_CHARACTER_SET.items():
-        obj = obj.replace(key, value)
+        k = k.replace(key, value)
 
-    yield obj
+    yield k
 
     if quote:
         yield '"'
