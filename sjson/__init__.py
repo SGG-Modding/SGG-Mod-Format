@@ -293,7 +293,9 @@ def _decode_dict(stream, delimited=False):
     from collections import OrderedDict
     result = OrderedDict()
 
-    if stream.peek() == b'{':
+    next_char = _skip_whitespace(stream)
+
+    if next_char == b'{':
         stream.skip()
 
     next_char = _skip_whitespace(stream)
