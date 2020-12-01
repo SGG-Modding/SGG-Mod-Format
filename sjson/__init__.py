@@ -471,7 +471,8 @@ def _encode_list(obj, separators, indent, level):
 
 
 def _encode_dict(obj, separators, indent, level):
-    yield '\n'
+    if level > 0:
+        yield '\n'
     yield _indent(level, indent)
     yield '{\n'
     first = True
