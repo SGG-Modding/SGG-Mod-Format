@@ -293,7 +293,9 @@ def _decode_dict(stream, delimited=False):
     from collections import OrderedDict
     result = OrderedDict()
 
-    if stream.peek() == b'{':
+    next_char = _skip_whitespace(stream)
+
+    if next_char == b'{':
         stream.skip()
 
     next_char = _skip_whitespace(stream)
@@ -469,7 +471,8 @@ def _encode_list(obj, separators, indent, level):
 
 
 def _encode_dict(obj, separators, indent, level):
-    yield '\n'
+    if level > 0:
+        yield '\n'
     yield _indent(level, indent)
     yield '{\n'
     first = True
