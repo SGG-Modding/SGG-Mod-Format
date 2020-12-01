@@ -101,11 +101,11 @@ def clearDNE(data):
 ### LUA import statement adding
 
 def addimport(base,path):
-    with open(base,'a') as basefile:
+    with open(base,'a',encoding='utf-8') as basefile:
         basefile.write("\nImport "+"\""+modsrel+"/"+path+"\"")
 
 def addtopimport(base,path):
-    with open(base,'r+') as basefile:
+    with open(base,'r+',encoding='utf-8') as basefile:
         lines = basefile.readlines()     
         lines.insert(0, "Import "+"\""+modsrel+"/"+path+"\"\n")  
         basefile.seek(0)                 
@@ -130,7 +130,7 @@ def writexml(filename,content,start=None):
     data = ""
     if start:
         data = start
-    with open(filename,'r') as file:
+    with open(filename,'r',encoding='utf-8') as file:
         i = 0
         for line in file:
             nl = False
@@ -154,7 +154,7 @@ def writexml(filename,content,start=None):
                     if s not in (' ','\t','<') or not q:
                         data+=s
                     p=s
-    open(filename,"w").write(data)
+    open(filename,'w',encoding='utf-8').write(data)
 
 def xmlmap(indata,mapdata):
     if mapdata is DNE:
@@ -203,7 +203,7 @@ def xmlmap(indata,mapdata):
 
 def mergexml(infile,mapfile):
     start = ""
-    with open(infile,'r') as file:
+    with open(infile,'r',encoding='utf-8') as file:
         for line in file:
             if line[:5] == "<?xml" and line[-3:] == "?>\n":                
                 start = line
@@ -222,7 +222,7 @@ if can_sjson:
     
     def readsjson(filename):
         try:
-            return sjson.loads(open(filename).read())
+            return sjson.loads(open(filename,encoding='utf-8').read())
         except sjson.ParseException as e:
             print(repr(e))
             return DNE
@@ -234,7 +234,7 @@ if can_sjson:
             content = sjson.dumps(content, 2)
         else:
             content = ""
-        with open(filename, 'w') as f:
+        with open(filename,'w',encoding='utf-8') as f:
             f.write(content)
 
     def sjsonmap(indata,mapdata):
@@ -427,7 +427,7 @@ def loadmodfile(filename,echo=True):
     if in_directory(filename):
         
         try:
-            file = open(filename,'r')
+            file = open(filename,'r',encoding='utf-8')
         except IOError:
             return
         if echo:
@@ -476,7 +476,7 @@ def loadmodfile(filename,echo=True):
                     loadcommand(reldir,tokens[len(kwrd_sjson):],to,1,mode_sjson,ep=ep)
 
 def isedited(base):
-    with open(base,'r') as basefile:
+    with open(base,'r',encoding='utf-8') as basefile:
         for line in basefile:
               if modified+modified_modrep in line:
                   return True
@@ -523,7 +523,7 @@ def makeedit(base,mods,echo=True):
         modifiedstr = "\n"+modified_xml
     elif mods[0].mode == mode_sjson:
         modifiedstr = "\n"+modified_sjson
-    with open(base,'a') as basefile:
+    with open(base,'a',encoding='utf-8') as basefile:
         basefile.write(modifiedstr.replace(modified,modified+modified_modrep+str(datetime.now())))
 
 def cleanup(folder=bakdir,echo=True):
