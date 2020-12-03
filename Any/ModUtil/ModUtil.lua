@@ -47,6 +47,13 @@ if not ModUtil then
 
 	-- Management
 
+	--[[
+		Create a namespace that can be used for the mod's functions
+		and data, and ensure that it doesn't end up in save files.
+
+		modName - the name of the mod
+		parent	- the parent mod, or nil if this mod stands alone
+	]]
 	function ModUtil.RegisterMod( modName, parent )
 		if not parent then
 			parent = _G
@@ -61,7 +68,7 @@ if not ModUtil then
 		return parent[modName]
 	end
 
-	
+	-- internal
 	function ModUtil.LoadFuncs( triggerArgs )
 		for k,v in pairs(ModUtil.FuncsToLoad) do
 			v(triggerArgs)
@@ -70,10 +77,16 @@ if not ModUtil then
 	end
 	OnAnyLoad{ModUtil.LoadFuncs}
 
+	--[[
+		Run the provided function once, once all mods have been loaded.
+
+		triggerFunction - the function to run
+	]]
 	function ModUtil.LoadOnce( triggerFunction )
 		table.insert( ModUtil.FuncsToLoad, triggerFunction )
 	end
 
+	--???
 	function ModUtil.ForceClosed( triggerArgs )
 		for k,v in pairs(ModUtil.Anchors.CloseFuncs) do
 			v( nil, nil, triggerArgs )
@@ -214,6 +227,12 @@ if not ModUtil then
 
 	-- Data Manipulation
 
+	--[[
+		Safely create a new empty table at Table.key.
+
+		Table - the table to modify
+		key	 - the key at which to store the new empty table
+	]]
 	function ModUtil.NewTable( Table, key )
 		if type(Table) ~= "table" then return end
 		if Table[key] == nil then
@@ -221,6 +240,18 @@ if not ModUtil then
 		end
 	end
 	
+	--[[
+		Safely retrieve the a value from deep inside a table, given
+		an array of indices into the table.
+
+		For example, if indexArray is ["a", 1, "c"], then
+		Table["a"][1]["c"] is returned. If any of Table["a"],
+		Table["a"][1], or Table["a"][1]["c"] are nil, then nil
+		is returned instead.
+
+		Table			 - the table to retrieve from
+		indexArray	- the list of indices
+	]]
 	function ModUtil.SafeGet( Table, IndexArray )
 		local n = #IndexArray
 		local node = Table
@@ -233,6 +264,20 @@ if not ModUtil then
 		return node
 	end
 
+	--[[
+		Safely set a value deep inside a table, given an array of
+		indices into the table, and creating any necessary tables
+		along the way.
+
+		For example, if indexArray is ["a", 1, "c"], then
+		Table["a"][1]["c"] = Value once this function returns.
+		If any of Table["a"] or Table["a"][1] does not exist, they
+		are created.
+
+		Table			 - the table to set the value in
+		indexArray	- the list of indices
+		Value			 - the value to add
+	]]
 	function ModUtil.SafeSet( Table, IndexArray, Value )
 		if IsEmpty(IndexArray) then
 			return -- can't set the input argument
@@ -253,6 +298,38 @@ if not ModUtil then
 		return true
 	end
 
+	--[[
+		Set all the values in InTable corresponding to keys
+		in NilTable to nil.
+
+		For example, if InTable is 
+		{
+			Foo = 5,
+			Bar = 6,
+			Baz = {
+				InnerFoo = 5,
+				InnerBar = 6
+			}
+		}
+
+		and NilTable is
+		{
+			Foo = true,
+			Baz = {
+				InnerBar = true
+			}
+		}
+
+		then the result will be
+		{
+			Foo = nil
+			Bar = 6,
+			Baz = {
+				InnerFoo = 5,
+				InnerBar = nil
+			}
+		}
+	]]
 	function ModUtil.MapNilTable( InTable, NilTable )
 		local unkeyed = ModUtil.AutoIsUnKeyed( InTable )
 		for NilKey, NilVal in pairs(NilTable) do
@@ -268,6 +345,33 @@ if not ModUtil then
 		end
 	end
 
+	--[[
+		Set all the the values in InTable corresponding to values
+		in SetTable to their values in SetTable.
+
+		For example, if InTable is
+		{
+			Foo = 5,
+			Bar = 6
+		}
+
+		and NilTable is
+		{
+			Foo = 7,
+			Baz = {
+				InnerBar = 8
+			}
+		}
+
+		then the result will be
+		{
+			Foo = 7,
+			Bar = 6,
+			Baz = {
+				InnerBar = 8
+			}
+		}
+	]]
 	function ModUtil.MapSetTable( InTable, SetTable )
 		local unkeyed = ModUtil.AutoIsUnKeyed( InTable )
 		for SetKey, SetVal in pairs(SetTable) do
@@ -297,6 +401,11 @@ if not ModUtil then
 	
 	-- Path Manipulation
 
+	--[[
+		Concatenates two index arrays, in order.
+
+		A, B - the index arrays
+	]]
 	function ModUtil.JoinIndexArrays( A, B )
 		local C = {}
 		local j = 0
@@ -310,6 +419,14 @@ if not ModUtil then
 		return C
 	end
 	
+	--[[
+		Create an index array from the provided Path.
+
+		The returned array can be used as an argument to the safe table
+		manipulation functions, such as ModUtil.SafeSet and ModUtil.SafeGet.
+
+		Path - a dot-separated string that represents a path into a table
+	]]
 	function ModUtil.PathArray( Path )
 		local s = ""
 		local i = {}
@@ -327,6 +444,15 @@ if not ModUtil then
 		return i
 	end
 	
+	--[[
+		Mangles a provide Path so that it is safe to use to index a table, by
+		replacing the periods with ModUtil.GlobalConnector.
+
+		This is useful to create a unique global key from a path, in for interoperability
+		with utilities that don't understand paths or index arrays.
+
+		For example, the OnPressedFunctionName of a button must refer to a single key in the globals table (_G); if you have a Path then JoinPath may be used to create such a key.
+	]]
 	function ModUtil.JoinPath( Path )
 		local s = ""
 		for c in Path:gmatch(".") do
@@ -339,10 +465,30 @@ if not ModUtil then
 		return s
 	end
 
+	--[[
+		Safely get a value from a Path.
+
+		For example, ModUtil.PathGet("a.b.c") returns a.b.c.
+		If either a or a.b is nil, nil is returned instead.
+
+		Path - the path to get the value
+		Base - (optional) The table to retreive the value from.
+					 If not provided, retreive a global.
+	]]
 	function ModUtil.PathGet( Path, Base )
 		return ModUtil.SafeGet(Base or _G, ModUtil.PathArray(Path))
 	end
 
+	--[[
+		Safely get set a value to a Path.
+
+		For example, ModUtil.PathSet("a.b.c", 1) sets a.b.c = 1.
+		If either a or a.b is nil, they are created.
+
+		Path - the path to get the value
+		Base - (optional) The table to retreive the value from.
+					 If not provided, retreive a global.
+	]]
 	function ModUtil.PathSet( Path, Value, Base )
 		return ModUtil.SafeSet(Base or _G, ModUtil.PathArray(Path),Value)
 	end
@@ -357,10 +503,33 @@ if not ModUtil then
 
 	-- Globalisation
 
+	--[[
+		Sets a unique global variable equal to the value stored at Path.
+
+		For example, the OnPressedFunctionName of a button must refer to a single key
+		in the globals table (_G). If you have a function defined in your module's
+		table that you would like to use, ie.
+
+			function YourModName.FunctionName(...)
+
+		then ModUtil.GlobalizePath("YourModName.FunctionName") will create a global
+		variable for that function, and you can then set OnPressedFunctionName to
+		ModUtil.JoinPath("YourModName.FunctionName").
+
+		Path - the path to be globalised
+	]]
 	function ModUtil.GlobalisePath( Path )
 		_G[ModUtil.JoinPath( Path )] = ModUtil.SafeGet(_G,ModUtil.PathArray( Path ))
 	end
 	
+	--[[
+		Updates the global created by ModUtil.GlobalisePath, to pick up any
+		changes to the value at the Path.
+
+		Path			- the path to be globalised
+		PathArray	- (optional) if present, retrive the updated value from
+								a location other than the default ModUtil.PathArray(Path)
+	]]
 	function ModUtil.UpdateGlobalisedPath( Path, PathArray )
 		local joinedPath = ModUtil.JoinPath( Path )
 		if _G[joinedPath] then 
@@ -372,6 +541,33 @@ if not ModUtil then
 		end
 	end
 	
+	--[[
+		Makes all the functions in Table available globally, as if
+		ModUtil.GlobalisePath had been called on each of them.
+		
+		If you have a lot of functions you need to export for UI or
+		other by-name callbacks, it will be eaiser to maintain a single
+		call to ModUtil.GlobaliseFuncs at the bottom of your mod file,
+		rather than having a bunch of GlobalisePath calls that need to
+		be maintained.
+
+		For example, if you have a table at YourModName.UIFunctions with
+
+		function YourModName.UIFunctions.OnButton1(...)
+		function YourModName.UIFunctiosn.OnButton2(...)
+
+		then ModUtil.GlobaliseFuncs(YourModName.UIFunctions) will create global
+		functions called OnButton1 and OnButton2. If you are worried about
+		collisions with other global functions, consider using a prefix ie.
+
+			ModUtil.GlobaliseFuncs(YourModName.UIFunctions, "YourModNameUI")
+
+		So that the global functions are called YourModNameUI__OnButton1 etc.
+
+		Table	- The table containing the functions to globalise
+		Path	- (optional) if present, add this path as a prefix to the
+						path from the root of the table.
+	]]
 	function ModUtil.GlobaliseFuncs( Table, Path )
 		if Path == nil then
 			Path = ""
@@ -387,6 +583,11 @@ if not ModUtil then
 		end
 	end
 	
+	--[[
+		Globalise all the functions in your mod object.
+
+		modObject - The mod object created by ModUtil.RegisterMod
+	]]
 	function ModUtil.GlobaliseModFuncs( modObject )
 		local parent = modObject
 		while parent.modParent do
@@ -394,6 +595,98 @@ if not ModUtil then
 			if parent == _G then break end
 		end
 		ModUtil.GlobaliseFuncs( modObject, modObject.modName )
+	end
+
+
+	-- Metaprogramming Shenanigans
+
+	--[[
+		Replace a function's _ENV with a new environment table.
+
+		Global variable lookups (including function calls) in that function
+		will use the new environment table rather than the normal one.
+
+		This is useful for function-specific overrides. The new environment
+		table should generally have _G as its __index, so that any globals
+		other than those being overridden can still be read.
+	]]
+	local function setfenv(fn, env)
+		local i = 1
+		while true do
+			local name = debug.getupvalue(fn, i)
+			if name == "_ENV" then
+				debug.upvaluejoin(fn, i, (function()
+					return env
+				end), 1)
+				break
+			elseif not name then
+				break
+			end
+			i = i + 1
+		end
+		return fn
+	end
+
+	--[[
+		Return a table representing the upvalues of a function.
+
+		Upvalues are those variables captured by a function from it's
+		creation context. For example, locals defined in the same file
+		as the function are accessible to the function as upvalues.
+
+		func - the function to get upvalues from
+	]]
+	function ModUtil.GetUpValues( func )
+		if type(func) ~= "function" then return nil end
+		local key = {}
+		local u = nil
+		local i = 1
+		while true do
+			u = debug.getupvalue( func, i )
+			if u == nil then break end
+			key[i] = u
+			i = i + 1
+		end
+		local ind = {}
+		for i,k in pairs(key) do
+			ind[k] = i
+		end
+		local ups = {}
+		setmetatable(ups,{
+			__index = function(self,name)
+				return debug.getupvalue(func,ind[name])
+			end,
+			__newindex = function(self,name,value)
+				debug.setupvalue(func,ind[name],value)
+			end
+		})
+		return ups, ind, key
+	end
+	
+	function ModUtil.GetBottomUpValues( baseTable, indexArray )
+		local baseValue = ModUtil.SafeGet(ModUtil.Overrides[baseTable], indexArray)
+		if baseValue then
+			baseValue = baseValue[#baseValue].base
+		else
+			baseValue = ModUtil.SafeGet(ModUtil.WrapCallbacks[baseTable], indexArray)
+			if baseValue then
+				baseValue = baseValue[1].func
+			else
+				baseValue = ModUtil.SafeGet(baseTable, indexArray)
+			end
+		end 
+		return ModUtil.GetUpValues(baseValue)
+	end
+
+	--[[
+		Return a table representing the upvalues of the base function identified
+		by basePath (ie. ignoring all wrappers that other mods may have placed
+		around the function).
+
+		basePath - the path to the function, as a string
+	]]
+	function ModUtil.GetBaseBottomUpValues( basePath )
+		return ModUtil.GetBottomUpValues( _G, ModUtil.PathArray( basePath ))
 	end
 
 	-- Function Wrapping
