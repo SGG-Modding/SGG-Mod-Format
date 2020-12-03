@@ -1,20 +1,22 @@
 __all__ = [
-    "xml_safeget",
-    "xml_read",
-    "xml_write",
+    "get",
+    "get",
+    "write",
     "xml_map",
-    "xml_merge",
+    "merge",
 ]
 
 ## XML Handling
 import xml.etree.ElementTree as xml
 
-## XML mapping
-xml_RESERVED_replace = "_replace"
-xml_RESERVED_delete = "_delete"
-KWRD_xml = ["XML"]
+RESERVED = {
+    "replace": "_replace",
+    "delete": "_delete",
+}
 
-def xml_safeget(data, key):
+KEYWORD = "XML"
+
+def get(data, key):
     if isinstance(data, list):
         if isinstance(key, int):
             if key < len(data) and key >= 0:
@@ -29,14 +31,14 @@ def xml_safeget(data, key):
     return DNE
 
 
-def xml_read(filename):
+def read(filename):
     try:
         return xml.parse(filename)
     except xml.ParseError:
         return DNE
 
 
-def xml_write(filename, content, start=None):
+def write(filename, content, start=None):
     if not isinstance(filename, str):
         return
     if not isinstance(content, xml.ElementTree):
@@ -96,11 +98,11 @@ def xml_map(indata, mapdata):
                 mes = mapdata.findall(tag)
                 ies = indata.findall(tag)
                 for i, me in enumerate(mes):
-                    ie = xml_safeget(ies, i)
+                    ie = get(ies, i)
                     if ie is DNE:
                         indata.append(me)
                         continue
-                    if me.get(xml_RESERVED_delete, None) not in {
+                    if me.get(RESERVED["delete"], None) not in {
                         None,
                         "0",
                         "false",
@@ -108,7 +110,7 @@ def xml_map(indata, mapdata):
                     }:
                         indata.remove(ie)
                         continue
-                    if me.get(xml_RESERVED_replace, None) not in {
+                    if me.get(RESERVED["replace"], None) not in {
                         None,
                         "0",
                         "false",
@@ -117,7 +119,7 @@ def xml_map(indata, mapdata):
                         ie.text = me.text
                         ie.tail = me.tail
                         ie.attrib = me.attrib
-                        del ie.attrib[xml_RESERVED_replace]
+                        del ie.attrib[RESERVED["replace"]]
                         continue
                     ie.text = xml_map(ie.text, me.text)
                     ie.tail = xml_map(ie.tail, me.tail)
@@ -130,17 +132,17 @@ def xml_map(indata, mapdata):
     return mapdata
 
 
-def xml_merge(infile, mapfile):
+def merge(infile, mapfile):
     start = ""
     with open(infile, "r") as file:
         for line in file:
             if line[:5] == "<?xml" and line[-3:] == "?>\n":
                 start = line
                 break
-    indata = xml_read(infile)
+    indata = get(infile)
     if mapfile:
-        mapdata = xml_read(mapfile)
+        mapdata = get(mapfile)
     else:
         mapdata = DNE
     indata = xml_map(indata, mapdata)
-    xml_write(infile, indata, start)
+    write(infile, indata, start)

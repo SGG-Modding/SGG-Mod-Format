@@ -63,6 +63,8 @@ from collections import defaultdict
 from distutils.dir_util import copy_tree
 from distutils.errors import DistutilsFileError
 
+from sggmi import sggmi_xml
+
 ## Importer Config
 
 try:
@@ -600,9 +602,9 @@ def modfile_load(filename, echo=True):
                         cfg,
                         priority=p,
                     )
-                elif modfile_startswith(tokens, KWRD_xml, 1):
+                elif modfile_startswith(tokens, sggmi_xml.KEYWORD, 1):
                     modfile_loadcommand(
-                        reldir, tokens[len(KWRD_xml) :], to, 1, "xml", cfg, priority=p
+                        reldir, tokens[len(sggmi_xml.KEYWORD) :], to, 1, "xml", cfg, priority=p
                     )
                 elif modfile_startswith(tokens, KWRD_sjson, 1):
                     if sjson:
@@ -660,7 +662,7 @@ def make_base_edits(base, mods, echo=True):
             if mod.mode == "lua":
                 lua_addimport(scopedir + "/" + base, mod.data[0])
             elif mod.mode == "xml":
-                xml_merge(scopedir + "/" + base, mod.data[0])
+                sggmi_xml.merge(scopedir + "/" + base, mod.data[0])
             elif mod.mode == "sjson":
                 sjson_merge(scopedir + "/" + base, mod.data[0])
             if echo:
