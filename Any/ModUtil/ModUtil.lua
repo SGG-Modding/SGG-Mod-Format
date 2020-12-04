@@ -686,6 +686,46 @@ if not ModUtil then
 
 	-- Function Wrapping
 
+	--[[
+		Wrap a function, so that you can insert code that runs before/after that function
+		whenever it's called, and modify the return value if needed.
+
+		Generally, you should use ModUtil.WrapBaseFunction instead for a more modder-friendly
+		interface.
+
+		Multiple wrappers can be applied to the same function.
+
+		As an example, for WrapFunction(_G, ["UIFunctions", "OnButton1Pushed"], wrapper, MyModObject)
+
+		Wrappers are stored in a structure like this:
+
+		ModUtil.WrapCallbacks[_G].UIFunctions.OnButton1Pushed = {
+			{id:1, mod=MyModObject, wrap=wrapper, func=<original unwrapped function>}
+		}
+
+		If a second wrapper is applied via
+			WrapFunction(_G, ["UIFunctions", "OnButton1Pushed"], wrapperFunction2, SomeOtherMod)
+		then the resulting structure will be like:
+
+		ModUtil.WrapCallbacks[_G].UIFunctions.OnButton1Pushed = {
+			{id:1, mod=MyModObject,	wrap=wrapper,	func=<original unwrapped function>}
+			{id:2, mod=SomeOtherMod, wrap=wrapper2, func=<original function + wrapper1>}
+		}
+
+		This allows several mods to apply wrappers to the same base function, and then:
+		 - unwrap again later
+		 - reapply the same wrappers to a new base function when it's overridden
+
+		This function also updates the entry in funcTable at IndexArray to be the completely
+		wrapped function, ie. in our example with two wrappers it would do
+
+		UIFunctions.OnButton1Pushed = <original function + wrapper1 + wrapper2>
+
+		funcTable	 - the table the function is stored in (usually _G)
+		IndexArray	- the array of path elements to the function in the table
+		wrapFunc		- the wrapping function
+		modObject	 - (optional) the mod installing the wrapper, for informational purposes
+	]]
 	function ModUtil.WrapFunction( funcTable, IndexArray, wrapFunc, modObject )
 		if type(wrapFunc) ~= "function" then return end
 		if not funcTable then return end
@@ -705,6 +745,36 @@ if not ModUtil then
 		end)
 	end
 	
+	--[[
+		Internal utility that reapplies the list of wrappers when the base function changes.
+
+		For example. if the list of wrappers looks like:
+		ModUtil.WrapCallbacks[_G].UIFunctions.OnButton1Pushed = {
+			{id:1, mod=MyModObject,	wrap=wrapper,	func=<original unwrapped function>}
+			{id:2, mod=SomeOtherMod, wrap=wrapper2, func=<original function + wrapper1>}
+			{id:3, mod=ModNumber3,	 wrap=wrapper3, func=<original function + wrapper1 + wrapper 2>}
+		}
+
+		and the base function is modified by setting [1].func to a new value, like so:
+		ModUtil.WrapCallbacks[_G].UIFunctions.OnButton1Pushed = {
+			{id:1, mod=MyModObject,	wrap=wrapper,	func=<new function>}
+			{id:2, mod=SomeOtherMod, wrap=wrapper2, func=<original function + wrapper1>}
+			{id:3, mod=ModNumber3,	 wrap=wrapper3, func=<original function + wrapper1 + wrapper 2>}
+		}
+
+		Then rewrap function will fix up eg. [2].func, [3].func so that the correct wrappers are applied
+		ModUtil.WrapCallbacks[_G].UIFunctions.OnButton1Pushed = {
+			{id:1, mod=MyModObject,	wrap=wrapper,	func=<new function>}
+			{id:2, mod=SomeOtherMod, wrap=wrapper2, func=<new function + wrapper1>}
+			{id:3, mod=ModNumber3,	 wrap=wrapper3, func=<new function + wrapper1 + wrapper 2>}
+		}
+		and also update the entry in funcTable to be the completely wrapped function, ie.
+
+		UIFunctions.OnButton1Pushed = <new function + wrapper1 + wrapper2 + wrapper3>
+
+		funcTable	 - the table the function is stored in (usually _G)
+		IndexArray	- the array of path elements to the function in the table
+	]]
 	function ModUtil.RewrapFunction( funcTable, IndexArray )
 		local wrapCallbacks = ModUtil.SafeGet(ModUtil.WrapCallbacks[funcTable], IndexArray)
 		local preFunc = nil
@@ -721,6 +791,16 @@ if not ModUtil then
 
 	end
 	
+	--[[
+		Removes the most recent wrapper from a function, and restore it to its
+		previous value.
+
+		Generally, you should use ModUtil.UnwrapBaseFunction instead for a more
+		modder-friendly interface.
+
+		funcTable	 - the table the function is stored in (usually _G)
+		IndexArray	- the array of path elements to the function in the table
+	]]
 	function ModUtil.UnwrapFunction( funcTable, IndexArray )
 		if not funcTable then return end
 		local func = ModUtil.SafeGet(funcTable, IndexArray)
@@ -728,25 +808,67 @@ if not ModUtil then
 
 		local tempTable = ModUtil.SafeGet(ModUtil.WrapCallbacks[funcTable], IndexArray)
 		if not tempTable then return end 
-		local funcData = table.remove(tempTable)
+		local funcData = table.remove(tempTable) -- removes the last value
 		if not funcData then return end
 		
 		ModUtil.SafeSet( funcTable, IndexArray, funcData.func )
 		return funcData
 	end
 
+
+	--[[
+		Wraps the function with the path given by baseFuncPath, so that you
+		can execute code before or after the original function is called,
+		or modify the return value.
+
+		For example:
+
+		ModUtil.WrapBaseFunction("CreateNewHero", function(baseFunc, prevRun, args)
+			local hero = baseFunc(prevRun, args)
+			hero.Health = 1
+			return hero
+		end, YourMod)
+
+		will cause the function CreateNewHero to be wrapped so that the hero's
+		health is set to 1 before the hero is returned.
+
+		This provides better compatibility with other mods that overriding the
+		function, since multiple mods can wrap the same function.
+
+		baseFuncPath	- the (global) path to the function, as a string
+			for most SGG-provided functions, this is just the function's name
+			eg. "CreateRoomReward" or "SetTraitsOnLoot"
+		wrapFunc	- the function to wrap around the base function
+			this function receives the base function as its first parameter.
+			all subsequent parameters should be the same as the base function
+		modObject	- (optional) the object for your mod, for debug purposes
+	]]
 	function ModUtil.WrapBaseFunction( baseFuncPath, wrapFunc, modObject )
 		local pathArray = ModUtil.PathArray( baseFuncPath )
 		ModUtil.WrapFunction( _G, pathArray, wrapFunc, modObject )
 		ModUtil.UpdateGlobalisedPath( baseFuncPath, pathArray )
 	end
 	
+	--[[
+		Internal function that reapplies all the wrappers to a function.
+	]]
 	function ModUtil.RewrapBaseFunction( baseFuncPath )
 		local pathArray = ModUtil.PathArray( baseFuncPath )
 		ModUtil.RewrapFunction( _G, pathArray )
 		ModUtil.UpdateGlobalisedPath( baseFuncPath, pathArray )
 	end
 	
+	--[[
+		Remove the most recent wrapper from the function at baseFuncPath,
+		restoring it to its previous state
+
+		Note that this does _not_ remove overrides, and it removes the most
+		recent wrapper regardless of which mod added it, so be careful!
+
+		baseFuncPath	- the (global) path to the function, as a string
+			for most SGG-provided functions, this is just the function's name
+			eg. "CreateRoomReward" or "SetTraitsOnLoot"
+	]]
 	function ModUtil.UnwrapBaseFunction( baseFuncPath )
 		local pathArray = ModUtil.PathArray( baseFuncPath )
 		ModUtil.UnwrapFunction( _G, pathArray )
