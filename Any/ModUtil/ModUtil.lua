@@ -877,6 +877,30 @@ if not ModUtil then
 
 	-- Override Management
 
+	--[[
+		Override a value in baseTable.
+
+		Generally, you should use ModUtil.BaseOverride instead for a more modder-friendly
+		interface.
+
+		If the value is a function, preserves overrides only the base function,
+		preserving all the wraps added with ModUtil.WrapFunction.
+
+		The previous value is stored so that it can be restored later if desired.
+		For example, ModUtil.Override(_G, ["UIFunctions", "OnButton1"], overrideFunc, MyMod)
+		will result in a data structure like:
+
+		ModUtil.Overrides[_G].UIFunctions.OnButton1 = {
+			{id=1, mod=MyMod, value=overrideFunc, base=<original value of UIFunctions.OnButton1>}
+		}
+
+		and subsequent overides wil be added as subsequent entries in the same table.
+
+		baseTable	- the table in which to override, usually _G (globals)
+		IndexArray	- the list of indices
+		Value	- the new value
+		modObject	- (optional) the mod that performed the override, for debugging purposes
+	]]
 	function ModUtil.Override( baseTable, IndexArray, Value, modObject )
 		if not baseTable then return end
 	
@@ -906,11 +930,24 @@ if not ModUtil then
 		end
 	end
 	
+	--[[
+		Undo the most recent override performed with ModUtil.Override, restoring
+		the previous value.
+
+		Generally, you should use ModUtil.BaseRestore instead for a more modder-friendly
+		interface.
+
+		If the previous value is a function, the current stack of wraps for that
+		IndexArray will be reapplied to it.
+
+		baseTable	= the table in which to undo the override, usually _G (globals)
+		IndexArray	- the list of indices
+	]]
 	function ModUtil.Restore( baseTable, IndexArray )
 		if not baseTable then return end
 		local tempTable = ModUtil.SafeGet(ModUtil.Overrides[baseTable], IndexArray)
 		if not tempTable then return end
-		local baseData = table.remove(tempTable)
+		local baseData = table.remove(tempTable) -- remove the last entry
 		if not baseData then return end
 		
 		if type(baseData.base) == "function" then
@@ -926,12 +963,32 @@ if not ModUtil then
 		return baseData
 	end
 	
+	--[[
+		Override the global value at the given basePath.
+
+		If the Value is a function, preserves the wraps
+		applied with ModUtil.WrapBaseFunction et. al.
+
+		basePath	- the path to override, as a string
+		Value	- the new value to store at the path
+		modObject	- (optional) the mod performing the override,
+			for debug purposes
+	]]
 	function ModUtil.BaseOverride( basePath, Value, modObject )
 		local pathArray = ModUtil.PathArray( basePath )
 		ModUtil.Override( _G, pathArray, Value, modObject )
 		ModUtil.UpdateGlobalisedPath( basePath, pathArray )
 	end
 	
+	--[[
+		Undo the most recent override performed with ModUtil.Override,
+		or ModUtil.BaseOverride, restoring the previous value.
+
+		Use this carefully - if you are not the most recent mod to
+		override the given path, the results may be unexpected.
+
+		basePath	- the path to restore, as a string
+	]]
 	function ModUtil.BaseRestore( basePath )
 		local pathArray = ModUtil.PathArray( basePath )
 		ModUtil.Restore( _G, pathArray )
