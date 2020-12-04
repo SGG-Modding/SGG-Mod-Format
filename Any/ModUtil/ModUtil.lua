@@ -2,15 +2,9 @@
 Mod: Mod Utility
 Author: MagicGonads 
 
-	Library to allow mods to be more compatible with eachother
-	To include in your mod you must tell the user that they require this mod.
-	
+	Library to allow mods to be more compatible with eachother and expand capabilities.
 	Use the mod importer to import this mod to ensure it is loaded in the right position.
 	
-	Or if you want add (before other mods) to the BOTTOM of DEFAULT
-	"Import "../Mods/ModUtil/Scripts/ModUtil.lua""
-	
-	Mods can also manually import it by adding the statement to their script
 ]]
 
 if not ModUtil then
@@ -64,7 +58,7 @@ if not ModUtil then
 			table.insert(ModUtil.Mods,parent[modName])
 		end
 		parent[modName].modName = modName
-		parent[modName].modParent = modParent
+		parent[modName].modParent = parent
 		return parent[modName]
 	end
 
@@ -78,7 +72,7 @@ if not ModUtil then
 	OnAnyLoad{ModUtil.LoadFuncs}
 
 	--[[
-		Run the provided function once, once all mods have been loaded.
+		Run the provided function once on the next in-game load.
 
 		triggerFunction - the function to run
 	]]
@@ -86,7 +80,9 @@ if not ModUtil then
 		table.insert( ModUtil.FuncsToLoad, triggerFunction )
 	end
 
-	--???
+	--[[
+		Tell each screen anchor that they have been forced closed by the game
+	]]
 	function ModUtil.ForceClosed( triggerArgs )
 		for k,v in pairs(ModUtil.Anchors.CloseFuncs) do
 			v( nil, nil, triggerArgs )
@@ -199,19 +195,17 @@ if not ModUtil then
 	end
 
 	function ModUtil.IsUnKeyed( Table )
-		if type(Table) == "table" then
-			local lk = 0
-			for k, v in pairs(Table) do
-				if type(k) ~= "number" then
-					return false
-				end
-				if lk ~= k+1 then
-					return false
-				end
+		local lk = 0
+		for k, v in pairs(Table) do
+			if type(k) ~= "number" then
+				return false
 			end
-			return true
+			if lk+1 ~= k then
+				return false
+			end
+			lk = k
 		end
-		return false
+		return true
 	end
 
 	function ModUtil.AutoIsUnKeyed( Table )
@@ -280,7 +274,7 @@ if not ModUtil then
 	]]
 	function ModUtil.SafeSet( Table, IndexArray, Value )
 		if IsEmpty(IndexArray) then
-			return -- can't set the input argument
+			return false -- can't set the input argument
 		end
 		local n = #IndexArray
 		local node = Table
@@ -355,7 +349,7 @@ if not ModUtil then
 			Bar = 6
 		}
 
-		and NilTable is
+		and SetTable is
 		{
 			Foo = 7,
 			Baz = {
@@ -451,7 +445,8 @@ if not ModUtil then
 		This is useful to create a unique global key from a path, in for interoperability
 		with utilities that don't understand paths or index arrays.
 
-		For example, the OnPressedFunctionName of a button must refer to a single key in the globals table (_G); if you have a Path then JoinPath may be used to create such a key.
+		For example, the OnPressedFunctionName of a button must refer to a single key 
+		in the globals table (_G); if you have a Path then JoinPath may be used to create such a key.
 	]]
 	function ModUtil.JoinPath( Path )
 		local s = ""
@@ -494,11 +489,11 @@ if not ModUtil then
 	end
 
 	function ModUtil.PathNilTable( Path, NilTable, Base )
-		return ModUtil.MapNilTable( ModUtil.SafeGet(Base or _G, ModUtil.PathArray(Path)), NilTable )
+		return ModUtil.MapNilTable( ModUtil.PathGet( Path, Base ), NilTable )
 	end
 
 	function ModUtil.PathSetTable( Path, SetTable, Base )
-		return ModUtil.MapSetTable( ModUtil.SafeGet(Base or _G, ModUtil.PathArray(Path)), SetTable )
+		return ModUtil.MapSetTable( ModUtil.PathGet( Path, Base ), SetTable )
 	end
 
 	-- Globalisation
