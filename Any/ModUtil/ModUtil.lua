@@ -792,7 +792,8 @@ if not ModUtil then
 	end
 	
 	--[[
-		Removes all the wrappers from a function, and restore it to its original value.
+		Removes the most recent wrapper from a function, and restore it to its
+		previous value.
 
 		Generally, you should use ModUtil.UnwrapBaseFunction instead for a more
 		modder-friendly interface.
@@ -807,7 +808,7 @@ if not ModUtil then
 
 		local tempTable = ModUtil.SafeGet(ModUtil.WrapCallbacks[funcTable], IndexArray)
 		if not tempTable then return end 
-		local funcData = table.remove(tempTable)
+		local funcData = table.remove(tempTable) -- removes the last value
 		if not funcData then return end
 		
 		ModUtil.SafeSet( funcTable, IndexArray, funcData.func )
@@ -858,11 +859,11 @@ if not ModUtil then
 	end
 	
 	--[[
-		Remove all the wrappers from the function at baseFuncPath,
-		restoring it to the the unwrapped state.
+		Remove the most recent wrapper from the function at baseFuncPath,
+		restoring it to its previous state
 
-		Note that this does _not_ remove overrides, and it removes all
-		wrapping, including that performed by other mods, so tread carefully.
+		Note that this does _not_ remove overrides, and it removes the most
+		recent wrapper regardless of which mod added it, so be careful!
 
 		baseFuncPath	- the (global) path to the function, as a string
 			for most SGG-provided functions, this is just the function's name
