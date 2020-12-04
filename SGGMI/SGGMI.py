@@ -60,7 +60,7 @@ from collections import defaultdict
 from distutils.dir_util import copy_tree
 from distutils.errors import DistutilsFileError
 
-from sggmi import
+from sggmi import util
 
 ## Importer Config
 
@@ -117,7 +117,7 @@ if sjson is not None:
                     return data[key]
             return DNE
         if isinstance(data, OrderedDict):
-            return data.get(key, DNE)
+            return util.get_attribute(key, DNE)
         return DNE
 
     def sjson_clearDNE(data):
@@ -484,7 +484,7 @@ def modfile_loadcommand(reldir, tokens, to, n, mode, cfg={}, **load):
                     for j in range(abs(num)):
                         sources = [x[j] if isinstance(x, list) else x for x in paths]
                         for src in sources:
-                            todeploy[src] = dictmap(todeploy.get(src, cfg), cfg)
+                            todeploy[src] = util.merge_dict(todeploy.get(src), cfg)
                         f = lambda x: map(lambda y: deploy_from_scope + "/" + y, x)
                         codes[scopepath].append(
                             Mod(
@@ -544,11 +544,11 @@ def modfile_load(filename, echo=True):
                     for s in tokens[1:]:
                         check = is_subfile(s, modsdir)
                         if check:
-                            todeploy[s] = dictmap(todeploy.get(s, cfg), cfg)
+                            todeploy[s] = util.merge_dict(todeploy.get(s), cfg)
                         elif check.message == "SubDir":
                             for f in os.scandir(s):
                                 S = f.path.replace("\\", "/")
-                                todeploy[S] = dictmap(todeploy.get(S, cfg), cfg)
+                                todeploy[S] = util.merge_dict(todeploy.get(S), cfg)
 
                 elif modfile_startswith(tokens, KWRD_import, 1):
                     modfile_loadcommand(
@@ -709,21 +709,21 @@ def update_scope(rel=".."):
 def configure_globals(condict={}, flow=True):
 
     global do_echo, do_log, do_input
-    do_echo = safeget(condict, "echo", do_echo)
-    do_log = safeget(condict, "log", do_log)
-    do_input = safeget(condict, "input", do_input)
+    do_echo = util.get(condict, "echo", do_echo)
+    do_log =util.get_attribute(condict, "log", do_log)
+    do_input = util.get_attribute(condict, "input", do_input)
 
     global logsrel, logfile_prefix, logfile_suffix
-    logsrel = safeget(condict, "log_folder", logsrel)
-    logfile_prefix = safeget(condict, "log_prefix", logfile_prefix)
-    logfile_suffix = safeget(condict, "log_suffix", logfile_suffix)
+    logsrel = util.get_attribute(condict, "log_folder", logsrel)
+    logfile_prefix = util.get_attribute(condict, "log_prefix", logfile_prefix)
+    logfile_suffix = util.get_attribute(condict, "log_suffix", logfile_suffix)
 
     global logsdir
     logsdir = os.path.join(os.path.realpath(logsrel), "").replace("\\", "/")
     preplogfile()
 
     global hashes
-    hashes = safeget(condict, "hashes", hashes)
+    hashes = util.get_attribute(condict, "hashes", hashes)
 
     global thisfile, localdir, localparent
     thisfile = os.path.realpath(__file__).replace("\\", "/")
@@ -735,11 +735,11 @@ def configure_globals(condict={}, flow=True):
     profiles.update(safeget(condict, "profiles", {}))
     profile = None
 
-    folderprofile = safeget(condict, "profile", localparent)
+    folderprofile = util.get_attribute(condict, "profile", localparent)
     if profile_use_special:
-        profile = safeget(condict, "profile_special", profile)
+        profile = util.get_attribute(condict, "profile_special", profile)
     while profile is None:
-        profile = safeget(profiles, folderprofile, None)
+        profile = util.get_attribute(profiles, folderprofile, None)
         if profile is None:
             if not flow:
                 alt_warn(MSG_MissingFolderProfile.format(configfile))
@@ -758,10 +758,10 @@ def configure_globals(condict={}, flow=True):
     default_target = profile.get("default_target", default_target)
 
     global scopemods, modsrel, modsabs, baserel, baseabs, editrel, editabs
-    scopemods = safeget(profile, "folder_deployed", scopemods)
-    modsrel = safeget(profile, "folder_mods", modsrel)
-    baserel = safeget(profile, "folder_basecache", baserel)
-    editrel = safeget(profile, "folder_editcache", editrel)
+    scopemods = util.get_attribute(profile, "folder_deployed", scopemods)
+    modsrel = util.get_attribute(profile, "folder_mods", modsrel)
+    baserel = util.get_attribute(profile, "folder_basecache", baserel)
+    editrel = util.get_attribute(profile, "folder_editcache", editrel)
 
     global basedir
     basedir = (scopedir + "/" + baserel).replace("\\", "/")
@@ -823,9 +823,9 @@ def configsetup(predict={}, postdict={}):
         except FileNotFoundError:
             pass
 
-    dictmap(condict, predict)
+    util.merge_dict(condict, predict)
     if cfg_modify:
-        dictmap(condict, postdict)
+        util.merge_dict(condict, postdict)
 
     if yaml is not None:
         with open(configfile, "w") as f:
@@ -835,7 +835,7 @@ def configsetup(predict={}, postdict={}):
         alt_print("Config modification successful.")
         alt_exit(0)
 
-    dictmap(condict, postdict)
+    util.merge_dict(condict, postdict)
     configure_globals(condict)
 
 
@@ -953,7 +953,7 @@ default_profiles = {
 }
 
 for k, v in default_profiles.items():
-    default_profiles[k] = dictmap(profile_template.copy(), v)
+    default_profiles[k] = util.merge_dict(profile_template.copy(), v, modify_original=False)
 
 YML_framework = {
     "echo": True,
