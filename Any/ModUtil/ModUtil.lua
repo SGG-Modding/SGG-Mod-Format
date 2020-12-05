@@ -883,7 +883,7 @@ if not ModUtil then
 		Generally, you should use ModUtil.BaseOverride instead for a more modder-friendly
 		interface.
 
-		If the value is a function, preserves overrides only the base function,
+		If the value is a function, overrides only the base function,
 		preserving all the wraps added with ModUtil.WrapFunction.
 
 		The previous value is stored so that it can be restored later if desired.
