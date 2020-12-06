@@ -99,3 +99,34 @@ def merge_dict(base_dict, input_dict, modify_original=True):
             target_dict[key] = input_dict[key]
 
     return target_dict
+
+def prune(data, modify_original=True):
+    """
+    Remove elements from dict or list if value is None
+
+    Arguments:
+    data -- dict or list to remove elements from
+
+    Keyword Arguments:
+    modify_original -- If False, original dict or list is left intact (Default: True)
+
+    Returns:
+    Resulting dict or list after merging
+    """
+    if isinstance(data, dict):
+        target = type(data)()
+
+        for key, value in data.items():
+            if value is not None:
+                target[key] = prune(value, modify_original=False)
+
+    if isinstance(data, list):
+        data = [
+            prune(element, modify_original=False) for element in data
+            if element is not None
+        ]
+
+    if modify_original:
+        data = target
+
+    return target
