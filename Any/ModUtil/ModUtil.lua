@@ -21,6 +21,7 @@ if not ModUtil then
 		WrapCallbacks = {},
 		Mods = {},
 		Overrides = {},
+    PerFunctionSettings = {},
 		Anchors = {Menu={},CloseFuncs={}},
 		GlobalConnector = "__",
 		FuncsToLoad = {},
@@ -1026,7 +1027,145 @@ if not ModUtil then
 		ModUtil.Restore( _G, pathArray )
 		ModUtil.UpdateGlobalisedPath( basePath, pathArray )
 	end
+  
+  --[[
+    Create a new table whose getters and setters will default to the given
+    baseTable, except in cases where values are setOverride into the overrideTable.
+
+    This allows pinpoint overriding of values in the override table, while allowing
+    all other accesses to continue to operate as if they were operating on baseTable
+
+    baseTable  - the table to access for entries not specifically overridden
+  ]]
+  local function makeOverrideTable( baseTable )
+    local overrideTable = { IsModUtilOverrideTable = true }
+    setmetatable(overrideTable, {__index = baseTable, __newindex = baseTable})
+    return overrideTable
+  end
+
+  --[[
+    Override the entry at indexArray in table with value.
+
+    Any intermediate tables along the path specified by indexArray will be
+    converted to overide tables as needed. This ensures that their previous
+    contents are still accessible, and that overrides are minimal.
+
+    table  - the table whose entry should be overridden
+      must come from a previous call to makeOverrideTable()
+    indexArray  - the list of indexes
+    value  - the value to override
+  ]]
+  local function setOverride( table, indexArray, value )
+    if type(table) ~= "table" or not table.IsModUtilOverrideTable then return end
+    local current = table
+    local n = #indexArray
+    for i=1,n-1 do
+      local indexArrayElement = indexArray[i]
+      local indexed = current[indexArrayElement]
+      if indexed == nil then
+        indexed = {}
+        rawset( current, indexArrayElement, indexed )
+      elseif type( indexed ) ~= "table" then
+        return
+      elseif not indexed.IsModUtilOverrideTable then
+        indexed = makeOverrideTable( indexed )
+        rawset( current, indexArrayElement, indexed )
+      end
+      current = indexed
+    end
+    rawset(current, indexArray[n], value)
+  end
 	
+  function ModUtil.OverrideWithinFunction( baseTable, indexArray, envIndexArray, Value, modObject )
+    if not baseTable then return end
+    local func = ModUtil.SafeGet(baseTable, indexArray)
+    if type(func) ~= "function" then return end
+    -- get the function's local env, or create a new one if not present
+    local settings = ModUtil.SafeGet(ModUtil.PerFunctionSettings[baseTable], indexArray)
+    if not settings then
+      local env = makeOverrideTable( baseTable )
+      settings = {
+        Env = env
+        Overrides = {},
+        WrapCallbacks = {}
+      }
+      ModUtil.SafeSet(ModUtil.PerFunctionSettings[baseTable], indexArray, settings)
+      setfenv(func, settings.Env)
+    end
+
+    local baseValue = ModUtil.SafeGet(settings.Env, envIndexArray)
+    -- reapply wraps, if any
+		local wrapCallbacks = nil
+		if type(baseValue) == "function" and type(Value) == "function" then
+			wrapCallbacks = ModUtil.SafeGet(settings.WrapCallbacks, envIndexArray)
+			if wrapCallbacks then if wrapCallbacks[1] then
+				baseValue = wrapCallbacks[1].func 
+				wrapCallbacks[1].func = Value
+			end end
+		end
+    -- store the override
+		local tempTable = ModUtil.SafeGet(settings.Overrides, envIndexArray)
+		if tempTable == nil then
+			tempTable = {}
+			ModUtil.SafeSet(settings.Overrides, envIndexArray, tempTable)
+		end
+		table.insert(tempTable, {id=#tempTable+1,mod=modObject,value=Value,base=baseValue})
+    
+    -- force insert the new value into the function's env
+    local idx = DeepTableCopy(indexArray)
+    local first = table.remove(idx, 1)
+    if IsEmpty( idx ) then
+      rawset( settings.Env, first, Value )
+    else
+      rawset( settings.Env, first, {})
+      ModUtil.SafeSet(settings.Env[first], idx, Value)
+    end
+  end
+  function ModUtil.WrapWithinFunction( baseTable, indexArray, envIndexArray, wrapFunc, modObject )
+    if type(wrapFunc) ~= "function" then return end
+    if not baseTable then return end
+    local wrapCallbacks = nil
+    local func = ModUtil.SafeGet(ModUtil.Overrides[baseTable], indexArray)
+    if func then
+      func = func.value
+    else
+      func = ModUtil.SafeGet(baseTable, indexArray)
+      wrapCallbacks = ModUtil.SafeGet(ModUtil.WrapCallbacks[baseTable], indexArray)
+      if wrapCallbacks then if wrapCallbacks[1] then
+        func = wrapCallbacks[1].func 
+      end end 
+    end
+    if type(func) ~= "function" then return end
+
+    ModUtil.NewTable(ModUtil.LocalOverrides, baseTable)
+    local tempTable = ModUtil.SafeGet(ModUtil.LocalOverrides[baseTable], indexArray)
+    if tempTable == nil then
+      tempTable = {}
+      ModUtil.SafeSet(ModUtil.LocalOverrides[baseTable], indexArray, tempTable)
+    end
+    local tempTableEnv = ModUtil.SafeGet(tempTable, envIndexArray)
+    if tempTableEnv == nil then
+      tempTableEnv = {}
+      ModUtil.SafeSet(tempTable, envIndexArray, tempTableEnv)
+    end
+    
+    table.insert(tempTableEnv, {id=#tempTableEnv+1,mod=modObject,wrap=wrapFunc,func=func})
+  
+    local baseFunc = ModUtil.SafeGet( _G, envIndexArray )
+    local newEnv = {}
+    setmetatable( newEnv, {__index = _G, __newindex = _G} )
+    local newFunc = function(...)
+      return wrapFunc( baseFunc, ... )
+    end
+    ModUtil.SafeSet( newEnv, envIndexArray, newFunc )
+    setfenv( func, newEnv )
+    
+    if wrapCallbacks then if wrapCallbacks[1] then
+      wrapCallbacks[1].func = func
+      ModUtil.RewrapFunction( baseTable, indexArray )
+    end end 
+  end
+
 	-- Misc
 	
 	-- function depends on Random.lua having run first
