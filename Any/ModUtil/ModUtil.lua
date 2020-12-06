@@ -11,13 +11,13 @@ if not ModUtil then
 
 	-- Setup
 	
-	local config = {
+	local Config = {
 		AutoCollapse = true,
 	}
 	
 	ModUtil = {
-		config = config,
-		modName = "ModUtil",
+		Config = Config,
+		ModName = "ModUtil",
 		WrapCallbacks = {},
 		Mods = {},
 		Overrides = {},
@@ -28,12 +28,12 @@ if not ModUtil then
 	}
 	SaveIgnores["ModUtil"]=true
 
-	local gameHints = {
+	local GameHints = {
 		Hades=SetupHeroObject,
 		Pyre=CommenceDraft,
 		Transistor=GlobalTest,
 	}
-	for game,hint in pairs(gameHints) do
+	for game,hint in pairs(GameHints) do
 		ModUtil.Game = game
 		ModUtil[game] = {}
 		break
@@ -55,10 +55,10 @@ if not ModUtil then
 		end
 		if not parent[modName] then
 			parent[modName] = {}
-			table.insert(ModUtil.Mods,parent[modName])
+			table.insert( ModUtil.Mods, parent[modName] )
 		end
-		parent[modName].modName = modName
-		parent[modName].modParent = parent
+		parent[modName].ModName = modName
+		parent[modName].ModParent = parent
 		return parent[modName]
 	end
 
@@ -84,7 +84,7 @@ if not ModUtil then
 		Tell each screen anchor that they have been forced closed by the game
 	]]
 	function ModUtil.ForceClosed( triggerArgs )
-		for k,v in pairs(ModUtil.Anchors.CloseFuncs) do
+		for k,v in pairs( ModUtil.Anchors.CloseFuncs ) do
 			v( nil, nil, triggerArgs )
 		end
 		ModUtil.Anchors.CloseFuncs = {}
@@ -94,47 +94,47 @@ if not ModUtil then
 
 	-- Data Misc
 
-	function ModUtil.ValueString(o)
-		if type(o) == 'string' then
+	function ModUtil.ValueString( o )
+		if type( o ) == 'string' then
 			return '"'..o..'"'
 		end
-		return tostring(o)
+		return tostring( o )
 	end
 	
-	function ModUtil.KeyString(o)
-		if type(o) == 'number' then o = o..'.' end
-		return tostring(o)
+	function ModUtil.KeyString( o )
+		if type( o ) == 'number' then o = o..'.' end
+		return tostring( o )
 	end
 
-	function ModUtil.TableKeysString(o)
-		if type(o) == 'table' then
+	function ModUtil.TableKeysString( o )
+		if type( o ) == 'table' then
 			local first = true
 			local s = ''
-			for k,v in pairs(o) do
+			for k,v in pairs( o ) do
 				if not first then s = s .. ', ' else first = false end
-				s = s .. ModUtil.KeyString(k)
+				s = s .. ModUtil.KeyString( k )
 			end
 			return s
 		end
 	end
 
-	function ModUtil.ToString(o)
+	function ModUtil.ToString( o )
 		--https://stackoverflow.com/a/27028488
-		if type(o) == 'table' then
+		if type( o ) == 'table' then
 			local first = true
 			local s = '{'
-			for k,v in pairs(o) do
+			for k,v in pairs( o ) do
 				if not first then s = s .. ', ' else first = false end
-				s = s .. ModUtil.KeyString(k) ..' = ' .. ModUtil.ToString(v)
+				s = s .. ModUtil.KeyString( k ) ..' = ' .. ModUtil.ToString( v )
 			end
 			return s .. '}'
 		else
-			return ModUtil.ValueString(o)
+			return ModUtil.ValueString( o )
 		end
 	end
 
-	function ModUtil.ToStringLimited(o,n,m,t,j)
-		if type(o) == 'table' then
+	function ModUtil.ToStringLimited( o, n, m, t, j)
+		if type( o ) == 'table' then
 			local first = true
 			local s = ''
 			local i = 0
@@ -142,24 +142,24 @@ if not ModUtil then
 			if not j then j = 1 end
 			if not m then m = 0 end
 			if not t then t = {} end
-			for k,v in pairs(o) do
-				if t[j] then go = type(v) == t[j] or t[j] == true end
+			for k,v in pairs( o ) do
+				if t[j] then go = type( v ) == t[j] or t[j] == true end
 				if go then
 					i = i + 1
 					if n then if i > n+m then return s end end
 					if m < i then
 						if not first then s = s .. ', ' else first = false end
-						if type(v) == "table" and t[j+1] then
-							s = s .. ModUtil.KeyString(k) ..' = ('..ModUtil.ToStringLimited(v,n,m,t,j+1)..')'
+						if type( v ) == "table" and t[j+1] then
+							s = s .. ModUtil.KeyString( k ) ..' = ('..ModUtil.ToStringLimited( v, n, m, t, j+1 )..')'
 						else
-							s = s .. ModUtil.KeyString(k) ..' = '..ModUtil.ValueString(v)
+							s = s .. ModUtil.KeyString( k ) ..' = '..ModUtil.ValueString( v )
 						end
 					end
 				end
 			end
 			return s
 		else
-			return ModUtil.ValueString(o)
+			return ModUtil.ValueString( o )
 		end
 	end
 
@@ -167,7 +167,7 @@ if not ModUtil then
 		local chunks = {""}
 		local cs = 0
 		local ncs = 1
-		for chr in text:gmatch(".") do
+		for chr in text:gmatch( "." ) do
 			cs = cs + 1
 			if cs > chunkSize or chr == "\n" then
 				ncs = ncs + 1
@@ -186,18 +186,18 @@ if not ModUtil then
 		return chunks
 	end
 
-	function ModUtil.InvertTable( Table )
+	function ModUtil.InvertTable( tableArg )
 		local inverseTable = {}
-		for key,value in ipairs(tableArg) do
-			inverseTable[value]=key
+		for key,value in ipairs( tableArg ) do
+			inverseTable[value] = key
 		end
 		return inverseTable
 	end
 
-	function ModUtil.IsUnKeyed( Table )
+	function ModUtil.IsUnKeyed( tableArg )
 		local lk = 0
-		for k, v in pairs(Table) do
-			if type(k) ~= "number" then
+		for k, v in pairs( tableArg ) do
+			if type( k ) ~= "number" then
 				return false
 			end
 			if lk+1 ~= k then
@@ -208,10 +208,10 @@ if not ModUtil then
 		return true
 	end
 
-	function ModUtil.AutoIsUnKeyed( Table )
-		if ModUtil.config.AutoCollapse then
-			if not ModUtil.MarkedForCollapse[Table] then
-				return ModUtil.IsUnKeyed( Table )
+	function ModUtil.AutoIsUnKeyed( tableArg )
+		if ModUtil.Config.AutoCollapse then
+			if not ModUtil.MarkedForCollapse[ tableArg ] then
+				return ModUtil.IsUnKeyed( tableArg )
 			else
 				return false
 			end
@@ -227,10 +227,10 @@ if not ModUtil then
 		Table - the table to modify
 		key	 - the key at which to store the new empty table
 	]]
-	function ModUtil.NewTable( Table, key )
-		if type(Table) ~= "table" then return end
-		if Table[key] == nil then
-			Table[key] = {}
+	function ModUtil.NewTable( tableArg, key )
+		if type( tableArg ) ~= "table" then return end
+		if tableArg[key] == nil then
+			tableArg[key] = {}
 		end
 	end
 	
@@ -246,11 +246,11 @@ if not ModUtil then
 		Table			 - the table to retrieve from
 		indexArray	- the list of indices
 	]]
-	function ModUtil.SafeGet( Table, IndexArray )
-		local n = #IndexArray
-		local node = Table
-		for k, i in ipairs(IndexArray) do
-			if type(node) ~= "table" then
+	function ModUtil.SafeGet( baseTable, indexArray )
+		local n = #indexArray
+		local node = baseTable
+		for k, i in ipairs( indexArray ) do
+			if type( node ) ~= "table" then
 				return nil
 			end
 			node = node[i]
@@ -272,31 +272,31 @@ if not ModUtil then
 		indexArray	- the list of indices
 		Value			 - the value to add
 	]]
-	function ModUtil.SafeSet( Table, IndexArray, Value )
-		if IsEmpty(IndexArray) then
+	function ModUtil.SafeSet( baseTable, indexArray, value )
+		if IsEmpty( indexArray ) then
 			return false -- can't set the input argument
 		end
-		local n = #IndexArray
-		local node = Table
+		local n = #indexArray
+		local node = baseTable
 		for i = 1, n-1 do
-			k = IndexArray[i]
-			ModUtil.NewTable(node,k)
+			k = indexArray[i]
+			ModUtil.NewTable( node, k )
 			node = node[k]
 		end
-		if (node[IndexArray[n]]==nil)~=(Value==nil) then
+		if ( node[indexArray[n]] == nil ) ~= ( value == nil ) then
 			if ModUtil.AutoIsUnKeyed( InTable ) then
 				ModUtil.MarkForCollapse( node )
 			end
 		end
-		node[IndexArray[n]] = Value
+		node[indexArray[n]] = value
 		return true
 	end
 
 	--[[
-		Set all the values in InTable corresponding to keys
-		in NilTable to nil.
+		Set all the values in inTable corresponding to keys
+		in nilTable to nil.
 
-		For example, if InTable is 
+		For example, if inTable is 
 		{
 			Foo = 5,
 			Bar = 6,
@@ -306,7 +306,7 @@ if not ModUtil then
 			}
 		}
 
-		and NilTable is
+		and nilTable is
 		{
 			Foo = true,
 			Baz = {
@@ -324,32 +324,32 @@ if not ModUtil then
 			}
 		}
 	]]
-	function ModUtil.MapNilTable( InTable, NilTable )
-		local unkeyed = ModUtil.AutoIsUnKeyed( InTable )
-		for NilKey, NilVal in pairs(NilTable) do
-			local InVal = InTable[NilKey]
-			if type(NilVal) == "table" and type(InVal) == "table" then
-				ModUtil.MapNilTable( InVal, NilVal )
+	function ModUtil.MapNilTable( inTable, nilTable )
+		local unkeyed = ModUtil.AutoIsUnKeyed( inTable )
+		for nilKey, nilVal in pairs( nilTable ) do
+			local inVal = inTable[nilKey]
+			if type(nilVal) == "table" and type( inVal ) == "table" then
+				ModUtil.MapNilTable( inVal, nilVal )
 			else
-				InTable[NilKey] = nil
+				inTable[nilKey] = nil
 				if unkeyed then 
-					ModUtil.MarkForCollapse(InTable)
+					ModUtil.MarkForCollapse( inTable )
 				end
 			end
 		end
 	end
 
 	--[[
-		Set all the the values in InTable corresponding to values
-		in SetTable to their values in SetTable.
+		Set all the the values in inTable corresponding to values
+		in setTable to their values in setTable.
 
-		For example, if InTable is
+		For example, if inTable is
 		{
 			Foo = 5,
 			Bar = 6
 		}
 
-		and SetTable is
+		and setTable is
 		{
 			Foo = 7,
 			Baz = {
@@ -366,31 +366,48 @@ if not ModUtil then
 			}
 		}
 	]]
-	function ModUtil.MapSetTable( InTable, SetTable )
-		local unkeyed = ModUtil.AutoIsUnKeyed( InTable )
-		for SetKey, SetVal in pairs(SetTable) do
-			local InVal = InTable[SetKey]
-			if type(SetVal) == "table" and type(InVal) == "table" then
-				ModUtil.MapSetTable( InVal, SetVal )
+	function ModUtil.MapSetTable( inTable, setTable )
+		local unkeyed = ModUtil.AutoIsUnKeyed( inTable )
+		for setKey, setVal in pairs( setTable ) do
+			local inVal = inTable[setKey]
+			if type( setVal ) == "table" and type( inVal ) == "table" then
+				ModUtil.MapSetTable( inVal, setVal )
 			else
-				InTable[SetKey] = SetVal
-				if type(SetKey) ~= "number" and unkeyed then
-					ModUtil.MarkForCollapse(InTable)
+				inTable[setKey] = setVal
+				if type( setKey ) ~= "number" and unkeyed then
+					ModUtil.MarkForCollapse( inTable )
 				end
 			end
 		end
 	end
 
+	local function CollapseTable( tableArg )
+		-- from UtilityScripts.lua
+		if tableArg == nil then
+			return
+		end
+
+		local collapsedTable = {}
+		local index = 1
+		for k, v in pairs( tableArg ) do
+			collapsedTable[index] = v
+			index = index + 1
+		end
+
+		return collapsedTable
+
+	end
+
 	function ModUtil.CollapseMarked()
-		for k,v in pairs(ModUtil.MarkedForCollapse) do
-			k = CollapseTable(k)
+		for k,v in pairs( ModUtil.MarkedForCollapse ) do
+			k = CollapseTable( k )
 		end
 		ModUtil.MarkedForCollapse = {}
 	end
 	OnAnyLoad{ModUtil.CollapseMarked}
 
-	function ModUtil.MarkForCollapse( Table, IndexArray )
-		ModUtil.MarkedForCollapse[ModUtil.SafeGet(Table, IndexArray)] = true
+	function ModUtil.MarkForCollapse( baseTable, indexArray )
+		ModUtil.MarkedForCollapse[ModUtil.SafeGet( baseTable, indexArray )] = true
 	end
 	
 	-- Path Manipulation
@@ -398,19 +415,19 @@ if not ModUtil then
 	--[[
 		Concatenates two index arrays, in order.
 
-		A, B - the index arrays
+		a, b - the index arrays
 	]]
-	function ModUtil.JoinIndexArrays( A, B )
-		local C = {}
+	function ModUtil.JoinIndexArrays( a, b )
+		local c = {}
 		local j = 0
-		for i,v in ipairs(A) do
-			C[i]=v
+		for i,v in ipairs(a) do
+			c[i] = v
 			j = i
 		end
-		for i,v in ipairs(B) do
-			C[i+j]=v
+		for i,v in ipairs(b) do
+			c[i+j] = v
 		end
-		return C
+		return c
 	end
 	
 	--[[
@@ -419,27 +436,27 @@ if not ModUtil then
 		The returned array can be used as an argument to the safe table
 		manipulation functions, such as ModUtil.SafeSet and ModUtil.SafeGet.
 
-		Path - a dot-separated string that represents a path into a table
+		path - a dot-separated string that represents a path into a table
 	]]
-	function ModUtil.PathArray( Path )
+	function ModUtil.PathArray( path )
 		local s = ""
 		local i = {}
-		for c in Path:gmatch(".") do
+		for c in path:gmatch( "." ) do
 			if c ~= "." then
 				s = s .. c
 			else
-				table.insert(i,s)
+				table.insert( i, s )
 				s = ""
 			end
 		end
 		if #s > 0 then
-			table.insert(i,s)
+			table.insert( i,s )
 		end
 		return i
 	end
 	
 	--[[
-		Mangles a provide Path so that it is safe to use to index a table, by
+		Mangles a provide path so that it is safe to use to index a table, by
 		replacing the periods with ModUtil.GlobalConnector.
 
 		This is useful to create a unique global key from a path, in for interoperability
@@ -448,9 +465,9 @@ if not ModUtil then
 		For example, the OnPressedFunctionName of a button must refer to a single key 
 		in the globals table (_G); if you have a Path then JoinPath may be used to create such a key.
 	]]
-	function ModUtil.JoinPath( Path )
+	function ModUtil.JoinPath( path )
 		local s = ""
-		for c in Path:gmatch(".") do
+		for c in path:gmatch( "." ) do
 			if c ~= "." then
 				s = s .. c
 			else
@@ -466,12 +483,12 @@ if not ModUtil then
 		For example, ModUtil.PathGet("a.b.c") returns a.b.c.
 		If either a or a.b is nil, nil is returned instead.
 
-		Path - the path to get the value
-		Base - (optional) The table to retreive the value from.
+		path - the path to get the value
+		base - (optional) The table to retreive the value from.
 					 If not provided, retreive a global.
 	]]
-	function ModUtil.PathGet( Path, Base )
-		return ModUtil.SafeGet(Base or _G, ModUtil.PathArray(Path))
+	function ModUtil.PathGet( path, base )
+		return ModUtil.SafeGet( base or _G, ModUtil.PathArray( path ) )
 	end
 
 	--[[
@@ -480,20 +497,20 @@ if not ModUtil then
 		For example, ModUtil.PathSet("a.b.c", 1) sets a.b.c = 1.
 		If either a or a.b is nil, they are created.
 
-		Path - the path to get the value
-		Base - (optional) The table to retreive the value from.
+		path - the path to get the value
+		base - (optional) The table to retreive the value from.
 					 If not provided, retreive a global.
 	]]
-	function ModUtil.PathSet( Path, Value, Base )
-		return ModUtil.SafeSet(Base or _G, ModUtil.PathArray(Path),Value)
+	function ModUtil.PathSet( path, value, base )
+		return ModUtil.SafeSet( base or _G, ModUtil.PathArray( path ), value )
 	end
 
-	function ModUtil.PathNilTable( Path, NilTable, Base )
-		return ModUtil.MapNilTable( ModUtil.PathGet( Path, Base ), NilTable )
+	function ModUtil.PathNilTable( path, nilTable, base )
+		return ModUtil.MapNilTable( ModUtil.PathGet( path, base ), nilTable )
 	end
 
-	function ModUtil.PathSetTable( Path, SetTable, Base )
-		return ModUtil.MapSetTable( ModUtil.PathGet( Path, Base ), SetTable )
+	function ModUtil.PathSetTable( path, setTable, base )
+		return ModUtil.MapSetTable( ModUtil.PathGet( path, base ), setTable )
 	end
 
 	-- Globalisation
@@ -511,27 +528,27 @@ if not ModUtil then
 		variable for that function, and you can then set OnPressedFunctionName to
 		ModUtil.JoinPath("YourModName.FunctionName").
 
-		Path - the path to be globalised
+		path - the path to be globalised
 	]]
-	function ModUtil.GlobalisePath( Path )
-		_G[ModUtil.JoinPath( Path )] = ModUtil.SafeGet(_G,ModUtil.PathArray( Path ))
+	function ModUtil.GlobalisePath( path )
+		_G[ModUtil.JoinPath( path )] = ModUtil.SafeGet( _G, ModUtil.PathArray( path ) )
 	end
 	
 	--[[
 		Updates the global created by ModUtil.GlobalisePath, to pick up any
 		changes to the value at the Path.
 
-		Path			- the path to be globalised
-		PathArray	- (optional) if present, retrive the updated value from
+		path			- the path to be globalised
+		pathArray	- (optional) if present, retrive the updated value from
 								a location other than the default ModUtil.PathArray(Path)
 	]]
-	function ModUtil.UpdateGlobalisedPath( Path, PathArray )
-		local joinedPath = ModUtil.JoinPath( Path )
+	function ModUtil.UpdateGlobalisedPath( path, pathArray )
+		local joinedPath = ModUtil.JoinPath( path )
 		if _G[joinedPath] then 
-			if PathArray then
-				_G[joinedPath] = ModUtil.SafeGet(_G,PathArray)
+			if pathArray then
+				_G[joinedPath] = ModUtil.SafeGet( _G, pathArray )
 			else
-				_G[joinedPath] = ModUtil.SafeGet(_G,ModUtil.PathArray( Path ))
+				_G[joinedPath] = ModUtil.SafeGet( _G, ModUtil.pathArray( path ) )
 			end
 		end
 	end
@@ -559,20 +576,20 @@ if not ModUtil then
 
 		So that the global functions are called YourModNameUI__OnButton1 etc.
 
-		Table	- The table containing the functions to globalise
-		Path	- (optional) if present, add this path as a prefix to the
+		tableArg	- The table containing the functions to globalise
+		prefixPath	- (optional) if present, add this path as a prefix to the
 						path from the root of the table.
 	]]
-	function ModUtil.GlobaliseFuncs( Table, Path )
+	function ModUtil.GlobaliseFuncs( tableArg, prefixPath )
 		if Path == nil then
 			Path = ""
 		end
 		for k,v in pairs( Table ) do
-			if type(k) == "string" then
+			if type( k ) == "string" then
 				if type(v) == "function" then
-					_G[ModUtil.JoinPath( Path.."."..k )] = v
+					_G[ModUtil.JoinPath( prefixPath .. "." .. k )] = v
 				elseif type(v) == "table" then
-					ModUtil.GlobaliseFuncs( v, Path.."."..k )
+					ModUtil.GlobaliseFuncs( v, prefixPath.."."..k )
 				end
 			end
 		end
@@ -585,15 +602,30 @@ if not ModUtil then
 	]]
 	function ModUtil.GlobaliseModFuncs( modObject )
 		local parent = modObject
-		while parent.modParent do
-			parent = parent.modParent
+		local prefix = {modObject.ModName}
+		while parent.ModParent do
+			parent = parent.ModParent
 			if parent == _G then break end
+			table.insert( prefix, 1, parent.ModName )
 		end
-		ModUtil.GlobaliseFuncs( modObject, modObject.modName )
+		ModUtil.GlobaliseFuncs( modObject, ModUtil.PathArray( prefix ) )
 	end
 
 
 	-- Metaprogramming Shenanigans
+
+	local function getfenv( fn )
+		local i = 1
+		while true do
+			local name, val = debug.getupvalue(fn, i)
+			if name == "_ENV" then
+				return val
+			elseif not name then
+				break
+			end
+			i = i + 1
+		end
+	end
 
 	--[[
 		Replace a function's _ENV with a new environment table.
@@ -605,14 +637,14 @@ if not ModUtil then
 		table should generally have _G as its __index, so that any globals
 		other than those being overridden can still be read.
 	]]
-	local function setfenv(fn, env)
+	local function setfenv( fn, env )
 		local i = 1
 		while true do
-			local name = debug.getupvalue(fn, i)
+			local name = debug.getupvalue( fn, i )
 			if name == "_ENV" then
-				debug.upvaluejoin(fn, i, (function()
+				debug.upvaluejoin( fn, i, (function()
 					return env
-				end), 1)
+				end), 1 )
 				break
 			elseif not name then
 				break
@@ -632,7 +664,7 @@ if not ModUtil then
 		func - the function to get upvalues from
 	]]
 	function ModUtil.GetUpValues( func )
-		if type(func) ~= "function" then return nil end
+		if type( func ) ~= "function" then return nil end
 		local key = {}
 		local u = nil
 		local i = 1
@@ -643,34 +675,34 @@ if not ModUtil then
 			i = i + 1
 		end
 		local ind = {}
-		for i,k in pairs(key) do
+		for i,k in pairs( key ) do
 			ind[k] = i
 		end
 		local ups = {}
-		setmetatable(ups,{
-			__index = function(self,name)
-				return debug.getupvalue(func,ind[name])
+		setmetatable( ups, {
+			__index = function( self, name )
+				return debug.getupvalue( func, ind[name] )
 			end,
-			__newindex = function(self,name,value)
-				debug.setupvalue(func,ind[name],value)
+			__newindex = function( self, name, value )
+				debug.setupvalue( func, ind[name], value )
 			end
 		})
 		return ups, ind, key
 	end
 	
 	function ModUtil.GetBottomUpValues( baseTable, indexArray )
-		local baseValue = ModUtil.SafeGet(ModUtil.Overrides[baseTable], indexArray)
+		local baseValue = ModUtil.SafeGet( ModUtil.Overrides[baseTable], indexArray )
 		if baseValue then
 			baseValue = baseValue[#baseValue].base
 		else
-			baseValue = ModUtil.SafeGet(ModUtil.WrapCallbacks[baseTable], indexArray)
+			baseValue = ModUtil.SafeGet( ModUtil.WrapCallbacks[baseTable], indexArray )
 			if baseValue then
 				baseValue = baseValue[1].func
 			else
-				baseValue = ModUtil.SafeGet(baseTable, indexArray)
+				baseValue = ModUtil.SafeGet( baseTable, indexArray )
 			end
 		end 
-		return ModUtil.GetUpValues(baseValue)
+		return ModUtil.GetUpValues( baseValue )
 	end
 
 	--[[
@@ -681,7 +713,7 @@ if not ModUtil then
 		basePath - the path to the function, as a string
 	]]
 	function ModUtil.GetBaseBottomUpValues( basePath )
-		return ModUtil.GetBottomUpValues( _G, ModUtil.PathArray( basePath ))
+		return ModUtil.GetBottomUpValues( _G, ModUtil.PathArray( basePath ) )
 	end
 
 	-- Function Wrapping
@@ -716,33 +748,33 @@ if not ModUtil then
 		 - unwrap again later
 		 - reapply the same wrappers to a new base function when it's overridden
 
-		This function also updates the entry in funcTable at IndexArray to be the completely
+		This function also updates the entry in funcTable at indexArray to be the completely
 		wrapped function, ie. in our example with two wrappers it would do
 
 		UIFunctions.OnButton1Pushed = <original function + wrapper1 + wrapper2>
 
 		funcTable	 - the table the function is stored in (usually _G)
-		IndexArray	- the array of path elements to the function in the table
+		indexArray	- the array of path elements to the function in the table
 		wrapFunc		- the wrapping function
 		modObject	 - (optional) the mod installing the wrapper, for informational purposes
 	]]
-	function ModUtil.WrapFunction( funcTable, IndexArray, wrapFunc, modObject )
-		if type(wrapFunc) ~= "function" then return end
+	function ModUtil.WrapFunction( funcTable, indexArray, wrapFunc, modObject )
+		if type( wrapFunc ) ~= "function" then return end
 		if not funcTable then return end
-		local func = ModUtil.SafeGet(funcTable, IndexArray)
-		if type(func) ~= "function" then return end
+		local func = ModUtil.SafeGet( funcTable, indexArray )
+		if type( func ) ~= "function" then return end
 
-		ModUtil.NewTable(ModUtil.WrapCallbacks, funcTable)
-		local tempTable = ModUtil.SafeGet(ModUtil.WrapCallbacks[funcTable], IndexArray)
+		ModUtil.NewTable( ModUtil.WrapCallbacks, funcTable )
+		local tempTable = ModUtil.SafeGet( ModUtil.WrapCallbacks[funcTable], indexArray )
 		if tempTable == nil then
 			tempTable = {}
-			ModUtil.SafeSet(ModUtil.WrapCallbacks[funcTable], IndexArray, tempTable)
+			ModUtil.SafeSet( ModUtil.WrapCallbacks[funcTable], indexArray, tempTable )
 		end
-		table.insert(tempTable, {id=#tempTable+1,mod=modObject,wrap=wrapFunc,func=func})
+		table.insert( tempTable, { Id = #tempTable + 1, Mod = modObject, Wrap = wrapFunc, Func = func } )
 		
-		ModUtil.SafeSet(funcTable, IndexArray, function( ... )
+		ModUtil.SafeSet( funcTable, indexArray, function( ... )
 			return wrapFunc( func, ... )
-		end)
+		end )
 	end
 	
 	--[[
@@ -773,20 +805,20 @@ if not ModUtil then
 		UIFunctions.OnButton1Pushed = <new function + wrapper1 + wrapper2 + wrapper3>
 
 		funcTable	 - the table the function is stored in (usually _G)
-		IndexArray	- the array of path elements to the function in the table
+		indexArray	- the array of path elements to the function in the table
 	]]
-	function ModUtil.RewrapFunction( funcTable, IndexArray )
-		local wrapCallbacks = ModUtil.SafeGet(ModUtil.WrapCallbacks[funcTable], IndexArray)
+	function ModUtil.RewrapFunction( funcTable, indexArray )
+		local wrapCallbacks = ModUtil.SafeGet( ModUtil.WrapCallbacks[funcTable], indexArray )
 		local preFunc = nil
 		
-		for i,t in ipairs(wrapCallbacks) do
+		for i,t in ipairs( wrapCallbacks ) do
 			if preFunc then
-				t.func = preFunc
+				t.Func = preFunc
 			end
 			preFunc = function( ... )
-				return t.wrap( t.func, ... )
+				return t.Wrap( t.Func, ... )
 			end
-			ModUtil.SafeSet(funcTable, IndexArray, preFunc )
+			ModUtil.SafeSet( funcTable, indexArray, preFunc )
 		end
 
 	end
@@ -799,19 +831,19 @@ if not ModUtil then
 		modder-friendly interface.
 
 		funcTable	 - the table the function is stored in (usually _G)
-		IndexArray	- the array of path elements to the function in the table
+		indexArray	- the array of path elements to the function in the table
 	]]
-	function ModUtil.UnwrapFunction( funcTable, IndexArray )
+	function ModUtil.UnwrapFunction( funcTable, indexArray )
 		if not funcTable then return end
-		local func = ModUtil.SafeGet(funcTable, IndexArray)
-		if type(func) ~= "function" then return end
+		local func = ModUtil.SafeGet( funcTable, indexArray )
+		if type( func ) ~= "function" then return end
 
-		local tempTable = ModUtil.SafeGet(ModUtil.WrapCallbacks[funcTable], IndexArray)
+		local tempTable = ModUtil.SafeGet( ModUtil.WrapCallbacks[funcTable], indexArray )
 		if not tempTable then return end 
-		local funcData = table.remove(tempTable) -- removes the last value
+		local funcData = table.remove( tempTable ) -- removes the last value
 		if not funcData then return end
 		
-		ModUtil.SafeSet( funcTable, IndexArray, funcData.func )
+		ModUtil.SafeSet( funcTable, indexArray, funcData.Func )
 		return funcData
 	end
 
@@ -877,58 +909,58 @@ if not ModUtil then
 
 	-- Override Management
 
-	function ModUtil.Override( baseTable, IndexArray, Value, modObject )
+	function ModUtil.Override( baseTable, indexArray, value, modObject )
 		if not baseTable then return end
 	
-		local baseValue = ModUtil.SafeGet(baseTable, IndexArray)
+		local baseValue = ModUtil.SafeGet( baseTable, indexArray )
 		local wrapCallbacks = nil
-		if type(baseValue) == "function" and type(Value) == "function" then
-			wrapCallbacks = ModUtil.SafeGet(ModUtil.WrapCallbacks[baseTable], IndexArray)
+		if type( baseValue ) == "function" and type( value ) == "function" then
+			wrapCallbacks = ModUtil.SafeGet( ModUtil.WrapCallbacks[baseTable], indexArray )
 			if wrapCallbacks then if wrapCallbacks[1] then
-				baseValue = wrapCallbacks[1].func 
-				wrapCallbacks[1].func = Value
+				baseValue = wrapCallbacks[1].Func 
+				wrapCallbacks[1].Func = value
 			end end
 		end
 		
-		ModUtil.NewTable(ModUtil.Overrides, baseTable)
-		local tempTable = ModUtil.SafeGet(ModUtil.Overrides[baseTable], IndexArray)
+		ModUtil.NewTable( ModUtil.Overrides, baseTable )
+		local tempTable = ModUtil.SafeGet( ModUtil.Overrides[baseTable], indexArray )
 		if tempTable == nil then
 			tempTable = {}
-			ModUtil.SafeSet(ModUtil.Overrides[baseTable], IndexArray, tempTable)
+			ModUtil.SafeSet( ModUtil.Overrides[baseTable], indexArray, tempTable )
 		end
-		table.insert(tempTable, {id=#tempTable+1,mod=modObject,value=Value,base=baseValue})
+		table.insert( tempTable, { Id = #tempTable + 1, Mod = modObject, Value = value, Base = baseValue } )
 		
 		if wrapCallbacks then if wrapCallbacks[1] then
-			ModUtil.RewrapFunction( baseTable, IndexArray )
+			ModUtil.RewrapFunction( baseTable, indexArray )
 			return end
 		else
-			ModUtil.SafeSet( baseTable, IndexArray, Value )
+			ModUtil.SafeSet( baseTable, indexArray, value )
 		end
 	end
 	
-	function ModUtil.Restore( baseTable, IndexArray )
+	function ModUtil.Restore( baseTable, indexArray )
 		if not baseTable then return end
-		local tempTable = ModUtil.SafeGet(ModUtil.Overrides[baseTable], IndexArray)
+		local tempTable = ModUtil.SafeGet( ModUtil.Overrides[baseTable], indexArray )
 		if not tempTable then return end
-		local baseData = table.remove(tempTable)
+		local baseData = table.remove( tempTable )
 		if not baseData then return end
 		
-		if type(baseData.base) == "function" then
-			local wrapCallbacks = ModUtil.SafeGet(ModUtil.WrapCallbacks[baseTable], IndexArray)
+		if type( baseData.Base ) == "function" then
+			local wrapCallbacks = ModUtil.SafeGet( ModUtil.WrapCallbacks[baseTable], indexArray )
 			if wrapCallbacks then if wrapCallbacks[1] then
-				wrapCallbacks[1].func = baseData.base
-				ModUtil.RewrapFunction( baseTable, IndexArray )
+				wrapCallbacks[1].func = baseData.Base
+				ModUtil.RewrapFunction( baseTable, indexArray )
 				return baseData
 			end end
 		end
 		
-		ModUtil.SafeSet( baseTable, IndexArray, baseData.base )
+		ModUtil.SafeSet( baseTable, indexArray, baseData.base )
 		return baseData
 	end
 	
-	function ModUtil.BaseOverride( basePath, Value, modObject )
+	function ModUtil.BaseOverride( basePath, value, modObject )
 		local pathArray = ModUtil.PathArray( basePath )
-		ModUtil.Override( _G, pathArray, Value, modObject )
+		ModUtil.Override( _G, pathArray, value, modObject )
 		ModUtil.UpdateGlobalisedPath( basePath, pathArray )
 	end
 	
@@ -940,13 +972,10 @@ if not ModUtil then
 	
 	-- Misc
 	
-	function ModUtil.RandomElement(Table,rng)
-		local Collapsed = CollapseTable(Table)
-		return Collapsed[RandomInt(1, #Collapsed, rng)]
-	end
-	
-	function ModUtil.RandomColor(rng)
-		return ModUtil.RandomElement(Color,rng)
+	-- function depends on Random.lua having run first
+	function ModUtil.RandomElement( tableArg, rng )
+		local Collapsed = CollapseTable( tableArg )
+		return Collapsed[RandomInt( 1, #Collapsed, rng )]
 	end
 	
 	-- Post Setup
