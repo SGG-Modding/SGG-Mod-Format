@@ -269,9 +269,9 @@ if not ModUtil then
 		If any of Table["a"] or Table["a"][1] does not exist, they
 		are created.
 
-		Table			 - the table to set the value in
+		baseTable	 - the table to set the value in
 		indexArray	- the list of indices
-		Value			 - the value to add
+		value	- the value to add
 	]]
 	function ModUtil.SafeSet( baseTable, indexArray, value )
 		if IsEmpty( indexArray ) then
@@ -285,7 +285,7 @@ if not ModUtil then
 			node = node[k]
 		end
 		if ( node[indexArray[n]] == nil ) ~= ( value == nil ) then
-			if ModUtil.AutoIsUnKeyed( InTable ) then
+			if ModUtil.AutoIsUnKeyed( baseTable ) then
 				ModUtil.MarkForCollapse( node )
 			end
 		end
@@ -1068,12 +1068,10 @@ if not ModUtil then
 
 		baseTable	- the table to access for entries not specifically overridden
 	]]
-	local function makeOverrideTable( baseTable, overrides)
-		overrides = overrides or {}
-		overridePaths = overridePoints or {}
+	local function makeOverrideTable( baseTable, overrides )
 		local overrideTable = { 
 			_IsModUtilOverrideTable = true,
-			_Overrides = overrides
+			_Overrides = overrides or {}
 		}
 		setmetatable(overrideTable, {
 			__index = function( self, name )
@@ -1161,12 +1159,14 @@ if not ModUtil then
 		indexArray	- the list of indexes
 	]]
 	local function getFunctionEnv( baseTable, indexArray )
+		ModUtil.NewTable( ModUtil.PerFunctionEnv, baseTable )
 		local env = ModUtil.SafeGet(ModUtil.PerFunctionEnv[baseTable], indexArray)
 		if not env then
 			env = makeOverrideTable( baseTable )
 			ModUtil.SafeSet( ModUtil.PerFunctionEnv[baseTable], indexArray, env )
 			setfenv( func, env )
 		end
+		return env
 	end
 	
 	--[[
@@ -1249,7 +1249,6 @@ if not ModUtil then
 	function ModUtil.WrapWithinFunction( baseTable, indexArray, envIndexArray, wrapFunc, modObject )
 		if type(wrapFunc) ~= "function" then return end
 		if not baseTable then return end
-		local wrapCallbacks = nil
 		local func = getBaseValueForWraps( baseTable, indexArray )
 		if type(func) ~= "function" then return end
 
@@ -1324,9 +1323,9 @@ if not ModUtil then
 			all subsequent parameters should be the same as the base function
 		modObject	- (optional) the object for your mod, for debug purposes
 	]]
-	function ModUtil.WrapBaseWithinFunction( path, funcPath, baseFuncPath, modObject )
+	function ModUtil.WrapBaseWithinFunction( funcPath, baseFuncPath, wrapFunc, modObject )
 		local indexArray = ModUtil.PathArray( funcPath )
-		local envIndexArray = ModUtil.PathArray( basePath )
+		local envIndexArray = ModUtil.PathArray( baseFuncPath )
 		ModUtil.WrapWithinFunction( _G, indexArray, envIndexArray, wrapFunc, modObject )
 	end
 	-- Misc
