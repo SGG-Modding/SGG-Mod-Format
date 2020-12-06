@@ -549,7 +549,7 @@ if not ModUtil then
 			if pathArray then
 				_G[joinedPath] = ModUtil.SafeGet( _G, pathArray )
 			else
-				_G[joinedPath] = ModUtil.SafeGet( _G, ModUtil.pathArray( path ) )
+				_G[joinedPath] = ModUtil.SafeGet( _G, ModUtil.PathArray( path ) )
 			end
 		end
 	end
@@ -582,10 +582,10 @@ if not ModUtil then
 						path from the root of the table.
 	]]
 	function ModUtil.GlobaliseFuncs( tableArg, prefixPath )
-		if Path == nil then
-			Path = ""
+		if prefixPath == nil then
+			prefixPath = ""
 		end
-		for k,v in pairs( Table ) do
+		for k,v in pairs( tableArg ) do
 			if type( k ) == "string" then
 				if type(v) == "function" then
 					_G[ModUtil.JoinPath( prefixPath .. "." .. k )] = v
@@ -603,13 +603,13 @@ if not ModUtil then
 	]]
 	function ModUtil.GlobaliseModFuncs( modObject )
 		local parent = modObject
-		local prefix = {modObject.ModName}
+		local prefix = modObject.ModName
 		while parent.ModParent do
 			parent = parent.ModParent
 			if parent == _G then break end
-			table.insert( prefix, 1, parent.ModName )
+			prefix = parent.ModName .. "." .. prefix
 		end
-		ModUtil.GlobaliseFuncs( modObject, ModUtil.PathArray( prefix ) )
+		ModUtil.GlobaliseFuncs( modObject, prefix )
 	end
 
 
@@ -694,7 +694,7 @@ if not ModUtil then
 	function ModUtil.GetBottomUpValues( baseTable, indexArray )
 		local baseValue = ModUtil.SafeGet( ModUtil.Overrides[baseTable], indexArray )
 		if baseValue then
-			baseValue = baseValue[#baseValue].base
+			baseValue = baseValue[#baseValue].Base
 		else
 			baseValue = ModUtil.SafeGet( ModUtil.WrapCallbacks[baseTable], indexArray )
 			if baseValue then
@@ -1003,7 +1003,6 @@ if not ModUtil then
 		if not setBaseValueForWraps( baseTable, indexArray, baseData.Base ) then
 			ModUtil.SafeSet( baseTable, indexArray, baseData.Base )
 		end
-
 		return baseData
 	end
 	
