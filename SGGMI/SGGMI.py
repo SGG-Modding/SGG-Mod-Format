@@ -373,11 +373,11 @@ def modfile_load(filename, echo=True):
                     modfile_loadcommand(
                         reldir, tokens[len(sggmi_xml.KEYWORD) :], to, 1, "xml", cfg, priority=p
                     )
-                elif modfile_startswith(tokens, KWRD_sjson, 1):
+                elif modfile_startswith(tokens, sggmi_sjson.KEYWORD, 1):
                     if sjson:
                         modfile_loadcommand(
                             reldir,
-                            tokens[len(KWRD_sjson) :],
+                            tokens[len(sggmi_sjson.KEYWORD) :],
                             to,
                             1,
                             "sjson",
@@ -431,7 +431,7 @@ def make_base_edits(base, mods, echo=True):
             elif mod.mode == "xml":
                 sggmi_xml.merge(scopedir + "/" + base, mod.data[0])
             elif mod.mode == "sjson":
-                sjson_merge(scopedir + "/" + base, mod.data[0])
+                sggmi_sjson.merge_files(scopedir + "/" + base, mod.data[0])
             if echo:
                 k = i + 1
                 for s in mod.src.split("\n"):

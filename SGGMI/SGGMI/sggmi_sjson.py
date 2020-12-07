@@ -1,153 +1,161 @@
 __all__ = [
-    "sjson_safeget",
-    "sjson_clearDNE",
-    "sjson_read",
-    "sjson_write",
+    "get_attribute",
+    "read",
+    "write",
     "sjson_map",
     "sjson_merge",
 ]
 
-KWRD_sjson = ["SJSON"]
-
-## SJSON Handling
-try:
-    import sjson  # pip: SJSON
-except ModuleNotFoundError:
-    sjson = None
-
+import sjson  # pip: SJSON
 from collections import OrderedDict
+import os
+import util
 
-## SJSON mapping
+KEYWORD = "SJSON"
+RESERVED = {
+    "sequence": "_sequence",
+    "append": "_append",
+    "replace": "_replace",
+    "delete": "_delete",
+}
 
-if sjson is not None:
 
-    sjson_RESERVED_sequence = "_sequence"
-    sjson_RESERVED_append = "_append"
-    sjson_RESERVED_replace = "_replace"
-    sjson_RESERVED_delete = "_delete"
+def read_file(filename):
+    try:
+        with open(filename, "r") as file_in:
+            file_data = file_in.read().replace("\\", "\\\\")
+        return sjson.loads(file_data)
+    except sjson.ParseException as e:
+        alt_print(e)
+    except FileNotFoundError:
+        alt_print(f"sggmi_sjson (read_file): {filename} does not exist!")
+    except Exception as e:
+        alt_print(e)
 
-    def sjson_safeget(data, key):
-        if isinstance(data, list):
-            if isinstance(key, int):
-                if key < len(data) and key >= 0:
-                    return data[key]
-            return DNE
-        if isinstance(data, OrderedDict):
-            return util.get_attribute(key, DNE)
-        return DNE
+    return None
 
-    def sjson_clearDNE(data):
-        if isinstance(data, OrderedDict):
-            for k, v in data.items():
-                if v is DNE:
-                    del data[k]
-                    continue
-                data[k] = sjson_clearDNE(v)
-        if isinstance(data, list):
-            L = []
-            for i, v in enumerate(data):
-                if v is DNE:
-                    continue
-                L.append(sjson_clearDNE(v))
-            data = L
-        return data
 
-    def sjson_read(filename):
-        try:
-            return sjson.loads(open(filename).read().replace("\\", "\\\\"))
-        except sjson.ParseException as e:
-            alt_print(repr(e))
-            return DNE
+def write_file(filename, content):
+    if not path.exists(filename):
+        alt_print(f"sggmi_sjson (write_file): {filename} not found!")
+        return
 
-    def sjson_write(filename, content):
-        if not isinstance(filename, str):
-            return
-        if isinstance(content, OrderedDict):
-            content = sjson.dumps(content)
-        else:
-            content = ""
-        with open(filename, "w") as f:
-            s = "{\n" + content + "}"
+    if not path.isfile(filename):
+        alt_print(f"sggmi_sjson (write_file): {filename} is not a file!")
+        return
 
-            # Indentation styling
-            p = ""
-            S = ""
-            for c in s:
-                if c in ("{", "[") and p in ("{", "["):
-                    S += "\n"
-                if c in ("}", "]") and p in ("}", "]"):
-                    S += "\n"
-                S += c
-                if p in ("{", "[") and c not in ("{", "[", "\n"):
-                    S = S[:-1] + "\n" + S[-1]
-                if c in ("}", "]") and p not in ("}", "]", "\n"):
-                    S = S[:-1] + "\n" + S[-1]
-                p = c
-            s = S.replace(", ", "\n").split("\n")
-            i = 0
-            L = []
-            for S in s:
-                for c in S:
-                    if c in ("}", "]"):
-                        i = i - 1
-                L.append("  " * i + S)
-                for c in S:
-                    if c in ("{", "["):
-                        i = i + 1
-            s = "\n".join(L)
+    if isinstance(content, OrderedDict):
+        content = sjson.dumps(content)
+    else:
+        content = ""
 
-            f.write(s)
+    curr_string = "{\n" + content + "}"
+    output = ""
 
-    def sjson_map(indata, mapdata):
-        if mapdata is DNE:
-            return indata
-        if sjson_safeget(mapdata, sjson_RESERVED_sequence):
-            S = []
-            for k, v in mapdata.items():
-                try:
-                    d = int(k) - len(S)
-                    if d >= 0:
-                        S.extend([DNE] * (d + 1))
-                    S[int(k)] = v
-                except ValueError:
-                    continue
-            mapdata = S
-        if type(indata) == type(mapdata):
-            if sjson_safeget(mapdata, 0) != sjson_RESERVED_append or isinstance(
-                mapdata, OrderedDict
-            ):
-                if isinstance(mapdata, list):
-                    if sjson_safeget(mapdata, 0) == sjson_RESERVED_delete:
-                        return DNE
-                    if sjson_safeget(mapdata, 0) == sjson_RESERVED_replace:
-                        del mapdata[0]
-                        return mapdata
-                    indata.expand([DNE] * (len(mapdata) - len(indata)))
-                    for k, v in enumerate(mapdata):
-                        indata[k] = sjson_map(sjson_safeget(indata, k), v)
-                else:
-                    if sjson_safeget(mapdata, sjson_RESERVED_delete):
-                        return DNE
-                    if sjson_safeget(mapdata, sjson_RESERVED_replace):
-                        del mapdata[sjson_RESERVED_replace]
-                        return mapdata
-                    for k, v in mapdata.items():
-                        indata[k] = sjson_map(sjson_safeget(indata, k), v)
-                return indata
-            elif isinstance(mapdata, list):
-                for i in range(1, len(mapdata)):
-                    indata.append(mapdata[i])
-                return indata
-        else:
-            return mapdata
-        return mapdata
+    # Indentation styling
+    prev_char = ""
+    for char in curr_string:
+        if (char in "{[" and prev_char in "{[") or (char in "}]" and prev_char in "}]"):
+            output += "\n"
 
-    def sjson_merge(infile, mapfile):
-        indata = sjson_read(infile)
-        if mapfile:
-            mapdata = sjson_read(mapfile)
-        else:
-            mapdata = DNE
-        indata = sjson_map(indata, mapdata)
-        indata = sjson_clearDNE(indata)
-        sjson_write(infile, indata)
+        output += char
+
+        if (char not in "{[\n" and prev_char in "{[") or (
+            char in "}]" and prev_char not in "}]\n"
+        ):
+            output = output[:-1] + "\n" + output[-1]
+
+        prev_char = char
+
+    TEMP_output_split = output.replace(", ", "\n").split("\n")
+    indent = 0
+    output_lines = []
+    for line in TEMP_output_split:
+        for char in line:
+            if char in "}]":
+                indent -= 1
+
+        output_lines.append("  " * indent + line)
+        for char in line:
+            if char in "{[":
+                indent += 1
+
+    final_output = "\n".join(output_lines)
+
+    try:
+        with open(filename, "w") as file_out:
+            file_out.write(final_output)
+    except Exception as e:
+        alt_print(f"sggmi_sjson (write_file): \n{e}")
+
+
+def merge_data(base_data, input_data):
+    if not input_data:
+        return base_data
+
+    if util.get_attribute(input_data, RESERVED["sequence"]):
+        new_sequence = []
+        for key, value in input_data.items():
+            try:
+                d = int(k) - len(S)
+                if d >= 0:
+                    new_sequence.extend([DNE] * (d + 1))
+                new_sequence[int(k)] = v
+            except ValueError:
+                continue
+        input_data = S
+
+    if type(base_data) == type(input_data):
+        if util.get_attribute(input_data, 0) != RESERVED["append"] or isinstance(
+            input_data, OrderedDict
+        ):
+            if isinstance(input_data, list):
+                if util.get_attribute(input_data, 0) == RESERVED["delete"]:
+                    return None
+
+                if util.get_attribute(input_data, 0) == RESERVED["replace"]:
+                    del input_data[0]
+                    return input_data
+
+                base_data.expand([DNE] * (len(input_data) - len(base_data)))
+                for idx, value in enumerate(input_data):
+                    base_data[idx] = merge_data(
+                        util.get_attribute(base_data, idx), value
+                    )
+
+            else:
+                if util.get_attribute(input_data, RESERVED["delete"]):
+                    return None
+
+                if util.get_attribute(input_data, RESERVED["replace"]):
+                    del input_data[RESERVED["replace"]]
+                    return input_data
+
+                for key, value in input_data.items():
+                    base_data[key] = merge_data(
+                        util.get_attribute(base_data, key), value
+                    )
+
+            return base_data
+
+        elif isinstance(input_data, list):
+            for elem in input_data[1:]:
+                base_data.append(elem)
+
+            return base_data
+
+    return input_data
+
+
+def merge_files(base_file, input_file, overwrite_base=True):
+    if not input_file:
+        return base_file
+
+    base_data = read_file(base_file)
+    input_data = read_file(input_file)
+
+    merged_data = merge_data(base_data, input_data)
+    prune(merged_data)
+
+    if overwrite_base:
+        write_file(base_file, merged_data)
