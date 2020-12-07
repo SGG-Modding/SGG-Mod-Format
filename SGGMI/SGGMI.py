@@ -91,54 +91,6 @@ def lua_addimport(base, path):
 hashes = ["md5"]
 
 
-def hashfile(file, out=None, modes=hashes, blocksize=65536):
-    lines = []
-    for mode in modes:
-        hasher = hashlib.new(mode)
-        with open(file, "rb") as afile:
-            buf = afile.read(blocksize)
-            while len(buf) > 0:
-                hasher.update(buf)
-                buf = afile.read(blocksize)
-            lines.append(mode + "\t" + hasher.hexdigest())
-    content = "\n".join(lines)
-    if out:
-        with open(out, "w") as ofile:
-            ofile.write(content)
-    return content
-
-
-def is_subfile(filename, folder):
-    if os.path.exists(filename):
-        if os.path.commonprefix([filename, folder]) == folder:
-            if os.path.isfile(filename):
-                return Signal(True, "SubFile")
-            return Signal(False, "SubDir")
-        return Signal(False, "NonSub")
-    return Signal(False, "DoesNotExist")
-
-
-def in_scope(filename, permit_DNE=False):
-    if os.path.exists(filename) or permit_DNE:
-        if local_in_scope:
-            tfile = filename[len(os.path.commonprefix([filename, localdir])) :]
-            tfile = tfile.split("/")[1]
-            if tfile in localsources:
-                return Signal(False, "IsLocalSource")
-        if base_in_scope:
-            if os.path.commonprefix([filename, basedir]) == basedir:
-                return Signal(False, "InBase")
-        if edit_in_scope:
-            if os.path.commonprefix([filename, editdir]) == editdir:
-                return Signal(False, "InEdits")
-        if os.path.commonprefix([filename, scopedir]) == scopedir:
-            if os.path.isfile(filename):
-                return Signal(True, "FileInScope")
-            return Signal(False, "DirInScope")
-        return Signal(False, "OutOfScope")
-    return Signal(False, "DoesNotExist")
-
-
 def alt_print(*args, **kwargs):
     if do_echo:
         return print(*args, **kwargs)
@@ -392,15 +344,6 @@ def modfile_load(filename, echo=True):
             modfile_load(file.path.replace("\\", "/"), echo)
 
 
-def is_edited(base):
-    if os.path.isfile(editdir + "/" + base + edited_suffix):
-        efile = open(editdir + "/" + base + edited_suffix, "r")
-        data = efile.read()
-        efile.close()
-        return data == hashfile(scopedir + "/" + base)
-    return False
-
-
 def deploy_mods():
     for fs, cfg in todeploy.items():
         Path(deploydir + "/" + "/".join(fs.split("/")[:-1])).mkdir(
@@ -518,7 +461,7 @@ def update_scope(rel=".."):
 def configure_globals(condict={}, flow=True):
 
     global do_echo, do_log, do_input
-    do_echo = util.get(condict, "echo", do_echo)
+    do_echo = util.get_attribute(condict, "echo", do_echo)
     do_log =util.get_attribute(condict, "log", do_log)
     do_input = util.get_attribute(condict, "input", do_input)
 
@@ -541,7 +484,7 @@ def configure_globals(condict={}, flow=True):
 
     global profiles, profile, folderprofile
     profiles = {}
-    profiles.update(safeget(condict, "profiles", {}))
+    profiles.update(util.get_attribute(condict, "profiles", {}))
     profile = None
 
     folderprofile = util.get_attribute(condict, "profile", localparent)
@@ -561,7 +504,7 @@ def configure_globals(condict={}, flow=True):
                 alt_warn(MSG_MissingFolderProfile.format(configfile))
                 alt_exit(1)
 
-    update_scope(safeget(profile, "game_dir_path", gamerel))
+    update_scope(util.get_attribute(profile, "game_dir_path", gamerel))
 
     global default_target
     default_target = profile.get("default_target", default_target)
