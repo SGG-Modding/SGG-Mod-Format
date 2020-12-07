@@ -1083,16 +1083,16 @@ if not ModUtil then
 				elseif overridesResult._IsModUtilOverride then
 					return overridesResult._Value
 				elseif type(baseResult) == "table" then
-					return makeOverrideTable( baseResult, overridesResult , self._IndexArray, self._Func )
+					return makeOverrideTable( baseResult, overridesResult )
 				else
-					return overridesResult
+					return makeOverrideTable( {}, overridesResult )
 				end
 			end,
-			 __newindex = function( self, name, value) 
+			 __newindex = function( self, name, value )
 				 local currentOverride = self._Overrides[name]
 				 if currentOverride == nil then
 					 self._BaseTable[name] = value
-				 elseif currentOverride._IsModUtilOveride then
+				 elseif currentOverride._IsModUtilOverride then
 					 currentOverride._Value = value
 				 else
 					 -- There is an override that is a child of this name, but the parent is being
