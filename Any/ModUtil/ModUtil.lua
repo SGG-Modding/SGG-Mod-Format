@@ -407,8 +407,8 @@ if not ModUtil then
 	end
 	OnAnyLoad{ModUtil.CollapseMarked}
 
-	function ModUtil.MarkForCollapse( baseTable, indexArray )
-		ModUtil.MarkedForCollapse[ModUtil.SafeGet( baseTable, indexArray )] = true
+	function ModUtil.MarkForCollapse( table )
+		ModUtil.MarkedForCollapse[table] = true
 	end
 	
 	-- Path Manipulation
@@ -1071,18 +1071,19 @@ if not ModUtil then
 	local function makeOverrideTable( baseTable, overrides )
 		local overrideTable = { 
 			_IsModUtilOverrideTable = true,
-			_Overrides = overrides or {}
+			_Overrides = overrides or {},
+			_BaseTable = baseTable
 		}
 		setmetatable(overrideTable, {
 			__index = function( self, name )
-				local baseResult = baseTable[name]
+				local baseResult = self._BaseTable[name]
 				local overridesResult = self._Overrides[name]
 				if overridesResult == nil then
 					return baseResult
 				elseif overridesResult._IsModUtilOverride then
 					return overridesResult._Value
 				elseif type(baseResult) == "table" then
-					return makeOverrideTable( baseResult, overridesResult )
+					return makeOverrideTable( baseResult, overridesResult , self._IndexArray, self._Func )
 				else
 					return overridesResult
 				end
@@ -1090,7 +1091,7 @@ if not ModUtil then
 			 __newindex = function( self, name, value) 
 				 local currentOverride = self._Overrides[name]
 				 if currentOverride == nil then
-					 baseTable[name] = value
+					 self._BaseTable[name] = value
 				 elseif currentOverride._IsModUtilOveride then
 					 currentOverride._Value = value
 				 else
@@ -1100,7 +1101,7 @@ if not ModUtil then
 					 --	 Overides = { Parent = { Child = {_IsModUtilOverride = true, _Value = 6 } }
 					 -- Table.Parent = { Child = 5 }, Table.Parent.Child will still return 6.
 					 -- I'm not sure what alternate behavior would be more correct.
-					 baseTable[name] = value
+					 self._BaseTable[name] = value
 				 end
 			 end
 		})
@@ -1159,6 +1160,9 @@ if not ModUtil then
 		indexArray	- the list of indexes
 	]]
 	local function getFunctionEnv( baseTable, indexArray )
+		local func = getBaseValueForWraps( baseTable, indexArray )
+		if type(func) ~= "function" then return nil end
+
 		ModUtil.NewTable( ModUtil.PerFunctionEnv, baseTable )
 		local env = ModUtil.SafeGet(ModUtil.PerFunctionEnv[baseTable], indexArray)
 		if not env then
@@ -1198,11 +1202,9 @@ if not ModUtil then
 	]]
 	function ModUtil.OverrideWithinFunction( baseTable, indexArray, envIndexArray, value )
 		if not baseTable then return end
-		local func = getBaseValueForWraps( baseTable, indexArray )
-		if type(func) ~= "function" then return end
-
 		local env = getFunctionEnv( baseTable, indexArray )
 
+		if not env then return end
 		if hasOverride( env, envIndexArray ) then
 			-- we might have wraps to reapply
 			local overrideEnvIndexArray = DeepCopyTable( envIndexArray )
@@ -1225,10 +1227,9 @@ if not ModUtil then
 	]]
 	function ModUtil.RestoreWithinFunction( baseTable, indexArray, envIndexArray )
 		if not baseTable then return end
-		local func = getBaseValueForWraps( baseTable, indexArray )
-		if type(func) ~= "function" then return end
 	 
 		local env = getFunctionEnv( baseTable, indexArray )
+		if not env then return end
 		
 		removeOverride( env, envIndexArray )
 	end
@@ -1249,10 +1250,8 @@ if not ModUtil then
 	function ModUtil.WrapWithinFunction( baseTable, indexArray, envIndexArray, wrapFunc, modObject )
 		if type(wrapFunc) ~= "function" then return end
 		if not baseTable then return end
-		local func = getBaseValueForWraps( baseTable, indexArray )
-		if type(func) ~= "function" then return end
-
 		local env = getFunctionEnv( baseTable, indexArray )
+		if not env then return end
 
 		if not hasOverride( env, envIndexArray ) then
 			-- Resolve the entry in baseTable at call time (not now),
