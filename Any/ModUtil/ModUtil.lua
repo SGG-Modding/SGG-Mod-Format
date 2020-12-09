@@ -682,7 +682,8 @@ if not ModUtil then
 		local ups = {}
 		setmetatable( ups, {
 			__index = function( self, name )
-				return debug.getupvalue( func, ind[name] )
+				local n, v = debug.getupvalue( func, ind[name] )
+				return v
 			end,
 			__newindex = function( self, name, value )
 				debug.setupvalue( func, ind[name], value )
