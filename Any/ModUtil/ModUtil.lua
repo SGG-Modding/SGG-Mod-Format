@@ -615,6 +615,52 @@ if not ModUtil then
 
 	-- Metaprogramming Shenanigans
 
+	--[[
+		Access to local variables, in the current function and callers.
+		The most recent definition with a given name on the call stack will
+		be used.
+
+		For example, if your function is called from CreateTraitRequirements,
+		you could access its 'local screen' as ModUtil.Locals.screen
+		and its 'local hasRequirement' as ModUtil.Locals.hasRequirement.
+	]]
+	ModUtil.Locals = {}
+	setmetatable(ModUtil.Locals, {
+		__index = function(self, name)
+			local level = 2
+			while debug.getinfo(level, "f") do
+				local idx = 1
+				while true do
+					local n, v = debug.getlocal(level, idx)
+					if n == name then
+						return v
+					elseif not n then
+						break
+					end
+					idx = idx + 1
+				end
+				level = level + 1
+			end
+		end,
+		__newindex = function(self, name, value)
+			local level = 2
+			while debug.getinfo(level, "f") do
+				local idx = 1
+				while true do
+					local n = debug.getlocal(level, idx)
+					if n == name then
+						debug.setlocal(level, idx, value)
+						return
+					elseif not n then
+						break
+					end
+					idx = idx + 1
+				end
+				level = level + 1
+			end
+		end
+	})
+
 	local function getfenv( fn )
 		local i = 1
 		while true do
