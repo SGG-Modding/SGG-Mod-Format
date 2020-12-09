@@ -575,7 +575,7 @@ def configsetup(predict={}, postdict={}):
         util.merge_dict(condict, postdict)
 
     with open(configfile, "w") as f:
-        json.dump(condict, f)
+        json.dump(condict, f, indent=1)
 
     if cfg_modify:
         alt_print("Config modification successful.")
