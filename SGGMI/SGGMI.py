@@ -32,7 +32,7 @@ __all__ = [
     "logging",
     "xml",
     "sjson",
-    "yaml",
+    "json",
     "hashlib",
     # other
     "DNE",
@@ -44,6 +44,7 @@ __author__ = "Andre Issa"
 
 import os, sys, stat
 import logging
+import json
 import warnings
 import hashlib
 from getopt import getopt
@@ -56,16 +57,9 @@ from distutils.errors import DistutilsFileError
 
 from sggmi import util
 
-## Importer Config
-
-try:
-    import yaml  # pip: PyYAML
-except ModuleNotFoundError:
-    yaml = None
-
 # Configurable Globals
 
-configfile = "miconfig.yml"
+configfile = "miconfig.json"
 #### These are better configured using the config file to be specific to different installs
 scopemods = "Deploy"  # Must be accessible to game scope
 modsrel = "Mods"
@@ -89,7 +83,6 @@ def lua_addimport(base, path):
 # FILE/MOD CONTROL
 
 hashes = ["md5"]
-
 
 def alt_print(*args, **kwargs):
     if do_echo:
@@ -137,6 +130,8 @@ def alt_exit(code=None):
     alt_input("Press any key to end program...")
     exit(code)
 
+def alt_open(*args,**kwargs):
+    return open(*args,encoding='utf-8-sig',**kwargs)
 
 def modfile_splitlines(body):
     glines = map(lambda s: s.strip().split('"'), body.split("\n"))
@@ -567,11 +562,11 @@ def configure_globals(condict={}, flow=True):
 
 
 def configsetup(predict={}, postdict={}):
-    condict = YML_framework
-    if yaml is not None and not cfg_overwrite:
+    condict = CFG_framework
+    if not cfg_overwrite:
         try:
             with open(configfile) as f:
-                condict.update(yaml.load(f, Loader=yaml.FullLoader))
+                condict.update(json.load(f))
         except FileNotFoundError:
             pass
 
@@ -579,9 +574,8 @@ def configsetup(predict={}, postdict={}):
     if cfg_modify:
         util.merge_dict(condict, postdict)
 
-    if yaml is not None:
-        with open(configfile, "w") as f:
-            yaml.dump(condict, f)
+    with open(configfile, "w") as f:
+        json.dump(condict, f)
 
     if cfg_modify:
         alt_print("Config modification successful.")
@@ -595,14 +589,14 @@ def configsetup(predict={}, postdict={}):
 
 MSG_ConfigHelp = """
 Create or configure a folder profile using:
- * config file (requires PyYAML): `profiles` in '{0}'
+ * config file: `profiles` in '{0}'
 Or change the active folder profile using:
- * config file (requires PyYAML): `profile` in '{0}'
+ * config file: `profile` in '{0}'
  * terminal option: --profile
 Use and modify the special profile:
  * terminal options:
         --special
-        --special-set <profile YAML> (requires PyYAML)
+        --special-set <profile json>
 Override the game path temporarily:
  * terminal option: --game <path to game>
 """
@@ -655,8 +649,8 @@ MSG_CommandLineHelp = """
         temporarily use a different game directory
     -p --profile <profile name>
         use a particular folder profile
-    -S --special-set <profile YAML>
-        map YAML to the special profile (requires PyYAML)
+    -S --special-set <profile json>
+        map json to the special profile
         
 """
 
@@ -679,7 +673,7 @@ KWRD_import = ["Import"]
 
 scope = "Content"
 importscope = "Scripts"
-localsources = {"sggmodimp.py", "sjson.py", "cli", "yaml"}
+localsources = {"sggmi"}
 
 profile_template = {
     "default_target": None,
@@ -706,7 +700,7 @@ default_profiles = {
 for k, v in default_profiles.items():
     default_profiles[k] = util.merge_dict(profile_template.copy(), v, modify_original=False)
 
-YML_framework = {
+CFG_framework = {
     "echo": True,
     "input": True,
     "log": True,
@@ -826,8 +820,6 @@ def main(*args, **kwargs):
             return
         elif k in {"-m", "--modify"}:
             cfg_modify = True
-            if yaml is None:
-                alt_warn("PyYAML module not found! Config cannot be written.")
         elif k in {"-o", "--overwrite"}:
             cfg_overwrite = True
         elif k in {"-s", "--special"}:
@@ -847,11 +839,8 @@ def main(*args, **kwargs):
         elif k in {"-p", "--profile"}:
             postdict["hashes"] = v.split(" ")
         elif k in {"-S", "--special-set"}:
-            if yaml is not None:
-                predict.setdefault("profile_special", {})
-                predict["profile_special"] = yaml.load(v, Loader=yaml.FullLoader)
-            else:
-                alt_warn("PyYAML module not found! cannot parse command.")
+            predict.setdefault("profile_special", {})
+            predict["profile_special"] = json.loads(v)
 
     main_action(*args, predict=predict, postdict=postdict)
 
