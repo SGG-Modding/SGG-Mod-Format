@@ -84,15 +84,18 @@ def lua_addimport(base, path):
 
 hashes = ["md5"]
 
+def alt_open(*args,**kwargs):
+    return open(*args,encoding='utf-8-sig',**kwargs)
+
 def alt_print(*args, **kwargs):
     if do_echo:
         return print(*args, **kwargs)
     if do_log:
         tlog = logsdir + "/" + "temp-" + logfile_prefix + thetime() + logfile_suffix
-        f = open(tlog, "w")
+        f = alt_open(tlog, "w")
         print(file=f, *args, **kwargs)
         f.close()
-        f = open(tlog, "r")
+        f = alt_open(tlog, "r")
         data = f.read()
         f.close()
         os.remove(tlog)
@@ -113,10 +116,10 @@ def alt_input(*args, **kwargs):
         return kwargs.get("default", None)
     if do_log:
         tlog = logsdir + "/" + "temp-" + logfile_prefix + thetime() + logfile_suffix
-        f = open(tlog, "w")
+        f = alt_open(tlog, "w")
         print(file=f, *args)
         f.close()
-        f = open(tlog, "r")
+        f = alt_open(tlog, "r")
         data = f.read()
         f.close()
         os.remove(tlog)
@@ -129,9 +132,6 @@ def alt_input(*args, **kwargs):
 def alt_exit(code=None):
     alt_input("Press any key to end program...")
     exit(code)
-
-def alt_open(*args,**kwargs):
-    return open(*args,encoding='utf-8-sig',**kwargs)
 
 def modfile_splitlines(body):
     glines = map(lambda s: s.strip().split('"'), body.split("\n"))
@@ -260,7 +260,7 @@ def modfile_load(filename, echo=True):
         prefix = os.path.commonprefix([filename, modsdir])
         relname = filename[len(prefix) + 1 :]
         try:
-            file = open(filename, "r")
+            file = alt_open(filename, "r")
         except IOError:
             return
         if echo:
@@ -565,7 +565,7 @@ def configsetup(predict={}, postdict={}):
     condict = CFG_framework
     if not cfg_overwrite:
         try:
-            with open(configfile) as f:
+            with alt_open(configfile) as f:
                 condict.update(json.load(f))
         except FileNotFoundError:
             pass
@@ -574,7 +574,7 @@ def configsetup(predict={}, postdict={}):
     if cfg_modify:
         util.merge_dict(condict, postdict)
 
-    with open(configfile, "w") as f:
+    with alt_open(configfile, "w") as f:
         json.dump(condict, f, indent=1)
 
     if cfg_modify:
