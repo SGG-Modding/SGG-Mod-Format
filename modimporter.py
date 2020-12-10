@@ -56,6 +56,7 @@ kwrd_import = ["Import"]
 kwrd_topimport = ["Top","Import"]
 kwrd_xml = ["XML"]
 kwrd_sjson = ["SJSON"]
+kwrd_replace = ["Replace"]
 
 reserved_sequence = "_sequence"
 reserved_append = "_append"
@@ -296,6 +297,7 @@ mode_lua = 1
 mode_lua_alt = 2
 mode_xml = 3
 mode_sjson = 4
+mode_replace = 5
 
 class modcode():
     ep = None
@@ -322,8 +324,9 @@ gamedir = os.path.join(os.path.realpath(gamerel), '').replace("\\","/")[:-1]
 game = strup(gamedir.split("/")[-1])
 
 def in_directory(file,nobackup=True):
-    if not os.path.isfile(file):
-        return False
+    if file.find(".pkg") == -1:
+        if not os.path.isfile(file):
+            return False
     file = os.path.realpath(file).replace("\\","/")
     if file == selffile:
         return False
@@ -465,7 +468,8 @@ def loadmodfile(filename,echo=True):
                                 loadmodfile(file.path.replace("\\","/"),echo)
                         else:
                             loadmodfile(path,echo)
-
+                elif startswith(tokens,kwrd_replace,1):
+                    loadcommand(reldir,tokens[len(kwrd_replace):],to,1,mode_replace,ep=ep)
                 elif startswith(tokens,kwrd_import,1):
                     loadcommand(reldir,tokens[len(kwrd_import):],to,1,mode_lua,ep=ep)
                 elif startswith(tokens,kwrd_topimport,1):
@@ -476,6 +480,8 @@ def loadmodfile(filename,echo=True):
                     loadcommand(reldir,tokens[len(kwrd_sjson):],to,1,mode_sjson,ep=ep)
 
 def isedited(base):
+    if base.find(".pkg") != -1:
+        return True
     with open(base,'r',encoding='utf-8') as basefile:
         for line in basefile:
               if modified+modified_modrep in line:
@@ -489,17 +495,21 @@ def sortmods(base,mods):
 
 def makeedit(base,mods,echo=True):
     Path(bakdir+"/"+"/".join(base.split("/")[:-1])).mkdir(parents=True, exist_ok=True)
-    if isedited(base) and in_directory(bakdir+"/"+base+baktype,False):
-        copyfile(bakdir+"/"+base+baktype,base)
+    if not os.path.exists(base):
+        open(bakdir+"/"+base+baktype+".del","w").close()
     else:
-        copyfile(base,bakdir+"/"+base+baktype)
+        if isedited(base) and in_directory(bakdir+"/"+base+baktype,False):
+            copyfile(bakdir+"/"+base+baktype,base)
+        else:
+            copyfile(base,bakdir+"/"+base+baktype)
     if echo:
         i=0
         print("\n"+base)
-
     try:
         for mod in mods:
-            if mod.mode == mode_lua:
+            if mod.mode == mode_replace:
+                copyfile(mod.data[0],base)
+            elif mod.mode == mode_lua:
                 addimport(base,mod.data[0])
             elif mod.mode == mode_lua_alt:
                 addtopimport(base,mod.data[0])
@@ -537,6 +547,13 @@ def cleanup(folder=bakdir,echo=True):
             return False
         return True
     path = folder.path[len(bakdir)+1:]
+    if path.find(".del") == len(path)-len(".del"):
+        path = path[:-len(".del")]
+        if echo:
+            print(path)
+        os.remove(path)
+        os.remove(folder.path)
+        return False
     if os.path.isfile(path):
         if isedited(path):
             if echo:
