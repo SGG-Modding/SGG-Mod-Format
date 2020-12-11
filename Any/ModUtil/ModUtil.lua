@@ -19,7 +19,6 @@ ModUtil = {
 	Overrides = {},
 	PerFunctionEnv = {},
 	Anchors = {Menu={},CloseFuncs={}},
-	GlobalConnector = "__",
 	FuncsToLoad = {},
 	MarkedForCollapse = {},
 }
@@ -442,28 +441,6 @@ function ModUtil.PathArray( path )
 end
 
 --[[
-	Mangles a provide path so that it is safe to use to index a table, by
-	replacing the periods with ModUtil.GlobalConnector.
-
-	This is useful to create a unique global key from a path, in for interoperability
-	with utilities that don't understand paths or index arrays.
-
-	For example, the OnPressedFunctionName of a button must refer to a single key 
-	in the globals table (_G); if you have a Path then JoinPath may be used to create such a key.
-]]
-function ModUtil.JoinPath( path )
-	local s = ""
-	for c in path:gmatch( "." ) do
-		if c ~= "." then
-			s = s .. c
-		else
-			s = s .. ModUtil.GlobalConnector
-		end
-	end
-	return s
-end
-
---[[
 	Safely get a value from a Path.
 
 	For example, ModUtil.PathGet("a.b.c") returns a.b.c.
@@ -499,106 +476,9 @@ function ModUtil.PathSetTable( path, setTable, base )
 	return ModUtil.MapSetTable( ModUtil.PathGet( path, base ), setTable )
 end
 
--- Globalisation
-
---[[
-	Sets a unique global variable equal to the value stored at Path.
-
-	For example, the OnPressedFunctionName of a button must refer to a single key
-	in the globals table (_G). If you have a function defined in your module's
-	table that you would like to use, ie.
-
-		function YourModName.FunctionName(...)
-
-	then ModUtil.GlobalizePath("YourModName.FunctionName") will create a global
-	variable for that function, and you can then set OnPressedFunctionName to
-	ModUtil.JoinPath("YourModName.FunctionName").
-
-	path - the path to be globalised
-]]
-function ModUtil.GlobalisePath( path )
-	_G[ModUtil.JoinPath( path )] = ModUtil.SafeGet( _G, ModUtil.PathArray( path ) )
-end
-
---[[
-	Updates the global created by ModUtil.GlobalisePath, to pick up any
-	changes to the value at the Path.
-
-	path			- the path to be globalised
-	pathArray	- (optional) if present, retrive the updated value from
-							a location other than the default ModUtil.PathArray(Path)
-]]
-function ModUtil.UpdateGlobalisedPath( path, pathArray )
-	local joinedPath = ModUtil.JoinPath( path )
-	if _G[joinedPath] then 
-		if pathArray then
-			_G[joinedPath] = ModUtil.SafeGet( _G, pathArray )
-		else
-			_G[joinedPath] = ModUtil.SafeGet( _G, ModUtil.PathArray( path ) )
-		end
-	end
-end
-
---[[
-	Makes all the functions in Table available globally, as if
-	ModUtil.GlobalisePath had been called on each of them.
-	
-	If you have a lot of functions you need to export for UI or
-	other by-name callbacks, it will be eaiser to maintain a single
-	call to ModUtil.GlobaliseFuncs at the bottom of your mod file,
-	rather than having a bunch of GlobalisePath calls that need to
-	be maintained.
-
-	For example, if you have a table at YourModName.UIFunctions with
-
-	function YourModName.UIFunctions.OnButton1(...)
-	function YourModName.UIFunctiosn.OnButton2(...)
-
-	then ModUtil.GlobaliseFuncs(YourModName.UIFunctions) will create global
-	functions called OnButton1 and OnButton2. If you are worried about
-	collisions with other global functions, consider using a prefix ie.
-
-		ModUtil.GlobaliseFuncs(YourModName.UIFunctions, "YourModNameUI")
-
-	So that the global functions are called YourModNameUI__OnButton1 etc.
-
-	tableArg	- The table containing the functions to globalise
-	prefixPath	- (optional) if present, add this path as a prefix to the
-					path from the root of the table.
-]]
-function ModUtil.GlobaliseFuncs( tableArg, prefixPath )
-	if prefixPath == nil then
-		prefixPath = ""
-	end
-	for k,v in pairs( tableArg ) do
-		if type( k ) == "string" then
-			if type(v) == "function" then
-				_G[ModUtil.JoinPath( prefixPath .. "." .. k )] = v
-			elseif type(v) == "table" then
-				ModUtil.GlobaliseFuncs( v, prefixPath.."."..k )
-			end
-		end
-	end
-end
-
---[[
-	Globalise all the functions in your mod object.
-
-	modObject - The mod object created by ModUtil.RegisterMod
-]]
-function ModUtil.GlobaliseModFuncs( modObject )
-	local parent = modObject
-	local prefix = modObject.ModName
-	while parent.ModParent do
-		parent = parent.ModParent
-		if parent == _G then break end
-		prefix = parent.ModName .. "." .. prefix
-	end
-	ModUtil.GlobaliseFuncs( modObject, prefix )
-end
-
-
 -- Metaprogramming Shenanigans
+
+ModUtil.NewTable(ModUtil,"Metatable")
 
 function getfenv( fn )
 	local i = 1
@@ -657,7 +537,10 @@ end
 	and its 'local hasRequirement' as ModUtil.Locals.hasRequirement.
 ]]
 ModUtil.Locals = {}
-setmetatable(ModUtil.Locals, {
+setmetatable(ModUtil.Locals, ModUtil.Metatable.Locals)
+
+
+ModUtil.Metatable.Locals = {
 	__index = function(self, name)
 		local level = 2
 		while debug.getinfo(level, "f") do
@@ -691,8 +574,7 @@ setmetatable(ModUtil.Locals, {
 			level = level + 1
 		end
 	end
-})
-
+}
 
 --[[
 	Example Use:
@@ -700,7 +582,14 @@ setmetatable(ModUtil.Locals, {
 	  	-- 
 	end
 ]]
-local localLevelMeta = {
+
+function ModUtil.LocalLevel(level)
+	local localLevel = { level = level }
+	setmetatable( localLevel, ModUtil.Metatable.LocalLevel )
+	return localLevel
+end
+
+ModUtil.Metatable.LocalLevel = {
 	__index = function( self, idx )
 		return debug.getlocal( rawget(self,"level") + 1, idx)
 	end,
@@ -728,12 +617,6 @@ local localLevelMeta = {
 	end
 }
 
-function ModUtil.LocalLevel(level)
-	local localLevel = { level = level }
-	setmetatable( localLevel, localLevelMeta )
-	return localLevel
-end
-
 --[[
 	Example Use:
 	for i,localLevel in pairs(ModUtil.LocalLevels) do
@@ -743,7 +626,9 @@ end
   	end
 ]]
 ModUtil.LocalLevels = {}
-setmetatable(ModUtil.LocalLevels, {
+setmetatable(ModUtil.LocalLevels, ModUtil.Metatable.LocalLevels)
+
+ModUtil.Metatable.LocalLevels = {
 	__index = function( self, level )
 		return level, ModUtil.LocalLevel( level )
 	end,
@@ -762,8 +647,7 @@ setmetatable(ModUtil.LocalLevels, {
 	__ipairs = function( self )
 		return getmetatable( self ).__next, self, 0
 	end
-})
-
+}
 
 --[[
 	Return a table representing the upvalues of a function.
@@ -775,50 +659,47 @@ setmetatable(ModUtil.LocalLevels, {
 	func - the function to get upvalues from
 ]]
 function ModUtil.GetUpValues( func )
-	if type( func ) ~= "function" then return nil end
-	local key = {}
+	local ind = {}
 	local u = nil
 	local i = 1
 	while true do
-		u = debug.getupvalue( func, i )
-		if u == nil then break end
-		key[i] = u
+		name = debug.getupvalue( func, i )
+		if name == nil then break end
+		ind[name] = i
 		i = i + 1
 	end
-	local ind = {}
-	for i,k in pairs( key ) do
-		ind[k] = i
-	end
-	local ups = {func = func, ind = ind, key = key}
-	setmetatable(ups, {
-		__index = function( self, name )
-			local n, v = debug.getupvalue( rawget(self,"func"), rawget(self,"ind")[name] )
-			return v
-		end,
-		__newindex = function( self, name, value )
-			debug.setupvalue( rawget(self,"func"), rawget(self,"ind")[name], value )
-		end,
-		__next = function ( self, name )
-			k, i = next( rawget(self,"ind"), k )
-			if i ~= nil then
-				return k, debug.getupvalue( rawget(self,"func")), i )
-			end
-		end,
-		__pairs = function( self )
-			return getmetatable(self).__next, self, nil
-		end,
-		__ipairs = function( self )
-			return function( t, i )
-				i = i + 1
-				v = debug.getupvalue( rawget(t,"func"), i )
-				if v ~= nil then
-					return i, v
-				end
-			end, self, 0
-		end
-	})
-	return ups, ind, key
+	local ups = {func = func, ind = ind}
+	setmetatable(ups, ModUtil.Metatable.UpValues)
+	return ups, ind
 end
+
+ModUtil.Metatable.UpValues = {
+	__index = function( self, name )
+		local n, v = debug.getupvalue( rawget(self,"func"), rawget(self,"ind")[name] )
+		return v
+	end,
+	__newindex = function( self, name, value )
+		debug.setupvalue( rawget(self,"func"), rawget(self,"ind")[name], value )
+	end,
+	__next = function ( self, name )
+		k, i = next( rawget(self,"ind"), k )
+		if i ~= nil then
+			return k, debug.getupvalue( rawget(self,"func")), i )
+		end
+	end,
+	__pairs = function( self )
+		return getmetatable(self).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return function( t, i )
+			i = i + 1
+			v = debug.getupvalue( rawget(t,"func"), i )
+			if v ~= nil then
+				return i, v
+			end
+		end, self, 0
+	end
+}
 
 function ModUtil.GetBottomUpValues( baseTable, indexArray )
 	local baseValue = ModUtil.SafeGet( ModUtil.Overrides[baseTable], indexArray )
@@ -844,6 +725,106 @@ end
 ]]
 function ModUtil.GetBaseBottomUpValues( basePath )
 	return ModUtil.GetBottomUpValues( _G, ModUtil.PathArray( basePath ) )
+end
+
+-- Globalisation
+
+function ModUtil.GlobaliseFunc( baseTable, indexArray, key )
+	local funcTable = { table = baseTable, array = indexArray }
+	setmetatable( funcTable, ModUtil.Metatable.GlobalisedFunc )
+	_G[key] = funcTable
+end
+
+ModUtil.Metatable.GlobalisedFunc = {
+	__call = function(self, ...)
+		return SafeGet( rawget(self,"table"), rawget(self,"array")  )(...)
+	end
+}
+
+--[[
+	Sets a unique global variable equal to the value stored at Path.
+
+	For example, the OnPressedFunctionName of a button must refer to a single key
+	in the globals table (_G). If you have a function defined in your module's
+	table that you would like to use, ie.
+
+		function YourModName.FunctionName(...)
+
+	then ModUtil.GlobalizePath("YourModName.FunctionName") will create a global
+	variable for that function, and you can then set OnPressedFunctionName to
+	ModUtil.JoinPath("YourModName.FunctionName").
+
+	path 		- the path to be globalised
+	prefixPath 	- (optional) if present, add this path as a prefix to the
+					path from the root of the table.
+]]
+function ModUtil.GlobaliseFuncPath( path, prefixPath )
+	if prefixPath == nil then
+		prefixPath = ""
+	else
+		prefixPath = prefixPath .. '.'
+	end
+	ModUtil.GlobaliseFunc( _G,  ModUtil.PathArray( path ), prefixPath..path )
+end
+
+--[[
+	Makes all the functions in Table available globally, as if
+	ModUtil.GlobalisePath had been called on each of them.
+	
+	If you have a lot of functions you need to export for UI or
+	other by-name callbacks, it will be eaiser to maintain a single
+	call to ModUtil.GlobaliseFuncs at the bottom of your mod file,
+	rather than having a bunch of GlobalisePath calls that need to
+	be maintained.
+
+	For example, if you have a table at YourModName.UIFunctions with
+
+	function YourModName.UIFunctions.OnButton1(...)
+	function YourModName.UIFunctiosn.OnButton2(...)
+
+	then ModUtil.GlobaliseFuncs(YourModName.UIFunctions) will create global
+	functions called OnButton1 and OnButton2. If you are worried about
+	collisions with other global functions, consider using a prefix ie.
+
+		ModUtil.GlobaliseFuncs(YourModName.UIFunctions, "YourModNameUI")
+
+	So that the global functions are called YourModNameUI__OnButton1 etc.
+
+	tableArg	- The table containing the functions to globalise
+	prefixPath	- (optional) if present, add this path as a prefix to the
+					path from the root of the table.
+]]
+function ModUtil.GlobaliseFuncs( tableArg, prefixPath )
+	if prefixPath == nil then
+		prefixPath = ""
+	else
+		prefixPath = prefixPath .. '.'
+	end
+	for k,v in pairs( tableArg ) do
+		if type( k ) == "string" then
+			if type(v) == "function" then
+				ModUtil.GlobaliseFunc( v, {k}, prefixPath..'.'..k )
+			elseif type(v) == "table" then
+				ModUtil.GlobaliseFuncs( v, prefixPath..'.'..k )
+			end
+		end
+	end
+end
+
+--[[
+	Globalise all the functions in your mod object.
+
+	modObject - The mod object created by ModUtil.RegisterMod
+]]
+function ModUtil.GlobaliseModFuncs( modObject )
+	local parent = modObject
+	local prefix = modObject.ModName
+	while parent.ModParent do
+		parent = parent.ModParent
+		if parent == _G then break end
+		prefix = parent.ModName .. "." .. prefix
+	end
+	ModUtil.GlobaliseFuncs( modObject, prefix )
 end
 
 -- Function Wrapping
@@ -1008,7 +989,6 @@ end
 function ModUtil.WrapBaseFunction( baseFuncPath, wrapFunc, modObject )
 	local pathArray = ModUtil.PathArray( baseFuncPath )
 	ModUtil.WrapFunction( _G, pathArray, wrapFunc, modObject )
-	ModUtil.UpdateGlobalisedPath( baseFuncPath, pathArray )
 end
 
 --[[
@@ -1017,7 +997,6 @@ end
 function ModUtil.RewrapBaseFunction( baseFuncPath )
 	local pathArray = ModUtil.PathArray( baseFuncPath )
 	ModUtil.RewrapFunction( _G, pathArray )
-	ModUtil.UpdateGlobalisedPath( baseFuncPath, pathArray )
 end
 
 --[[
@@ -1034,7 +1013,6 @@ end
 function ModUtil.UnwrapBaseFunction( baseFuncPath )
 	local pathArray = ModUtil.PathArray( baseFuncPath )
 	ModUtil.UnwrapFunction( _G, pathArray )
-	ModUtil.UpdateGlobalisedPath( baseFuncPath, pathArray )
 end
 
 -- Override Management
@@ -1149,7 +1127,6 @@ end
 function ModUtil.BaseOverride( basePath, value, modObject )
 	local pathArray = ModUtil.PathArray( basePath )
 	ModUtil.Override( _G, pathArray, value, modObject )
-	ModUtil.UpdateGlobalisedPath( basePath, pathArray )
 end
 
 --[[
@@ -1164,7 +1141,6 @@ end
 function ModUtil.BaseRestore( basePath )
 	local pathArray = ModUtil.PathArray( basePath )
 	ModUtil.Restore( _G, pathArray )
-	ModUtil.UpdateGlobalisedPath( basePath, pathArray )
 end
 
 --[[
