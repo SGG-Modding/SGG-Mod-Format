@@ -725,6 +725,7 @@ local localLevelMeta = {
 	end,
 	__ipairs = function( self )
 		return getmetatable( self ).__next, self, 0
+	end
 }
 
 function ModUtil.LocalLevel(level)
@@ -745,12 +746,15 @@ ModUtil.LocalLevels = {}
 setmetatable(ModUtil.LocalLevels, {
 	__index = function( self, level )
 		return level, ModUtil.LocalLevel( level )
+	end,
 	__next = function( self, level )
 		if level == nil then
 			level = 0
 		end
 		level = level + 1
-		return level, ModUtil.LocalLevel( level )
+		if debug.getinfo(level, "f") then
+			return level, ModUtil.LocalLevel( level )
+		end
 	end,
 	__pairs = function( self )
 		return getmetatable( self ).__next, self, nil
