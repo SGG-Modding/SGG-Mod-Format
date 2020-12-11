@@ -646,7 +646,7 @@ setmetatable(ModUtil.Locals, {
 	end
 })
 
-local function getfenv( fn )
+function getfenv( fn )
 	local i = 1
 	while true do
 		local name, val = debug.getupvalue(fn, i)
@@ -669,7 +669,7 @@ end
 	table should generally have _G as its __index, so that any globals
 	other than those being overridden can still be read.
 ]]
-local function setfenv( fn, env )
+function setfenv( fn, env )
 	local i = 1
 	while true do
 		local name = debug.getupvalue( fn, i )
@@ -684,6 +684,13 @@ local function setfenv( fn, env )
 		i = i + 1
 	end
 	return fn
+end
+
+rawnext = next
+function next(t,k)
+  local m = getmetatable(t)
+  local n = m and m.__next or rawnext
+  return n(t,k)
 end
 
 --[[
@@ -711,15 +718,34 @@ function ModUtil.GetUpValues( func )
 		ind[k] = i
 	end
 	local ups = {}
-	setmetatable( ups, {
+	local meta = {
 		__index = function( self, name )
 			local n, v = debug.getupvalue( func, ind[name] )
 			return v
 		end,
 		__newindex = function( self, name, value )
 			debug.setupvalue( func, ind[name], value )
+		end,
+		__next = function ( self, name )
+			k, i = next( ind, k )
+			if i ~= nil then
+				return k, debug.getupvalue( func, i )
+			end
+		end,
+		__pairs = function( self )
+			return meta.__next, self, nil
+		end,
+		__ipairs = function( self )
+			return function( t, i )
+				i = i + 1
+				v = debug.getupvalue( func, i )
+				if v ~= nil then
+					return i, v
+				end
+			end, self, 0
 		end
-	})
+	}
+	setmetatable(ups, meta)
 	return ups, ind, key
 end
 
