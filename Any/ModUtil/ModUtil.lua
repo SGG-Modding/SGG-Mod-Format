@@ -752,7 +752,7 @@ setmetatable(ModUtil.LocalLevels, {
 			level = 0
 		end
 		level = level + 1
-		if debug.getinfo(level, "f") then
+		if debug.getinfo(level + 1, "f") then
 			return level, ModUtil.LocalLevel( level )
 		end
 	end,
