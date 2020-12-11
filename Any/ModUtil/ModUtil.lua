@@ -600,52 +600,6 @@ end
 
 -- Metaprogramming Shenanigans
 
---[[
-	Access to local variables, in the current function and callers.
-	The most recent definition with a given name on the call stack will
-	be used.
-
-	For example, if your function is called from CreateTraitRequirements,
-	you could access its 'local screen' as ModUtil.Locals.screen
-	and its 'local hasRequirement' as ModUtil.Locals.hasRequirement.
-]]
-ModUtil.Locals = {}
-setmetatable(ModUtil.Locals, {
-	__index = function(self, name)
-		local level = 2
-		while debug.getinfo(level, "f") do
-			local idx = 1
-			while true do
-				local n, v = debug.getlocal(level, idx)
-				if n == name then
-					return v
-				elseif not n then
-					break
-				end
-				idx = idx + 1
-			end
-			level = level + 1
-		end
-	end,
-	__newindex = function(self, name, value)
-		local level = 2
-		while debug.getinfo(level, "f") do
-			local idx = 1
-			while true do
-				local n = debug.getlocal(level, idx)
-				if n == name then
-					debug.setlocal(level, idx, value)
-					return
-				elseif not n then
-					break
-				end
-				idx = idx + 1
-			end
-			level = level + 1
-		end
-	end
-})
-
 function getfenv( fn )
 	local i = 1
 	while true do
@@ -694,6 +648,120 @@ function next(t,k)
 end
 
 --[[
+	Access to local variables, in the current function and callers.
+	The most recent definition with a given name on the call stack will
+	be used.
+
+	For example, if your function is called from CreateTraitRequirements,
+	you could access its 'local screen' as ModUtil.Locals.screen
+	and its 'local hasRequirement' as ModUtil.Locals.hasRequirement.
+]]
+ModUtil.Locals = {}
+setmetatable(ModUtil.Locals, {
+	__index = function(self, name)
+		local level = 2
+		while debug.getinfo(level, "f") do
+			local idx = 1
+			while true do
+				local n, v = debug.getlocal(level, idx)
+				if n == name then
+					return v
+				elseif not n then
+					break
+				end
+				idx = idx + 1
+			end
+			level = level + 1
+		end
+	end,
+	__newindex = function(self, name, value )
+		local level = 2
+		while debug.getinfo(level, "f") do
+			local idx = 1
+			while true do
+				local n = debug.getlocal(level, idx)
+				if n == name then
+					debug.setlocal(level, idx, value)
+					return
+				elseif not n then
+					break
+				end
+				idx = idx + 1
+			end
+			level = level + 1
+		end
+	end
+})
+
+
+--[[
+	Example Use:
+	for k, v in pairs(ModUtil.LocalLevel(1)) do
+	  	-- 
+	end
+]]
+local localLevelMeta = {
+	__index = function( self, idx )
+		return debug.getlocal( rawget(self,"level") + 1, idx)
+	end,
+	__newindex = function( self, idx, value )
+		name = debug.getlocal( rawget(self,"level") + 1, idx)
+		if name ~= nil then
+			debug.setlocal( rawget(self,"level") + 1, idx, value )
+		end
+	end,
+	__next = function( self, idx )
+		if idx == nil then
+			idx = 0
+		end
+		idx = idx + 1
+		local _, val = debug.getlocal( rawget(self,"level") + 1, idx )
+		if val ~= nil then
+			return idx, val
+		end
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return getmetatable( self ).__next, self, 0
+}
+
+function ModUtil.LocalLevel(level)
+	local localLevel = { level = level }
+	setmetatable( localLevel, localLevelMeta )
+	return localLevel
+end
+
+--[[
+	Example Use:
+	for i,localLevel in pairs(ModUtil.LocalLevels) do
+		for k, v in pairs(localLevel) do
+	  		-- 
+		end
+  	end
+]]
+ModUtil.LocalLevels = {}
+setmetatable(ModUtil.LocalLevels, {
+	__index = function( self, level )
+		return level, ModUtil.LocalLevel( level )
+	__next = function( self, level )
+		if level == nil then
+			level = 0
+		end
+		level = level + 1
+		return level, ModUtil.LocalLevel( level )
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return getmetatable( self ).__next, self, 0
+	end
+})
+
+
+--[[
 	Return a table representing the upvalues of a function.
 
 	Upvalues are those variables captured by a function from it's
@@ -717,35 +785,34 @@ function ModUtil.GetUpValues( func )
 	for i,k in pairs( key ) do
 		ind[k] = i
 	end
-	local ups = {}
-	local meta = {
+	local ups = {func = func, ind = ind, key = key}
+	setmetatable(ups, {
 		__index = function( self, name )
-			local n, v = debug.getupvalue( func, ind[name] )
+			local n, v = debug.getupvalue( rawget(self,"func"), rawget(self,"ind")[name] )
 			return v
 		end,
 		__newindex = function( self, name, value )
-			debug.setupvalue( func, ind[name], value )
+			debug.setupvalue( rawget(self,"func"), rawget(self,"ind")[name], value )
 		end,
 		__next = function ( self, name )
-			k, i = next( ind, k )
+			k, i = next( rawget(self,"ind"), k )
 			if i ~= nil then
-				return k, debug.getupvalue( func, i )
+				return k, debug.getupvalue( rawget(self,"func")), i )
 			end
 		end,
 		__pairs = function( self )
-			return meta.__next, self, nil
+			return getmetatable(self).__next, self, nil
 		end,
 		__ipairs = function( self )
 			return function( t, i )
 				i = i + 1
-				v = debug.getupvalue( func, i )
+				v = debug.getupvalue( rawget(t,"func"), i )
 				if v ~= nil then
 					return i, v
 				end
 			end, self, 0
 		end
-	}
-	setmetatable(ups, meta)
+	})
 	return ups, ind, key
 end
 
