@@ -671,7 +671,7 @@ ModUtil.GetLocalsInterface( names )
 	end 
 	local interface = {index = index}
 	setmetatable(interface, ModUtil.Metatables.LocalsInterface)
-	return interface   
+	return interface, index
 end
 
 ModUtil.Metatables.LocalsInterface = {
