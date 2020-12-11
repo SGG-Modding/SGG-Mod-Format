@@ -110,6 +110,7 @@ def addtopimport(base,path):
         lines = basefile.readlines()     
         lines.insert(0, "Import "+"\""+modsrel+"/"+path+"\"\n")  
         basefile.seek(0)                 
+        basefile.truncate()
         basefile.writelines(lines)
 
 ### XML mapping
