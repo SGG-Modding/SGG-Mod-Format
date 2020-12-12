@@ -19,8 +19,6 @@ ModUtil = {
 	Overrides = {},
 	PerFunctionEnv = {},
 	Anchors = {Menu={},CloseFuncs={}},
-	Context = {}
-	Metatables = {}
 	FuncsToLoad = {},
 	MarkedForCollapse = {},
 }
@@ -480,6 +478,8 @@ end
 
 -- Metaprogramming Shenanigans
 
+ModUtil.NewTable(ModUtil,"Metatable")
+
 function getfenv( fn )
 	local i = 1
 	while true do
@@ -537,10 +537,10 @@ end
 	and its 'local hasRequirement' as ModUtil.Locals.hasRequirement.
 ]]
 ModUtil.Locals = {}
-setmetatable(ModUtil.Locals, ModUtil.Metatables.Locals)
+setmetatable(ModUtil.Locals, ModUtil.Metatable.Locals)
 
 
-ModUtil.Metatables.Locals = {
+ModUtil.Metatable.Locals = {
 	__index = function(self, name)
 		local level = 2
 		while debug.getinfo(level, "f") do
@@ -578,26 +578,25 @@ ModUtil.Metatables.Locals = {
 
 --[[
 	Example Use:
-	for i, name, value  in pairs(ModUtil.LocalLevel(1)) do
+	for k, v in pairs(ModUtil.LocalLevel(1)) do
 	  	-- 
 	end
 ]]
 
 function ModUtil.LocalLevel(level)
 	local localLevel = { level = level }
-	setmetatable( localLevel, ModUtil.Metatables.LocalLevel )
+	setmetatable( localLevel, ModUtil.Metatable.LocalLevel )
 	return localLevel
 end
 
-ModUtil.Metatables.LocalLevel = {
+ModUtil.Metatable.LocalLevel = {
 	__index = function( self, idx )
 		return debug.getlocal( rawget(self,"level") + 1, idx)
 	end,
 	__newindex = function( self, idx, value )
-		local level = rawget(self,"level")
-		name = debug.getlocal( level + 1, idx)
+		name = debug.getlocal( rawget(self,"level") + 1, idx)
 		if name ~= nil then
-			debug.setlocal( level + 1, idx, value )
+			debug.setlocal( rawget(self,"level") + 1, idx, value )
 		end
 	end,
 	__next = function( self, idx )
@@ -605,9 +604,9 @@ ModUtil.Metatables.LocalLevel = {
 			idx = 0
 		end
 		idx = idx + 1
-		local name, val = debug.getlocal( rawget(self,"level") + 1, idx )
+		local _, val = debug.getlocal( rawget(self,"level") + 1, idx )
 		if val ~= nil then
-			return idx, name, val
+			return idx, val
 		end
 	end,
 	__pairs = function( self )
@@ -620,16 +619,16 @@ ModUtil.Metatables.LocalLevel = {
 
 --[[
 	Example Use:
-	for level,localLevel in pairs(ModUtil.LocalLevels) do
-		for i, name, value in pairs(localLevel) do
+	for i,localLevel in pairs(ModUtil.LocalLevels) do
+		for k, v in pairs(localLevel) do
 	  		-- 
 		end
   	end
 ]]
 ModUtil.LocalLevels = {}
-setmetatable(ModUtil.LocalLevels, ModUtil.Metatables.LocalLevels)
+setmetatable(ModUtil.LocalLevels, ModUtil.Metatable.LocalLevels)
 
-ModUtil.Metatables.LocalLevels = {
+ModUtil.Metatable.LocalLevels = {
 	__index = function( self, level )
 		return level, ModUtil.LocalLevel( level )
 	end,
@@ -647,46 +646,6 @@ ModUtil.Metatables.LocalLevels = {
 	end,
 	__ipairs = function( self )
 		return getmetatable( self ).__next, self, 0
-	end
-}
-
---[[
-	Interface only valid within the scope it was constructed
-]]
-ModUtil.GetLocalsInterface( names )
-	-- assume either pure array table or pure lookup table
-	if #names ~= 0 then
-		local lookup = ModUtil.InvertTable(names)
-	else
-		lookup = names
-	end
-
-	local index = {}
-	for level,localLevel in pairs(ModUtil.LocalLevels) do
-		for i, name in pairs(localLevel) do
-			if lookup[name] ~= nil and index[name] == nil then
-				index[name] = {level = level, i = i}
-			end
-		end
-	end 
-	local interface = {index = index}
-	setmetatable(interface, ModUtil.Metatables.LocalsInterface)
-	return interface   
-end
-
-ModUtil.Metatables.LocalsInterface = {
-	__index = function( self, name )
-		local pair = rawget(self,"index")[name]
-		if pair ~= nil then
-			local _,value = debug.getlocal( pair.level + 1, pair.index )
-			return value
-		end
-	end,
-	__newindex = function( self, name, value )
-		local pair = rawget(self,"index")[name]
-		if pair ~= nil then
-			debug.getlocal( pair.level + 1, pair.index, value )
-		end
 	end
 }
 
@@ -710,11 +669,11 @@ function ModUtil.GetUpValues( func )
 		i = i + 1
 	end
 	local ups = {func = func, ind = ind}
-	setmetatable(ups, ModUtil.Metatables.UpValues)
+	setmetatable(ups, ModUtil.Metatable.UpValues)
 	return ups, ind
 end
 
-ModUtil.Metatables.UpValues = {
+ModUtil.Metatable.UpValues = {
 	__index = function( self, name )
 		local n, v = debug.getupvalue( rawget(self,"func"), rawget(self,"ind")[name] )
 		return v
@@ -768,26 +727,15 @@ function ModUtil.GetBaseBottomUpValues( basePath )
 	return ModUtil.GetBottomUpValues( _G, ModUtil.PathArray( basePath ) )
 end
 
--- Context Managers (High WIP)
-
-function ModUtil.Context.Within(path, func)
-	local parentEnv = ModUtil.Locals.env or _G
-	local env = getFunctionEnv(parentEnv, path)
-end
-
-function ModUtil.Context.Meta(path, func)
-	---
-end
-
 -- Globalisation
 
 function ModUtil.GlobaliseFunc( baseTable, indexArray, key )
 	local funcTable = { table = baseTable, array = indexArray }
-	setmetatable( funcTable, ModUtil.Metatables.GlobalisedFunc )
+	setmetatable( funcTable, ModUtil.Metatable.GlobalisedFunc )
 	_G[key] = funcTable
 end
 
-ModUtil.Metatables.GlobalisedFunc = {
+ModUtil.Metatable.GlobalisedFunc = {
 	__call = function(self, ...)
 		return SafeGet( rawget(self,"table"), rawget(self,"array")  )(...)
 	end
