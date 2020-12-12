@@ -7,6 +7,8 @@ Author: MagicGonads
 	
 ]]
 
+-- BETA VERSION
+
 local Config = {
 	AutoCollapse = true,
 }
