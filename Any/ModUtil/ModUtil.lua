@@ -839,7 +839,7 @@ function ModUtil.GetBottomUpValues( baseTable, indexArray )
 	else
 		baseValue = ModUtil.SafeGet( ModUtil.WrapCallbacks[baseTable], indexArray )
 		if baseValue then
-			baseValue = baseValue[1].func
+			baseValue = baseValue[1].Func
 		else
 			baseValue = ModUtil.SafeGet( baseTable, indexArray )
 		end
