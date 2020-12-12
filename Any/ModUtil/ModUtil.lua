@@ -1,10 +1,10 @@
 --[[
 Mod: Mod Utility
-Author: MagicGonads 
+Author: MagicGonads
 
 	Library to allow mods to be more compatible with eachother and expand capabilities.
 	Use the mod importer to import this mod to ensure it is loaded in the right position.
-	
+
 ]]
 
 -- BETA VERSION
@@ -21,8 +21,8 @@ ModUtil = {
 	Overrides = {},
 	PerFunctionEnv = {},
 	Anchors = {Menu={},CloseFuncs={}},
-	Context = {}
-	Metatables = {}
+	Context = {},
+	Metatables = {},
 	FuncsToLoad = {},
 	MarkedForCollapse = {},
 }
@@ -53,7 +53,7 @@ end
 
 -- internal
 function ModUtil.LoadFuncs( triggerArgs )
-	for k,v in pairs(ModUtil.FuncsToLoad) do
+	for _,v in pairs(ModUtil.FuncsToLoad) do
 		v(triggerArgs)
 	end
 	ModUtil.FuncsToLoad = {}
@@ -73,7 +73,7 @@ end
 	Tell each screen anchor that they have been forced closed by the game
 ]]
 function ModUtil.ForceClosed( triggerArgs )
-	for k,v in pairs( ModUtil.Anchors.CloseFuncs ) do
+	for _,v in pairs( ModUtil.Anchors.CloseFuncs ) do
 		v( nil, nil, triggerArgs )
 	end
 	ModUtil.Anchors.CloseFuncs = {}
@@ -99,7 +99,7 @@ function ModUtil.TableKeysString( o )
 	if type( o ) == 'table' then
 		local first = true
 		local s = ''
-		for k,v in pairs( o ) do
+		for k,_ in pairs( o ) do
 			if not first then s = s .. ', ' else first = false end
 			s = s .. ModUtil.KeyString( k )
 		end
@@ -185,7 +185,7 @@ end
 
 function ModUtil.IsUnKeyed( tableArg )
 	local lk = 0
-	for k, v in pairs( tableArg ) do
+	for k, _ in pairs( tableArg ) do
 		if type( k ) ~= "number" then
 			return false
 		end
@@ -236,13 +236,12 @@ end
 	indexArray	- the list of indices
 ]]
 function ModUtil.SafeGet( baseTable, indexArray )
-	local n = #indexArray
 	local node = baseTable
-	for k, i in ipairs( indexArray ) do
+	for _, k in ipairs( indexArray ) do
 		if type( node ) ~= "table" then
 			return nil
 		end
-		node = node[i]
+		node = node[k]
 	end
 	return node
 end
@@ -262,13 +261,13 @@ end
 	value	- the value to add
 ]]
 function ModUtil.SafeSet( baseTable, indexArray, value )
-	if IsEmpty( indexArray ) then
+	if next( indexArray ) == nil then
 		return false -- can't set the input argument
 	end
 	local n = #indexArray
 	local node = baseTable
 	for i = 1, n-1 do
-		k = indexArray[i]
+		local k = indexArray[i]
 		ModUtil.NewTable( node, k )
 		node = node[k]
 	end
@@ -285,7 +284,7 @@ end
 	Set all the values in inTable corresponding to keys
 	in nilTable to nil.
 
-	For example, if inTable is 
+	For example, if inTable is
 	{
 		Foo = 5,
 		Bar = 6,
@@ -321,7 +320,7 @@ function ModUtil.MapNilTable( inTable, nilTable )
 			ModUtil.MapNilTable( inVal, nilVal )
 		else
 			inTable[nilKey] = nil
-			if unkeyed then 
+			if unkeyed then
 				ModUtil.MarkForCollapse( inTable )
 			end
 		end
@@ -378,7 +377,7 @@ local function CollapseTable( tableArg )
 
 	local collapsedTable = {}
 	local index = 1
-	for k, v in pairs( tableArg ) do
+	for _, v in pairs( tableArg ) do
 		collapsedTable[index] = v
 		index = index + 1
 	end
@@ -388,8 +387,14 @@ local function CollapseTable( tableArg )
 end
 
 function ModUtil.CollapseMarked()
-	for k,v in pairs( ModUtil.MarkedForCollapse ) do
-		k = CollapseTable( k )
+	for tbl,_ in pairs( ModUtil.MarkedForCollapse ) do
+		local ctbl = CollapseTable( tbl )
+		for k,_ in pairs(tbl) do
+			tbl[k]=nil
+		end
+		for k,v in pairs(ctbl) do
+			tbl[k] = v
+		end
 	end
 	ModUtil.MarkedForCollapse = {}
 end
@@ -543,7 +548,7 @@ setmetatable(ModUtil.Locals, ModUtil.Metatables.Locals)
 
 
 ModUtil.Metatables.Locals = {
-	__index = function(self, name)
+	__index = function( _, name)
 		local level = 2
 		while debug.getinfo(level, "f") do
 			local idx = 1
@@ -559,7 +564,7 @@ ModUtil.Metatables.Locals = {
 			level = level + 1
 		end
 	end,
-	__newindex = function(self, name, value )
+	__newindex = function( _, name, value )
 		local level = 2
 		while debug.getinfo(level, "f") do
 			local idx = 1
@@ -581,7 +586,7 @@ ModUtil.Metatables.Locals = {
 --[[
 	Example Use:
 	for i, name, value  in pairs(ModUtil.LocalLevel(1)) do
-	  	-- 
+		--
 	end
 ]]
 
@@ -597,7 +602,7 @@ ModUtil.Metatables.LocalLevel = {
 	end,
 	__newindex = function( self, idx, value )
 		local level = rawget(self,"level")
-		name = debug.getlocal( level + 1, idx)
+		local name = debug.getlocal( level + 1, idx)
 		if name ~= nil then
 			debug.setlocal( level + 1, idx, value )
 		end
@@ -624,18 +629,18 @@ ModUtil.Metatables.LocalLevel = {
 	Example Use:
 	for level,localLevel in pairs(ModUtil.LocalLevels) do
 		for i, name, value in pairs(localLevel) do
-	  		-- 
+			--
 		end
-  	end
+	end
 ]]
 ModUtil.LocalLevels = {}
 setmetatable(ModUtil.LocalLevels, ModUtil.Metatables.LocalLevels)
 
 ModUtil.Metatables.LocalLevels = {
-	__index = function( self, level )
+	__index = function( _, level )
 		return level, ModUtil.LocalLevel( level )
 	end,
-	__next = function( self, level )
+	__next = function( _, level )
 		if level == nil then
 			level = 0
 		end
@@ -655,12 +660,11 @@ ModUtil.Metatables.LocalLevels = {
 --[[
 	Interface only valid within the scope it was constructed
 ]]
-ModUtil.GetLocalsInterface( names )
+function ModUtil.GetLocalsInterface( names )
 	-- assume either pure array table or pure lookup table
+	local lookup = names
 	if #names ~= 0 then
-		local lookup = ModUtil.InvertTable(names)
-	else
-		lookup = names
+		lookup = ModUtil.InvertTable(names)
 	end
 
 	local index = {}
@@ -670,9 +674,10 @@ ModUtil.GetLocalsInterface( names )
 				index[name] = {level = level, i = i}
 			end
 		end
-	end 
+	end
 	local interface = {index = index}
 	setmetatable(interface, ModUtil.Metatables.LocalsInterface)
+
 	return interface, index
 end
 
@@ -703,7 +708,7 @@ ModUtil.Metatables.LocalsInterface = {
 ]]
 function ModUtil.GetUpValues( func )
 	local ind = {}
-	local u = nil
+	local name
 	local i = 1
 	while true do
 		name = debug.getupvalue( func, i )
@@ -718,7 +723,7 @@ end
 
 ModUtil.Metatables.UpValues = {
 	__index = function( self, name )
-		local n, v = debug.getupvalue( rawget(self,"func"), rawget(self,"ind")[name] )
+		local _, v = debug.getupvalue( rawget(self,"func"), rawget(self,"ind")[name] )
 		return v
 	end,
 	__newindex = function( self, name, value )
@@ -727,7 +732,7 @@ ModUtil.Metatables.UpValues = {
 	__next = function ( self, name )
 		k, i = next( rawget(self,"ind"), k )
 		if i ~= nil then
-			return k, debug.getupvalue( rawget(self,"func")), i )
+			return k, debug.getupvalue( rawget(self,"func"), i )
 		end
 	end,
 	__pairs = function( self )
@@ -770,17 +775,6 @@ function ModUtil.GetBaseBottomUpValues( basePath )
 	return ModUtil.GetBottomUpValues( _G, ModUtil.PathArray( basePath ) )
 end
 
--- Context Managers (High WIP)
-
-function ModUtil.Context.Within(path, func)
-	local parentEnv = ModUtil.Locals.env or _G
-	local env = getFunctionEnv(parentEnv, path)
-end
-
-function ModUtil.Context.Meta(path, func)
-	---
-end
-
 -- Globalisation
 
 function ModUtil.GlobaliseFunc( baseTable, indexArray, key )
@@ -791,7 +785,7 @@ end
 
 ModUtil.Metatables.GlobalisedFunc = {
 	__call = function(self, ...)
-		return SafeGet( rawget(self,"table"), rawget(self,"array")  )(...)
+		return ModUtil.SafeGet( rawget(self,"table"), rawget(self,"array")  )(...)
 	end
 }
 
@@ -1332,6 +1326,22 @@ local function getFunctionEnv( baseTable, indexArray )
 	return env
 end
 
+local function DeepCopyTable( orig )
+	local orig_type = type(orig)
+	local copy
+	if orig_type == 'table' then
+		copy = {}
+		-- slightly more efficient to call next directly instead of using pairs
+		for k,v in next, orig, nil do
+			copy[k] = DeepCopyTable(v)
+		end
+	else
+		copy = orig
+	end
+
+	return copy
+end
+
 --[[
 	Overrides the value at envIndexArray within the function referred to by
 	indexArray in baseTable, by replacing it with value.
@@ -1487,4 +1497,14 @@ function ModUtil.WrapBaseWithinFunction( funcPath, baseFuncPath, wrapFunc, modOb
 	ModUtil.WrapWithinFunction( _G, indexArray, envIndexArray, wrapFunc, modObject )
 end
 
+-- Context Managers (High WIP)
 
+function ModUtil.Context.Within(path, func)
+	local parentEnv = ModUtil.Locals.env or _G
+	local env = getFunctionEnv(parentEnv, path)
+	return env
+end
+
+function ModUtil.Context.Meta(path, func)
+	---
+end
