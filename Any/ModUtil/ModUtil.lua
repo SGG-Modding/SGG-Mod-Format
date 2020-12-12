@@ -529,23 +529,166 @@ end
 
 rawnext = next
 function next(t,k)
-  local m = getmetatable(t)
-  local n = m and m.__next or rawnext
-  return n(t,k)
+  	local m = getmetatable(t)
+  	local n = m and m.__next or rawnext
+  	return n(t,k)
 end
 
+rawpairs = pairs
+function pairs(t,k)
+	local m = getmetatable(t)
+  	local n = m and m.__pairs or rawpairs
+  	return n(t)
+end
+
+rawipairs = ipairs
+function ipairs(t,k)
+  	local m = getmetatable(t)
+  	local n = m and m.__ipairs or rawipairs
+  	return n(t)
+end
+
+ModUtil.Metatables.LocalLevel = {
+	__index = function( self, idx )
+		return debug.getlocal( rawget(self,"level") + 1, idx )
+	end,
+	__newindex = function( self, idx, value )
+		local level = rawget(self,"level") + 1
+		local name = debug.getlocal( level, idx)
+		if name ~= nil then
+			debug.setlocal( level, idx, value )
+		end
+	end,
+	__next = function( self, idx )
+		if idx == nil then
+			idx = 0
+		end
+		idx = idx + 1
+		local name, val = debug.getlocal( rawget(self,"level") + 1, idx )
+		if val ~= nil then
+			return idx, name, val
+		end
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return getmetatable( self ).__next, self, 0
+	end
+}
+
 --[[
-	Access to local variables, in the current function and callers.
-	The most recent definition with a given name on the call stack will
-	be used.
-
-	For example, if your function is called from CreateTraitRequirements,
-	you could access its 'local screen' as ModUtil.Locals.screen
-	and its 'local hasRequirement' as ModUtil.Locals.hasRequirement.
+	Example Use:
+	for i, name, value in pairs(ModUtil.LocalLevel(level)) do
+		--
+	end
 ]]
-ModUtil.Locals = {}
-setmetatable(ModUtil.Locals, ModUtil.Metatables.Locals)
+function ModUtil.LocalLevel(level)
+	local localLevel = { level = level }
+	setmetatable( localLevel, ModUtil.Metatables.LocalLevel )
+	return localLevel
+end
 
+ModUtil.Metatables.LocalLevels = {
+	__index = function( _, level )
+		return level, ModUtil.LocalLevel( level )
+	end,
+	__next = function( _, level )
+		if level == nil then
+			level = 0
+		end
+		level = level + 1
+		if debug.getinfo(level + 1, "f") then
+			return level, ModUtil.LocalLevel( level )
+		end
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return getmetatable( self ).__next, self, 0
+	end
+}
+--[[
+	Example Use:
+	for level,localLevel in pairs(ModUtil.LocalLevels) do
+		for i, name, value in pairs(localLevel) do
+			--
+		end
+	end
+]]
+ModUtil.LocalLevels = {}
+setmetatable(ModUtil.LocalLevels, ModUtil.Metatables.LocalLevels)
+
+ModUtil.Metatables.LocalsInterface = {
+	__index = function( self, name )
+		local pair = rawget(self,"index")[name]
+		if pair ~= nil then
+			local _,value = debug.getlocal( pair.level + 1, pair.i )
+			return value
+		end
+	end,
+	__newindex = function( self, name, value )
+		local pair = rawget(self,"index")[name]
+		if pair ~= nil then
+			debug.setlocal( pair.level + 1, pair.i, value )
+		end
+	end,
+	__next = function( self, name )
+		local pair
+		name, pair = next( rawget(self,"index"), name )
+		if pair ~= nil then
+			local _, value = debug.getlocal( pair.level + 1, pair.i )
+			return name, value
+		end
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return function( self, i )
+			local name
+			i, name = next( rawget(t,"order"), i )
+			pair = rawget(self,"index")[name]
+			if pair ~= nil then
+				local _, value = debug.getlocal( pair.level + 1, pair.i )
+				return i, value
+			end
+		end, self, 0
+	end
+}
+
+--[[
+	Interface only valid within the scope it was constructed
+]]
+function ModUtil.GetLocalsInterface( names )
+	local lookup = {}
+	if names then
+		-- assume names is strictly either a list or a lookup table
+		lookup = names
+		if #lookup ~= 0 then
+			lookup = ModUtil.InvertTable(names)
+		end
+	end
+
+	local order = {}
+	local index = {}
+
+	local level,localLevel = next(ModUtil.LocalLevels, 1)
+	while level do
+		for i, name, value in pairs(localLevel) do
+			if (not names or lookup[name]) and index[name] == nil then
+				index[name] = {level = level - 1, i = i}
+				table.insert( order, name )
+			end
+		end
+		level,localLevel = next(ModUtil.LocalLevels, level)
+	end
+	local interface = {index = index, order = order}
+	setmetatable(interface, ModUtil.Metatables.LocalsInterface)
+
+	return interface, index, order
+end
 
 ModUtil.Metatables.Locals = {
 	__index = function( _, name)
@@ -580,120 +723,88 @@ ModUtil.Metatables.Locals = {
 			end
 			level = level + 1
 		end
-	end
-}
-
---[[
-	Example Use:
-	for i, name, value  in pairs(ModUtil.LocalLevel(1)) do
-		--
-	end
-]]
-
-function ModUtil.LocalLevel(level)
-	local localLevel = { level = level }
-	setmetatable( localLevel, ModUtil.Metatables.LocalLevel )
-	return localLevel
-end
-
-ModUtil.Metatables.LocalLevel = {
-	__index = function( self, idx )
-		return debug.getlocal( rawget(self,"level") + 1, idx)
 	end,
-	__newindex = function( self, idx, value )
-		local level = rawget(self,"level")
-		local name = debug.getlocal( level + 1, idx)
-		if name ~= nil then
-			debug.setlocal( level + 1, idx, value )
+	__next = function( _, name )
+		if name == nil then
+			return debug.getlocal( 2, 1 )
 		end
-	end,
-	__next = function( self, idx )
-		if idx == nil then
-			idx = 0
-		end
-		idx = idx + 1
-		local name, val = debug.getlocal( rawget(self,"level") + 1, idx )
-		if val ~= nil then
-			return idx, name, val
-		end
-	end,
-	__pairs = function( self )
-		return getmetatable( self ).__next, self, nil
-	end,
-	__ipairs = function( self )
-		return getmetatable( self ).__next, self, 0
-	end
-}
-
---[[
-	Example Use:
-	for level,localLevel in pairs(ModUtil.LocalLevels) do
-		for i, name, value in pairs(localLevel) do
-			--
-		end
-	end
-]]
-ModUtil.LocalLevels = {}
-setmetatable(ModUtil.LocalLevels, ModUtil.Metatables.LocalLevels)
-
-ModUtil.Metatables.LocalLevels = {
-	__index = function( _, level )
-		return level, ModUtil.LocalLevel( level )
-	end,
-	__next = function( _, level )
-		if level == nil then
-			level = 0
-		end
-		level = level + 1
-		if debug.getinfo(level + 1, "f") then
-			return level, ModUtil.LocalLevel( level )
-		end
-	end,
-	__pairs = function( self )
-		return getmetatable( self ).__next, self, nil
-	end,
-	__ipairs = function( self )
-		return getmetatable( self ).__next, self, 0
-	end
-}
-
---[[
-	Interface only valid within the scope it was constructed
-]]
-function ModUtil.GetLocalsInterface( names )
-	-- assume either pure array table or pure lookup table
-	local lookup = names
-	if #names ~= 0 then
-		lookup = ModUtil.InvertTable(names)
-	end
-
-	local index = {}
-	for level,localLevel in pairs(ModUtil.LocalLevels) do
-		for i, name in pairs(localLevel) do
-			if lookup[name] ~= nil and index[name] == nil then
-				index[name] = {level = level, i = i}
+		local level = 2
+		while debug.getinfo(level, "f") do
+			local idx = 1
+			while true do
+				local n = debug.getlocal( level, idx )
+				if n == name then
+					return debug.getlocal( level, idx + 1)
+				elseif not n then
+					break
+				end
+				idx = idx + 1
 			end
+			level = level + 1
 		end
+	end,
+	__pairs = function( self )
+		return getmetatable(self).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return function( self, i )
+			local level = 2
+			local j = 0
+			while debug.getinfo(level, "f") do
+				local idx = 1
+				while true do
+					j = j + 1
+					local n, v = debug.getlocal(level, idx)
+					if not n then
+						break
+					elseif j > i then
+						return j, v
+					end
+					idx = idx + 1
+				end
+				level = level + 1
+			end
+		end, self, 0
 	end
-	local interface = {index = index}
-	setmetatable(interface, ModUtil.Metatables.LocalsInterface)
+}
 
-	return interface, index
-end
+--[[
+	Access to local variables, in the current function and callers.
+	The most recent definition with a given name on the call stack will
+	be used.
 
-ModUtil.Metatables.LocalsInterface = {
+	For example, if your function is called from CreateTraitRequirements,
+	you could access its 'local screen' as ModUtil.Locals.screen
+	and its 'local hasRequirement' as ModUtil.Locals.hasRequirement.
+]]
+ModUtil.Locals = {}
+setmetatable(ModUtil.Locals, ModUtil.Metatables.Locals)
+
+ModUtil.Metatables.UpValues = {
 	__index = function( self, name )
-		local pair = rawget(self,"index")[name]
-		if pair ~= nil then
-			local _,value = debug.getlocal( pair.level + 1, pair.index )
-			return value
-		end
+		local _, v = debug.getupvalue( rawget(self,"func"), rawget(self,"ind")[name] )
+		return v
 	end,
 	__newindex = function( self, name, value )
-		local pair = rawget(self,"index")[name]
-		if pair ~= nil then
-			debug.getlocal( pair.level + 1, pair.index, value )
+		debug.setupvalue( rawget(self,"func"), rawget(self,"ind")[name], value )
+	end,
+	__next = function ( self, name )
+		name, i = next( rawget(self,"ind"), name )
+		if i ~= nil then
+			return debug.getupvalue( rawget(self,"func"), i )
 		end
+	end,
+	__pairs = function( self )
+		return getmetatable(self).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return function( self, i )
+			i = i + 1
+			local name,v = debug.getupvalue( rawget(self,"func"), i )
+			if name ~= nil then
+				return i, v
+			end
+		end, self, 0
 	end
 }
 
@@ -720,34 +831,6 @@ function ModUtil.GetUpValues( func )
 	setmetatable(ups, ModUtil.Metatables.UpValues)
 	return ups, ind
 end
-
-ModUtil.Metatables.UpValues = {
-	__index = function( self, name )
-		local _, v = debug.getupvalue( rawget(self,"func"), rawget(self,"ind")[name] )
-		return v
-	end,
-	__newindex = function( self, name, value )
-		debug.setupvalue( rawget(self,"func"), rawget(self,"ind")[name], value )
-	end,
-	__next = function ( self, name )
-		k, i = next( rawget(self,"ind"), k )
-		if i ~= nil then
-			return k, debug.getupvalue( rawget(self,"func"), i )
-		end
-	end,
-	__pairs = function( self )
-		return getmetatable(self).__next, self, nil
-	end,
-	__ipairs = function( self )
-		return function( t, i )
-			i = i + 1
-			v = debug.getupvalue( rawget(t,"func"), i )
-			if v ~= nil then
-				return i, v
-			end
-		end, self, 0
-	end
-}
 
 function ModUtil.GetBottomUpValues( baseTable, indexArray )
 	local baseValue = ModUtil.SafeGet( ModUtil.Overrides[baseTable], indexArray )
@@ -777,17 +860,17 @@ end
 
 -- Globalisation
 
-function ModUtil.GlobaliseFunc( baseTable, indexArray, key )
-	local funcTable = { table = baseTable, array = indexArray }
-	setmetatable( funcTable, ModUtil.Metatables.GlobalisedFunc )
-	_G[key] = funcTable
-end
-
 ModUtil.Metatables.GlobalisedFunc = {
 	__call = function(self, ...)
 		return ModUtil.SafeGet( rawget(self,"table"), rawget(self,"array")  )(...)
 	end
 }
+
+function ModUtil.GlobaliseFunc( baseTable, indexArray, key )
+	local funcTable = { table = baseTable, array = indexArray }
+	setmetatable( funcTable, ModUtil.Metatables.GlobalisedFunc )
+	_G[key] = funcTable
+end
 
 --[[
 	Sets a unique global variable equal to the value stored at Path.
