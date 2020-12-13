@@ -1636,5 +1636,10 @@ ModUtil.Context.Meta = ModUtil.CreateContext( function( info )
 		return meta
 	end )
 ModUtil.Context.Data = ModUtil.CreateContext( function( info ) 
-	return ModUtil.SafeGet( info.baseTable, info.indexArray ) 
+	local table = ModUtil.SafeGet( info.baseTable, info.indexArray )
+	if not table then
+		table = {}
+		ModUtil.SafeGet( info.baseTable, info.indexArray, table )
+	end
+	return table
 end )
