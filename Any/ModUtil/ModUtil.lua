@@ -1586,80 +1586,55 @@ function ModUtil.WrapBaseWithinFunction( funcPath, baseFuncPath, wrapFunc, modOb
 	ModUtil.WrapWithinFunction( _G, indexArray, envIndexArray, wrapFunc, modObject )
 end
 
--- Context Managers (High WIP)
+-- Context Managers
 
-function ModUtil.Context.Within(path, func)
-	local parentEnv = ModUtil.Locals.env or _G
-	local env = getFunctionEnv(parentEnv, path)
-	func(nil and env)
-end
+function ModUtil.CreateContext( callEnvAndArgsProducer )
 
-local function callable(obj)
-	if type(obj) == "function" then
-		return true
-	else 
-		local meta = getmetatable(obj)
-		if meta then
-			if meta.__call ~= nil then
-				return true
-			end
-		end
-	end
-	return false
-end
-
-function ModUtil.CreateContext( contextEnv, contextArgs )
-
-	-- context invariance
-	local ModUtil,type,setmetatable,setfenv,table = ModUtil,type,setmetatable,setfenv,table
-
-	return function( baseTable, targetLocation, call, callArgs )
-
-		if type(baseTable) ~= "table" then
-			baseTable = _G -- intentionally context variant
-		end
-		if type(targetLocation) == "string" then
-			targetLocation = ModUtil.PathArray(targetLocation)
+	return function( targetPath_or_targetIndexArray, call, ... )
+		
+		local oldContextInfo = ModUtil.Locals._ContextInfo
+		local contextInfo = {
+			call = call,
+			parent = oldContextInfo
+		}
+		
+		targetPath_or_targetIndexArray = targetPath_or_targetIndexArray or {}
+		if type(targetPath_or_targetIndexArray) == "string" then
+			targetPath_or_targetIndexArray = ModUtil.PathArray(targetPath_or_targetIndexArray)
 		end
 
-		if contextEnv ~= nil then
-			if callable(contextEnv) then
-				contextEnv = contextEnv( baseTable, targetLocation, call, callArgs )
-			end
+		if oldContextInfo ~= nil then
+			contextInfo.indexArray = ModUtil.JoinIndexArrays(oldContextInfo.indexArray,targetPath_or_targetIndexArray)
+			contextInfo.baseTable = oldContextInfo.baseTable
 		else
-			contextEnv = _G -- intentionally context variant
-		end
-		if contextArgs ~= nil then
-			if callable(contextArgs) then
-				contextArgs = contextArgs( baseTable, targetLocation, call, callArgs )
-			end
-		else
-			contextArgs = {}
+			contextInfo.indexArray = targetPath_or_targetIndexArray
+			contextInfo.baseTable = _G
 		end
 
-		local newEnv = {}
-		setmetatable( newEnv, {
-			__index = function( self, key )
-				if key == "_G" then return newEnv end
-				return contextEnv[key]
-			end, 
-			__newindex = function( self, key, value )
-				if key == "_G" then return end
-				contextEnv[key] = value
-			end, 
-		} )
-		local newCall = function(...)
-			return call(...)
-		end
-        setfenv( newCall, newEnv )
-        newCall( table.unpack( contextArgs ) )
+		local contextData,contextArgs = callEnvAndArgsProducer( contextInfo, ... )
+		contextData = contextData or _G
+		contextArgs = contextArgs or {}
+
+		local _ContextInfo = contextInfo
+		_ContextInfo.data = contextData
+		_ContextInfo.args = contextArgs
+		
+		setfenv(call,contextData)
+		call(table.unpack(contextArgs))
 
 	end
 end
 
 ModUtil.Context.Call = ModUtil.CreateContext( --[[TODO]] )
-call(function()
-	local ModUtil, getmetatable = ModUtil, getmetatable -- context invariance
-	ModUtil.Context.Meta = ModUtil.CreateContext( function( baseTable, indexArray ) return getmetatable( ModUtil.SafeGet( baseTable, indexArray ) ) end )
-	ModUtil.Context.Data = ModUtil.CreateContext( function( baseTable, indexArray ) return ModUtil.SafeGet( baseTable, indexArray ) end )
-end)
+ModUtil.Context.Meta = ModUtil.CreateContext( function( info )
+		local table = ModUtil.SafeGet( info.baseTable, info.indexArray )
+		local meta = getmetatable(table)
+		if not meta then
+			meta = {}
+			setmetatable(table,meta)
+		end
+		return meta
+	end )
+ModUtil.Context.Data = ModUtil.CreateContext( function( info ) 
+	return ModUtil.SafeGet( info.baseTable, info.indexArray ) 
+end )
