@@ -919,7 +919,7 @@ end
 
 		ModUtil.GlobaliseFuncs(YourModName.UIFunctions, "YourModNameUI")
 
-	So that the global functions are called YourModNameUI__OnButton1 etc.
+	So that the global functions are called "YourModNameUI.OnButton1" etc.
 
 	tableArg	- The table containing the functions to globalise
 	prefixPath	- (optional) if present, add this path as a prefix to the
@@ -1585,9 +1585,79 @@ end
 function ModUtil.Context.Within(path, func)
 	local parentEnv = ModUtil.Locals.env or _G
 	local env = getFunctionEnv(parentEnv, path)
-	return env
+	func(nil and env)
 end
 
-function ModUtil.Context.Meta(path, func)
-	---
+local function callable(obj)
+	if type(obj) == "function" then
+		return true
+	else 
+		local meta = getmetatable(obj)
+		if meta then
+			if meta.__call ~= nil then
+				return true
+			end
+		end
+	end
+	return false
 end
+
+function ModUtil.CreateContext( contextEnv, contextArgs )
+
+	-- context invariance
+	local ModUtil,type,setmetatable,setfenv,table = ModUtil,type,setmetatable,setfenv,table
+
+	return function( baseTable, targetLocation, call, callArgs )
+
+		if type(baseTable) ~= "table" then
+			baseTable = _G -- intentionally context variant
+		end
+		if type(targetLocation) == "string" then
+			targetLocation = ModUtil.PathArray(targetLocation)
+		end
+
+		if contextEnv ~= nil then
+			if callable(contextEnv) then
+				contextEnv = contextEnv( baseTable, targetLocation, call, callArgs )
+			end
+		else
+			contextEnv = _G -- intentionally context variant
+		end
+		if contextArgs ~= nil then
+			if callable(contextArgs) then
+				contextArgs = contextArgs( baseTable, targetLocation, call, callArgs )
+			end
+		else
+			contextArgs = {}
+		end
+
+		local newEnv = {}
+		setmetatable( newEnv, {
+			__index = function( self, key )
+				if key == "_G" then return newEnv end
+				return contextEnv[key]
+			end, 
+			__newindex = function( self, key, value )
+				if key == "_G" then return end
+				contextEnv[key] = value
+			end, 
+		} )
+		local newCall = function(...)
+			return call(...)
+		end
+        setfenv( newCall, newEnv )
+        newCall( table.unpack( contextArgs ) )
+
+	end
+end
+
+local function call( func, ... )
+	return func( ... )
+end
+
+ModUtil.Context.Call = ModUtil.CreateContext( --[[TODO]] )
+call(function()
+	local ModUtil, getmetatable = ModUtil, getmetatable -- context invariance
+	ModUtil.Context.Meta = ModUtil.CreateContext( function( baseTable, indexArray ) return getmetatable( ModUtil.SafeGet( baseTable, indexArray ) ) end )
+	ModUtil.Context.Data = ModUtil.CreateContext( function( baseTable, indexArray ) return ModUtil.SafeGet( baseTable, indexArray ) end )
+end)
