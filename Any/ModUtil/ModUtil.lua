@@ -485,7 +485,11 @@ function ModUtil.PathSetTable( path, setTable, base )
 	return ModUtil.MapSetTable( ModUtil.PathGet( path, base ), setTable )
 end
 
--- Metaprogramming Shenanigans
+-- Extended Global Utilities
+
+function call( func, ... )
+	return func( ... )
+end
 
 function getfenv( fn )
 	local i = 1
@@ -547,6 +551,8 @@ function ipairs(t,k)
   	local n = m and m.__ipairs or rawipairs
   	return n(t)
 end
+
+-- Metaprogramming Shenanigans
 
 ModUtil.Metatables.LocalLevel = {
 	__index = function( self, idx )
@@ -1649,10 +1655,6 @@ function ModUtil.CreateContext( contextEnv, contextArgs )
         newCall( table.unpack( contextArgs ) )
 
 	end
-end
-
-local function call( func, ... )
-	return func( ... )
 end
 
 ModUtil.Context.Call = ModUtil.CreateContext( --[[TODO]] )
