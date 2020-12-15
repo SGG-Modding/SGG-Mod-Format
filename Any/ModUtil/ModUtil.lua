@@ -7,8 +7,6 @@ Author: MagicGonads
 
 ]]
 
--- BETA VERSION
-
 local Config = {
 	AutoCollapse = true,
 }
@@ -16,15 +14,13 @@ local Config = {
 ModUtil = {
 	Config = Config,
 	ModName = "ModUtil",
-	WrapCallbacks = {},
 	Mods = {},
-	Overrides = {},
-	PerFunctionEnv = {},
 	Anchors = {Menu={},CloseFuncs={}},
 	Context = {},
 	Metatables = {},
-	FuncsToLoad = {},
-	MarkedForCollapse = {},
+	Overrides = {},
+	WrapCallbacks = {},
+	PerFunctionEnv = {},
 }
 SaveIgnores["ModUtil"]=true
 
@@ -51,24 +47,6 @@ function ModUtil.RegisterMod( modName, parent )
 	return parent[modName]
 end
 
--- internal
-function ModUtil.LoadFuncs( triggerArgs )
-	for _,v in pairs(ModUtil.FuncsToLoad) do
-		v(triggerArgs)
-	end
-	ModUtil.FuncsToLoad = {}
-end
-OnAnyLoad{ModUtil.LoadFuncs}
-
---[[
-	Run the provided function once on the next in-game load.
-
-	triggerFunction - the function to run
-]]
-function ModUtil.LoadOnce( triggerFunction )
-	table.insert( ModUtil.FuncsToLoad, triggerFunction )
-end
-
 --[[
 	Tell each screen anchor that they have been forced closed by the game
 ]]
@@ -80,6 +58,38 @@ function ModUtil.ForceClosed( triggerArgs )
 	ModUtil.Anchors.Menu = {}
 end
 OnAnyLoad{ModUtil.ForceClosed}
+
+local funcsToLoad = {}
+
+local function loadFuncs( triggerArgs )
+	for _,v in pairs(funcsToLoad) do
+		v(triggerArgs)
+	end
+	funcsToLoad = {}
+end
+OnAnyLoad{loadFuncs}
+
+--[[
+	Run the provided function once on the next in-game load.
+
+	triggerFunction - the function to run
+]]
+function ModUtil.LoadOnce( triggerFunction )
+	table.insert( funcsToLoad, triggerFunction )
+end
+
+--[[
+	Cancel running the provided function once on the next in-game load.
+
+	triggerFunction - the function to cancel running
+]]
+function ModUtil.CancelLoadOnce( triggerFunction )
+	for i,v in ipairs(funcsToLoad) do
+		if v == triggerFunction then
+			table.remove( funcsToLoad, i )
+		end
+	end
+end
 
 -- Data Misc
 
@@ -117,36 +127,6 @@ function ModUtil.ToString( o )
 			s = s .. ModUtil.KeyString( k ) ..' = ' .. ModUtil.ToString( v )
 		end
 		return s .. '}'
-	else
-		return ModUtil.ValueString( o )
-	end
-end
-
-function ModUtil.ToStringLimited( o, n, m, t, j)
-	if type( o ) == 'table' then
-		local first = true
-		local s = ''
-		local i = 0
-		local go = true
-		if not j then j = 1 end
-		if not m then m = 0 end
-		if not t then t = {} end
-		for k,v in pairs( o ) do
-			if t[j] then go = type( v ) == t[j] or t[j] == true end
-			if go then
-				i = i + 1
-				if n then if i > n+m then return s end end
-				if m < i then
-					if not first then s = s .. ', ' else first = false end
-					if type( v ) == "table" and t[j+1] then
-						s = s .. ModUtil.KeyString( k ) ..' = ('..ModUtil.ToStringLimited( v, n, m, t, j+1 )..')'
-					else
-						s = s .. ModUtil.KeyString( k ) ..' = '..ModUtil.ValueString( v )
-					end
-				end
-			end
-		end
-		return s
 	else
 		return ModUtil.ValueString( o )
 	end
@@ -197,18 +177,57 @@ function ModUtil.IsUnKeyed( tableArg )
 	return true
 end
 
-function ModUtil.AutoIsUnKeyed( tableArg )
-	if ModUtil.Config.AutoCollapse then
-		if not ModUtil.MarkedForCollapse[ tableArg ] then
-			return ModUtil.IsUnKeyed( tableArg )
-		else
-			return false
-		end
+-- Data Manipulation
+
+local function CollapseTable( tableArg )
+	-- from UtilityScripts.lua
+	if tableArg == nil then
+		return
+	end
+
+	local collapsedTable = {}
+	local index = 1
+	for _, v in pairs( tableArg ) do
+		collapsedTable[index] = v
+		index = index + 1
+	end
+
+	return collapsedTable
+
+end
+
+local markedForCollapse = {}
+
+local function autoIsUnKeyed( tableArg )
+	if not markedForCollapse[ tableArg ] then
+		return ModUtil.IsUnKeyed( tableArg )
 	end
 	return false
 end
 
--- Data Manipulation
+function ModUtil.CollapseMarked()
+	for tbl,state in pairs( markedForCollapse ) do
+		if state then
+			local ctbl = CollapseTable( tbl )
+			for k,_ in pairs( tbl ) do
+				tbl[ k ] = nil
+			end
+			for k,v in pairs( ctbl ) do
+				tbl[ k ] = v
+			end
+		end
+	end
+	markedForCollapse = {}
+end
+OnAnyLoad{ ModUtil.CollapseMarked }
+
+function ModUtil.MarkForCollapse( tableArg )
+	markedForCollapse[ tableArg ] = true
+end
+
+function ModUtil.UnmarkForCollapse( tableArg )
+	markedForCollapse[ tableArg ] = false
+end
 
 --[[
 	Safely create a new empty table at Table.key.
@@ -272,7 +291,7 @@ function ModUtil.SafeSet( baseTable, indexArray, value )
 		node = node[k]
 	end
 	if ( node[indexArray[n]] == nil ) ~= ( value == nil ) then
-		if ModUtil.AutoIsUnKeyed( baseTable ) then
+		if autoIsUnKeyed( baseTable ) then
 			ModUtil.MarkForCollapse( node )
 		end
 	end
@@ -313,7 +332,7 @@ end
 	}
 ]]
 function ModUtil.MapNilTable( inTable, nilTable )
-	local unkeyed = ModUtil.AutoIsUnKeyed( inTable )
+	local unkeyed = autoIsUnKeyed( inTable )
 	for nilKey, nilVal in pairs( nilTable ) do
 		local inVal = inTable[nilKey]
 		if type(nilVal) == "table" and type( inVal ) == "table" then
@@ -355,7 +374,7 @@ end
 	}
 ]]
 function ModUtil.MapSetTable( inTable, setTable )
-	local unkeyed = ModUtil.AutoIsUnKeyed( inTable )
+	local unkeyed = autoIsUnKeyed( inTable )
 	for setKey, setVal in pairs( setTable ) do
 		local inVal = inTable[setKey]
 		if type( setVal ) == "table" and type( inVal ) == "table" then
@@ -367,41 +386,6 @@ function ModUtil.MapSetTable( inTable, setTable )
 			end
 		end
 	end
-end
-
-local function CollapseTable( tableArg )
-	-- from UtilityScripts.lua
-	if tableArg == nil then
-		return
-	end
-
-	local collapsedTable = {}
-	local index = 1
-	for _, v in pairs( tableArg ) do
-		collapsedTable[index] = v
-		index = index + 1
-	end
-
-	return collapsedTable
-
-end
-
-function ModUtil.CollapseMarked()
-	for tbl,_ in pairs( ModUtil.MarkedForCollapse ) do
-		local ctbl = CollapseTable( tbl )
-		for k,_ in pairs(tbl) do
-			tbl[k]=nil
-		end
-		for k,v in pairs(ctbl) do
-			tbl[k] = v
-		end
-	end
-	ModUtil.MarkedForCollapse = {}
-end
-OnAnyLoad{ModUtil.CollapseMarked}
-
-function ModUtil.MarkForCollapse( table )
-	ModUtil.MarkedForCollapse[table] = true
 end
 
 -- Path Manipulation
@@ -845,7 +829,7 @@ function ModUtil.GetBottomUpValues( baseTable, indexArray )
 	else
 		baseValue = ModUtil.SafeGet( ModUtil.WrapCallbacks[baseTable], indexArray )
 		if baseValue then
-			baseValue = baseValue[1].func
+			baseValue = baseValue[1].Func
 		else
 			baseValue = ModUtil.SafeGet( baseTable, indexArray )
 		end
@@ -1586,7 +1570,7 @@ function ModUtil.WrapBaseWithinFunction( funcPath, baseFuncPath, wrapFunc, modOb
 	ModUtil.WrapWithinFunction( _G, indexArray, envIndexArray, wrapFunc, modObject )
 end
 
--- Context Managers
+-- Context Managers (WIP)
 
 function ModUtil.CreateContext( callEnvAndArgsProducer )
 
@@ -1625,7 +1609,7 @@ function ModUtil.CreateContext( callEnvAndArgsProducer )
 	end
 end
 
-ModUtil.Context.Call = ModUtil.CreateContext( --[[TODO]] )
+--ModUtil.Context.Call = ModUtil.CreateContext( --[[TODO]] )
 ModUtil.Context.Meta = ModUtil.CreateContext( function( info )
 		local table = ModUtil.SafeGet( info.baseTable, info.indexArray )
 		local meta = getmetatable(table)
