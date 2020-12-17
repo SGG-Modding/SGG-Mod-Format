@@ -132,7 +132,7 @@ def writexml(filename,content,start=None):
     data = ""
     if start:
         data = start
-    with open(filename,'r',encoding='utf-8') as file:
+    with open(filename,'r',encoding='utf-8-sig') as file:
         i = 0
         for line in file:
             nl = False
@@ -205,7 +205,7 @@ def xmlmap(indata,mapdata):
 
 def mergexml(infile,mapfile):
     start = ""
-    with open(infile,'r',encoding='utf-8') as file:
+    with open(infile,'r',encoding='utf-8-sig') as file:
         for line in file:
             if line[:5] == "<?xml" and line[-3:] == "?>\n":                
                 start = line
@@ -224,7 +224,7 @@ if can_sjson:
     
     def readsjson(filename):
         try:
-            return sjson.loads(open(filename,encoding='utf-8').read())
+            return sjson.loads(open(filename,'r',encoding='utf-8-sig').read())
         except sjson.ParseException as e:
             print(repr(e))
             return DNE
@@ -431,7 +431,7 @@ def loadmodfile(filename,echo=True):
     if in_directory(filename):
         
         try:
-            file = open(filename,'r',encoding='utf-8')
+            file = open(filename,'r',encoding='utf-8-sig')
         except IOError:
             return
         if echo:
@@ -483,7 +483,7 @@ def loadmodfile(filename,echo=True):
 def isedited(base):
     if base.find(".pkg") != -1:
         return True
-    with open(base,'r',encoding='utf-8') as basefile:
+    with open(base,'r',encoding='utf-8-sig') as basefile:
         for line in basefile:
               if modified+modified_modrep in line:
                   return True
