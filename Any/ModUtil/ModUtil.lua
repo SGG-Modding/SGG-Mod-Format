@@ -1109,15 +1109,16 @@ ModUtil.Metatables.EntangledMorphismPreImage = {
 	__index = function( self, value )
 		return rawget( self, "preImage" )[ value ]
 	end,
-	__newindex = function( self, value, key )
-		rawget( self, "data" )[ key ] = value
+	__newindex = function( self, value, keys )
 		local preImage = rawget( self, "preImage" )
 		local preImagePair = preImage[value]
 		if preImagePair == nil then
 			preImagePair = ModUtil.New.EntangledPreImageNode( self, value )
 			preImage[value] = preImagePair
 		end
-		preImagePair[ nil ] = key
+		for _, key in pairs(preImagePair) do
+			rawget( self, "data" )[ key ] = value
+		end
 	end,
 	__next = function( self, value )
 		return next( rawget( self, "preImage" ), value )
