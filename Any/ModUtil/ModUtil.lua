@@ -18,6 +18,7 @@ ModUtil = {
 	Anchors = {Menu={},CloseFuncs={}},
 	Context = {},
 	Metatables = {},
+	New = {},
 	Overrides = {},
 	WrapCallbacks = {},
 	PerFunctionEnv = {},
@@ -536,9 +537,16 @@ function ipairs(t,k)
   	return n(t)
 end
 
+rawlen = function(t) return #t end
+function len(t)
+	local m = getmetatable(t)
+	local n = m and m.__len or rawlen
+	return n(t)
+end
+
 -- Metaprogramming Shenanigans
 
-ModUtil.Metatables.LocalLevel = {
+ModUtil.Metatables.DirectLocalLevel = {
 	__index = function( self, idx )
 		return debug.getlocal( rawget(self,"level") + 1, idx )
 	end,
@@ -573,15 +581,15 @@ ModUtil.Metatables.LocalLevel = {
 		--
 	end
 ]]
-function ModUtil.LocalLevel(level)
+function ModUtil.DirectLocalLevel(level)
 	local localLevel = { level = level }
-	setmetatable( localLevel, ModUtil.Metatables.LocalLevel )
+	setmetatable( localLevel, ModUtil.Metatables.DirectLocalLevel )
 	return localLevel
 end
 
-ModUtil.Metatables.LocalLevels = {
+ModUtil.Metatables.DirectLocalLevels = {
 	__index = function( _, level )
-		return level, ModUtil.LocalLevel( level )
+		return level, ModUtil.DirectLocalLevel( level )
 	end,
 	__next = function( _, level )
 		if level == nil then
@@ -589,7 +597,7 @@ ModUtil.Metatables.LocalLevels = {
 		end
 		level = level + 1
 		if debug.getinfo(level + 1, "f") then
-			return level, ModUtil.LocalLevel( level )
+			return level, ModUtil.DirectLocalLevel( level )
 		end
 	end,
 	__pairs = function( self )
@@ -607,28 +615,28 @@ ModUtil.Metatables.LocalLevels = {
 		end
 	end
 ]]
-ModUtil.LocalLevels = {}
-setmetatable(ModUtil.LocalLevels, ModUtil.Metatables.LocalLevels)
+ModUtil.DirectLocalLevels = {}
+setmetatable(ModUtil.DirectLocalLevels, ModUtil.Metatables.DirectLocalLevels)
 
 ModUtil.Metatables.LocalsInterface = {
 	__index = function( self, name )
 		local pair = rawget(self,"index")[name]
 		if pair ~= nil then
-			local _,value = debug.getlocal( pair.level + 1, pair.i )
+			local _,value = debug.getlocal( pair.level + 1, pair.index )
 			return value
 		end
 	end,
 	__newindex = function( self, name, value )
 		local pair = rawget(self,"index")[name]
 		if pair ~= nil then
-			debug.setlocal( pair.level + 1, pair.i, value )
+			debug.setlocal( pair.level + 1, pair.index, value )
 		end
 	end,
 	__next = function( self, name )
 		local pair
 		name, pair = next( rawget(self,"index"), name )
 		if pair ~= nil then
-			local _, value = debug.getlocal( pair.level + 1, pair.i )
+			local _, value = debug.getlocal( pair.level + 1, pair.index )
 			return name, value
 		end
 	end,
@@ -636,15 +644,8 @@ ModUtil.Metatables.LocalsInterface = {
 		return getmetatable( self ).__next, self, nil
 	end,
 	__ipairs = function( self )
-		return function( self, i )
-			local name
-			i, name = next( rawget(t,"order"), i )
-			pair = rawget(self,"index")[name]
-			if pair ~= nil then
-				local _, value = debug.getlocal( pair.level + 1, pair.i )
-				return i, value
-			end
-		end, self, 0
+		-- basically does nothing, but conforms to ipairs contract
+		return getmetatable( self ).__next, self, 0
 	end
 }
 
@@ -664,21 +665,57 @@ function ModUtil.GetLocalsInterface( names )
 	local order = {}
 	local index = {}
 
-	local level,localLevel = next(ModUtil.LocalLevels, 1)
+	local level, localLevel = next( ModUtil.DirectLocalLevels, 1 )
 	while level do
-		for i, name, value in pairs(localLevel) do
-			if (not names or lookup[name]) and index[name] == nil then
-				index[name] = {level = level - 1, i = i}
+		for i, name, value in pairs( localLevel ) do
+			if (not names or lookup[ name ]) and index[ name ] == nil then
+				index[ name ] = { level = level - 1, index = i }
 				table.insert( order, name )
 			end
 		end
-		level,localLevel = next(ModUtil.LocalLevels, level)
+		level,localLevel = next( ModUtil.DirectLocalLevels, level )
 	end
-	local interface = {index = index, order = order}
-	setmetatable(interface, ModUtil.Metatables.LocalsInterface)
+	local interface = { index = index, order = order }
+	setmetatable( interface, ModUtil.Metatables.LocalsInterface )
 
 	return interface, index, order
 end
+
+ModUtil.Metatables.DirectPairLocals = {
+	__index = function( _, pair )
+		return debug.getlocal( pair.level + 1, pair.index )
+	end,
+	__newindex = function( _, pair, value )
+		debug.setlocal( pair.level + 1, pair.index, value)
+	end,
+	__next = function( _, pair )
+		local nextpair = {level = 1, index = 1}
+		if pair == nil then
+			return nextpair, debug.getlocal( 2, 1 )
+		end
+		
+		nextpair.level = pair.level
+		nextpair.index = pair.index + 1
+		while debug.getinfo( nextpair.level + 1, "f") do
+			local name, value = debug.getlocal( nextpair.level + 1, nextpair.index )
+			if name then
+				return nextpair, name, value
+			end
+			nextpair.level = nextpair.level + 1
+			nextpair.index = 1
+		end
+		
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return getmetatable( self ).__next, self, 0
+	end
+}
+
+ModUtil.DirectPairLocals = {}
+setmetatable(ModUtil.DirectPairLocals, ModUtil.Metatables.DirectPairLocals)
 
 ModUtil.Metatables.Locals = {
 	__index = function( _, name)
@@ -734,27 +771,11 @@ ModUtil.Metatables.Locals = {
 		end
 	end,
 	__pairs = function( self )
-		return getmetatable(self).__next, self, nil
+		return getmetatable( self ).__next, self, nil
 	end,
 	__ipairs = function( self )
-		return function( self, i )
-			local level = 2
-			local j = 0
-			while debug.getinfo(level, "f") do
-				local idx = 1
-				while true do
-					j = j + 1
-					local n, v = debug.getlocal(level, idx)
-					if not n then
-						break
-					elseif j > i then
-						return j, v
-					end
-					idx = idx + 1
-				end
-				level = level + 1
-			end
-		end, self, 0
+		-- basically does nothing, but conforms to ipairs contract
+		return getmetatable( self ).__next, self, 0
 	end
 }
 
@@ -770,31 +791,52 @@ ModUtil.Metatables.Locals = {
 ModUtil.Locals = {}
 setmetatable(ModUtil.Locals, ModUtil.Metatables.Locals)
 
+ModUtil.Metatables.DirectUpValues = {
+	__index = function( self, idx )
+		return debug.getupvalue( rawget(self,"func"), idx )
+	end,
+	__newindex = function( self, idx, value )
+		debug.setupvalue( rawget(self,"func"), idx, value )
+	end,
+	__len = function( self )
+		return debug.getinfo( rawget( self, "func" ), 'u' ).nups
+	end,
+	__next = function ( self, idx )
+		idx = idx + 1
+		return idx, debug.getupvalue( rawget(self,"func"), idx )
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return getmetatable( self ).__next, self, 0
+	end
+}
+
 ModUtil.Metatables.UpValues = {
 	__index = function( self, name )
-		local _, v = debug.getupvalue( rawget(self,"func"), rawget(self,"ind")[name] )
+		local _, v = debug.getupvalue( rawget( self, "func" ), rawget( self, "ind" )[ name ] )
 		return v
 	end,
 	__newindex = function( self, name, value )
-		debug.setupvalue( rawget(self,"func"), rawget(self,"ind")[name], value )
+		debug.setupvalue( rawget( self, "func" ), rawget( self, "ind" )[ name ], value )
+	end,
+	__len = function ( self )
+		return rawget( self, "n" )
 	end,
 	__next = function ( self, name )
+		local i
 		name, i = next( rawget(self,"ind"), name )
 		if i ~= nil then
 			return debug.getupvalue( rawget(self,"func"), i )
 		end
 	end,
 	__pairs = function( self )
-		return getmetatable(self).__next, self, nil
+		return getmetatable( self ).__next, self, nil
 	end,
 	__ipairs = function( self )
-		return function( self, i )
-			i = i + 1
-			local name,v = debug.getupvalue( rawget(self,"func"), i )
-			if name ~= nil then
-				return i, v
-			end
-		end, self, 0
+		-- basically does nothing, but conforms to ipairs contract
+		return getmetatable( self ).__next, self, 0
 	end
 }
 
@@ -817,9 +859,15 @@ function ModUtil.GetUpValues( func )
 		ind[name] = i
 		i = i + 1
 	end
-	local ups = {func = func, ind = ind}
+	local ups = {func = func, ind = ind, n = debug.getinfo( func, 'u' ).nups}
 	setmetatable(ups, ModUtil.Metatables.UpValues)
 	return ups, ind
+end
+
+function ModUtil.GetDirectUpValues( func )
+	local ups = { func = func }
+	setmetatable(ups, ModUtil.Metatables.DirectUpValues)
+	return ups
 end
 
 function ModUtil.GetBottomUpValues( baseTable, indexArray )
@@ -837,6 +885,21 @@ function ModUtil.GetBottomUpValues( baseTable, indexArray )
 	return ModUtil.GetUpValues( baseValue )
 end
 
+function ModUtil.GetBottomDirectUpValues( baseTable, indexArray )
+	local baseValue = ModUtil.SafeGet( ModUtil.Overrides[baseTable], indexArray )
+	if baseValue then
+		baseValue = baseValue[#baseValue].Base
+	else
+		baseValue = ModUtil.SafeGet( ModUtil.WrapCallbacks[baseTable], indexArray )
+		if baseValue then
+			baseValue = baseValue[1].Func
+		else
+			baseValue = ModUtil.SafeGet( baseTable, indexArray )
+		end
+	end 
+	return ModUtil.GetDirectUpValues( baseValue )
+end
+
 --[[
 	Return a table representing the upvalues of the base function identified
 	by basePath (ie. ignoring all wrappers that other mods may have placed
@@ -846,6 +909,245 @@ end
 ]]
 function ModUtil.GetBaseBottomUpValues( basePath )
 	return ModUtil.GetBottomUpValues( _G, ModUtil.PathArray( basePath ) )
+end
+
+function ModUtil.GetBaseBottomDirectUpValues( basePath )
+	return ModUtil.GetBottomDirectUpValues( _G, ModUtil.PathArray( basePath ) )
+end
+
+ModUtil.Metatables.EntangledIsomorphism = {
+	__index = function( self, key )
+		return rawget( self, "data" )[ key ]
+	end,
+	__newindex = function( self, key, value )
+		local data, inverse = rawget( self, "data" ), rawget( self, "inverse" )
+		if value ~= nil then
+			local k = inverse[ value ]
+			if k ~= nil and k ~= key then
+				data[ k ] = nil
+			end
+			inverse[ value ] = key
+		end
+		if key ~= nil then
+			local v = data[ key ]
+			if v ~= nil and v ~= value then
+				inverse[ v ] = nil
+			end
+			data[ key ] = value
+		end		
+	end,
+	__len = function( self )
+		return len(rawget( self, "data" ))
+	end,
+	__next = function( self, key )
+		return next( rawget( self, "data" ), key )
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return getmetatable( self ).__next, self, 0
+	end
+}
+
+ModUtil.Metatables.EntangledIsomorphismInverse = {
+	__index = function( self, value )
+		return rawget( self, "inverse" )[ value ]
+	end,
+	__newindex = function( self, value, key )
+		local data, inverse = rawget( self, "data" ), rawget( self, "inverse" )
+		if value ~= nil then
+			local k = inverse[ value ]
+			if k ~= nil and k ~= key then
+				data[ k ] = nil
+			end
+			inverse[ value ] = key
+		end
+		if key ~= nil then
+			local v = data[key]
+			if v ~= nil and v ~= value then
+				inverse[ v ] = nil
+			end
+			data[ key ] = value
+		end	
+	end,
+	__len = function( self )
+		return len(rawget( self, "inverse" ))
+	end,
+	__next = function( self, value )
+		return next( rawget( self, "inverse" ), value )
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return getmetatable( self ).__next, self, 0
+	end
+}
+
+function ModUtil.New.EntangledInvertiblePair()
+	local data, inverse = {}, {}
+	data, inverse = { data = data, inverse = inverse }, { data = data, inverse = inverse }
+	setmetatable( data, ModUtil.Metatables.EntangledIsomorphism )
+	setmetatable( inverse, ModUtil.Metatables.EntangledIsomorphismInverse )
+	return { data = data, inverse = inverse }
+end
+
+function ModUtil.New.EntangledInvertiblePairFromTable( tableArg )
+	local pair = ModUtil.New.EntangledInvertiblePair()
+	for key, value in pairs( tableArg ) do
+		pair.data[ key ] = value
+	end
+	return pair
+end
+
+function ModUtil.New.EntangledInvertiblePairFromInverse( inverseArg )
+	local pair = ModUtil.New.EntangledInvertiblePair()
+	for value, key in pairs( inverseArg ) do
+		pair.inverse[ value ] = key
+	end
+	return pair
+end
+
+ModUtil.Metatables.MorphismPreImageEntangledPair = {
+	__index = function( self, idx )
+		local data = rawget( self, "data" )
+		if idx == nil then
+			idx = len(data)
+		end
+		return data[ idx ]
+	end,
+	__newindex = function( self, idx, key )
+		local data = rawget( self, "data" )
+		local n = len(data)
+		if idx == nil then
+			idx = n
+		end
+
+		data[ idx ] = value
+		if key == nil and idx < n then
+			local inverse = rawget( data, "inverse" )
+			data = rawget( data, "data" )
+			for i = idx, n-1 do
+				data[i]=data[i+1]
+				inverse[data[i]]=i
+			end
+		end
+	end,
+	__len = function( self )
+		return len(rawget( self, "data" ))
+	end,
+	__next = function( self, value )
+		return next( rawget( self, "inverse" ), value )
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return getmetatable( self ).__next, self, 0
+	end
+}
+
+ModUtil.Metatables.EntangledMorphismPreImageEntangledPair = {
+	__index = ModUtil.Metatables.MorphismPreImageEntangledPair.__index,
+	__newindex = function( self, idx, key )
+		local data = rawget( self, "data" )
+		local n = len(data)
+		if idx == nil then
+			idx = n
+		end
+
+		local value = rawget( data, "value" )
+		if value ~= nil then
+			rawget( rawget( data, "parent" ), "data" )[idx] = value
+		end
+		data[ idx ] = value
+		if key == nil and idx < n then
+			local inverse = rawget( data, "inverse" )
+			data = rawget( data, "data" )
+			for i = idx, n-1 do
+				data[i]=data[i+1]
+				inverse[data[i]]=i
+			end
+		end
+	end
+}
+
+
+function ModUtil.New.EntangledMorphismPreImageEntangledPair( self, value )
+	local data, inverse = {}, {}
+	data, inverse = {parent = self, value = value, data = data, inverse = inverse }, {parent = self, value = value, data = data, inverse = inverse }
+	local pair = {data, inverse}
+	setmetatable( pair, ModUtil.Metatables.EntangledMorphismPreImageEntangledPair )
+	return pair
+end
+
+ModUtil.Metatables.EntangledMorphism = {
+	__index = function( self, key )
+		return rawget( self, "data" )[ key ]
+	end,
+	__newindex = function( self, key, value )
+		rawget( self, "data" )[ key ] = value
+		rawget( self, "preImage" )[ value ][ nil ] = key
+	end,
+	__next = function( self, key )
+		return next( rawget( self, "data" ), key )
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return getmetatable( self ).__next, self, 0
+	end
+}
+
+ModUtil.Metatables.EntangledMorphismPreImage = {
+	__index = function( self, value )
+		return rawget( self, "preImage" )[ value ]
+	end,
+	__newindex = function( self, value, key )
+		rawget( self, "data" )[ key ] = value
+		local preImage = rawget( self, "preImage" )
+		local preImagePair = preImage[value]
+		if preImagePair == nil then
+			preImagePair = ModUtil.New.EntangledMorphismPreImageEntangledPair( self, value )
+			preImage[value] = preImagePair
+		end
+		preImagePair[ nil ] = key
+	end,
+	__next = function( self, value )
+		return next( rawget( self, "preImage" ), value )
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return getmetatable( self ).__next, self, 0
+	end
+}
+
+function ModUtil.New.EntangledPair()
+	local data, preImage = {}, {}
+	data, preImage = { data = data, preImage = preImage }, { data = data, preImage = preImage }
+	setmetatable( data, ModUtil.Metatables.EntangledMorphism )
+	setmetatable( preImage, ModUtil.Metatables.EntangledMorphismPreImage )
+	return {data = data, preImage = preImage}
+end
+
+function ModUtil.New.EntangledPairFromTable( tableArg )
+	local pair = ModUtil.New.EntangledPair()
+	for key, value in pairs( tableArg ) do
+		pair.data[key] = value
+	end
+	return pair
+end
+
+function ModUtil.New.EntangledPairFromPreImage( preImage )
+	local pair = ModUtil.New.EntangledPair()
+	for value, keys in pairs( preImage ) do
+		pair.preImage[ value ] = keys
+	end
+	return pair
 end
 
 -- Globalisation
