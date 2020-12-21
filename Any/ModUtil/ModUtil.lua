@@ -1009,7 +1009,7 @@ function ModUtil.New.EntangledInvertiblePairFromInverse( inverseArg )
 	return pair
 end
 
-ModUtil.Metatables.MorphismPreImageEntangledPair = {
+ModUtil.Metatables.PreImageNode = {
 	__index = function( self, idx )
 		local data = rawget( self, "data" )
 		if idx == nil then
@@ -1048,8 +1048,8 @@ ModUtil.Metatables.MorphismPreImageEntangledPair = {
 	end
 }
 
-ModUtil.Metatables.EntangledMorphismPreImageEntangledPair = {
-	__index = ModUtil.Metatables.MorphismPreImageEntangledPair.__index,
+ModUtil.Metatables.EntangledPreImageNode = {
+	__index = ModUtil.Metatables.PreImageNode.__index,
 	__newindex = function( self, idx, key )
 		local data = rawget( self, "data" )
 		local n = len(data)
@@ -1070,15 +1070,19 @@ ModUtil.Metatables.EntangledMorphismPreImageEntangledPair = {
 				inverse[data[i]]=i
 			end
 		end
-	end
+	end,
+	__len = ModUtil.Metatables.PreImageNode.__len,
+	__next = ModUtil.Metatables.PreImageNode.__next,
+	__pairs = ModUtil.Metatables.PreImageNode.__pairs,
+	__ipairs = ModUtil.Metatables.PreImageNode.__ipairs
 }
 
 
-function ModUtil.New.EntangledMorphismPreImageEntangledPair( self, value )
+function ModUtil.New.EntangledPreImageNode( self, value )
 	local data, inverse = {}, {}
 	data, inverse = {parent = self, value = value, data = data, inverse = inverse }, {parent = self, value = value, data = data, inverse = inverse }
 	local pair = {data, inverse}
-	setmetatable( pair, ModUtil.Metatables.EntangledMorphismPreImageEntangledPair )
+	setmetatable( pair, ModUtil.Metatables.EntangledPreImageNode )
 	return pair
 end
 
@@ -1110,7 +1114,7 @@ ModUtil.Metatables.EntangledMorphismPreImage = {
 		local preImage = rawget( self, "preImage" )
 		local preImagePair = preImage[value]
 		if preImagePair == nil then
-			preImagePair = ModUtil.New.EntangledMorphismPreImageEntangledPair( self, value )
+			preImagePair = ModUtil.New.EntangledPreImageNode( self, value )
 			preImage[value] = preImagePair
 		end
 		preImagePair[ nil ] = key
