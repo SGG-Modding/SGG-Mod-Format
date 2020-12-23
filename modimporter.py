@@ -159,8 +159,8 @@ def writexml(filename, content, start=None):
                         data += p
                     if s == '>' and p == '/' and q:
                         i -= 1
-                    if p in (' ') or (s == '>' and p == '\"') and q:
-                        data += '\n' + '\t' * (i - (s == '/'))
+                    #if p in (' ') or (s == '>' and p == '\"') and q:
+                        #data += '\n' + '\t' * (i - (s == '/'))
                     if s not in (' ', '\t', '<') or not q:
                         data += s
                     p = s
