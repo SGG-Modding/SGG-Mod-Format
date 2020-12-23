@@ -6,10 +6,15 @@ __all__ = [
     "sjson_merge",
 ]
 
-import sjson  # pip: SJSON
+try:
+    import sjson  # pip: SJSON
+except Exception as e:
+    print("Could not import sjson, skipping sjson edits.")
+        
 from collections import OrderedDict
 import os
-import util
+
+from sggmi import util
 
 KEYWORD = "SJSON"
 RESERVED = {
@@ -36,11 +41,11 @@ def read_file(filename):
 
 
 def write_file(filename, content):
-    if not path.exists(filename):
+    if not Path(filename).exists():
         alt_print(f"sggmi_sjson (write_file): {filename} not found!")
         return
 
-    if not path.isfile(filename):
+    if not Path(filename).is_file():
         alt_print(f"sggmi_sjson (write_file): {filename} is not a file!")
         return
 
