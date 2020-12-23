@@ -145,24 +145,25 @@ def writexml(filename, content, start=None):
         for line in file:
             nl = False
             if len(line.replace('\t', '').replace(' ', '')) > 1:
-                q = True
                 p = ''
+                q = True
                 for s in line:
-                    if s == '\"':
-                        q = not q
                     if p == '<' and q:
-                        if s == '/':
-                            i -= 1
-                            data = data[:-1]
-                        else:
-                            i += 1
-                        data += p
-                    if s == '>' and p == '/' and q:
-                        i -= 1
+                        if s != '<' and p != '<':
+                            data += p
+                    if p == '\"':
+                        if not q:
+                            data += ' '
+                        q = not q
                     #if p in (' ') or (s == '>' and p == '\"') and q:
-                        #data += '\n' + '\t' * (i - (s == '/'))
-                    if s not in (' ', '\t', '<') or not q:
+                            #data += '\n' + '\t' * (i - (s == '/'))
+                    if p in (' ') and not q:
+                        data += ' '
+                    if s not in (' ', '\t', '<') or q:
                         data += s
+                    if s == '>' and p == '/' and q:
+                        data += s
+                        data = data[:-1]
                     p = s
     open(filename, 'w', encoding='utf-8').write(data)
 
