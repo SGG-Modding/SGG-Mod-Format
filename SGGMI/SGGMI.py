@@ -47,7 +47,6 @@ import logging
 import json
 import warnings
 import hashlib
-from getopt import getopt
 from pathlib import Path
 from shutil import copyfile, rmtree
 from datetime import datetime
@@ -55,7 +54,7 @@ from collections import defaultdict
 from distutils.dir_util import copy_tree
 from distutils.errors import DistutilsFileError
 
-from sggmi import util
+from sggmi import util, args_parser
 
 # Configurable Globals
 
@@ -76,16 +75,20 @@ DNE = ()  # 'Does Not Exist' singleton
 
 ## LUA import statement adding
 
+
 def lua_addimport(base, path):
     with open(base, "a") as basefile:
         basefile.write('\nImport "../' + path + '"')
+
 
 # FILE/MOD CONTROL
 
 hashes = ["md5"]
 
-def alt_open(*args,**kwargs):
-    return open(*args,encoding='utf-8-sig',**kwargs)
+
+def alt_open(*args, **kwargs):
+    return open(*args, encoding="utf-8-sig", **kwargs)
+
 
 def alt_print(*args, **kwargs):
     if do_echo:
@@ -132,6 +135,7 @@ def alt_input(*args, **kwargs):
 def alt_exit(code=None):
     alt_input("Press any key to end program...")
     exit(code)
+
 
 def modfile_splitlines(body):
     glines = map(lambda s: s.strip().split('"'), body.split("\n"))
@@ -318,7 +322,13 @@ def modfile_load(filename, echo=True):
                     )
                 elif modfile_startswith(tokens, sggmi_xml.KEYWORD, 1):
                     modfile_loadcommand(
-                        reldir, tokens[len(sggmi_xml.KEYWORD) :], to, 1, "xml", cfg, priority=p
+                        reldir,
+                        tokens[len(sggmi_xml.KEYWORD) :],
+                        to,
+                        1,
+                        "xml",
+                        cfg,
+                        priority=p,
                     )
                 elif modfile_startswith(tokens, sggmi_sjson.KEYWORD, 1):
                     if sjson:
@@ -457,7 +467,7 @@ def configure_globals(condict={}, flow=True):
 
     global do_echo, do_log, do_input
     do_echo = util.get_attribute(condict, "echo", do_echo)
-    do_log =util.get_attribute(condict, "log", do_log)
+    do_log = util.get_attribute(condict, "log", do_log)
     do_input = util.get_attribute(condict, "input", do_input)
 
     global logsrel, logfile_prefix, logfile_suffix
@@ -626,34 +636,6 @@ Configure the deployment path 'folder_deployed' to be within the content.
     "{2}"
 )
 
-MSG_CommandLineHelp = """
-    -h --help
-        print this help text
-    -m --modify
-        modify the config and halt
-    -o --overwrite
-        overwrite the config with default
-    -s --special
-        use special profile
-    -l --log
-        disable logging
-    -e --echo
-        disable echo
-    -i --input
-        disable input (input gets passed defaults)
-    -c --config <relative file path>
-        choose config file
-    -H --hashes <space separated hash names>
-        hashes used to compare files in edit cache (ie, "md5 sha1")
-    -g --game <relative folder path>
-        temporarily use a different game directory
-    -p --profile <profile name>
-        use a particular folder profile
-    -S --special-set <profile json>
-        map json to the special profile
-        
-"""
-
 default_target = []
 default_priority = 100
 
@@ -698,7 +680,9 @@ default_profiles = {
 }
 
 for k, v in default_profiles.items():
-    default_profiles[k] = util.merge_dict(profile_template.copy(), v, modify_original=False)
+    default_profiles[k] = util.merge_dict(
+        profile_template.copy(), v, modify_original=False
+    )
 
 CFG_framework = {
     "echo": True,
@@ -791,56 +775,39 @@ def main(*args, **kwargs):
     predict = {}
     postdict = {}
 
-    opts, _ = getopt(
-        args,
-        "hmsoleic:g:p:S:H:",
-        [
-            "config=",
-            "log_folder=",
-            "echo",
-            "input",
-            "special",
-            "log",
-            "log-prefix=",
-            "log-suffix=",
-            "profile=,help",
-            "special-set=",
-            "game=",
-            "modify",
-            "overwrite",
-            "--hash=",
-        ],
-    )
-
     global cfg_modify, cfg_overwrite, profile_use_special, configfile, gamerel
 
-    for k, v in opts:
-        if k in {"-h", "--help"}:
-            print(MSG_CommandLineHelp)
-            return
-        elif k in {"-m", "--modify"}:
-            cfg_modify = True
-        elif k in {"-o", "--overwrite"}:
-            cfg_overwrite = True
-        elif k in {"-s", "--special"}:
-            profile_use_special = True
-        elif k in {"-l", "--log"}:
-            postdict["log"]
-        elif k in {"-e", "--echo"}:
-            postdict["echo"] = False
-        elif k in {"-i", "--input"}:
-            postdict["input"] = False
-        elif k in {"-c", "--config"}:
-            configfile = v
-        elif k in {"-g", "--game"}:
-            gamerel = v
-        elif k in {"-p", "--profile"}:
-            postdict["profile"] = v
-        elif k in {"-p", "--profile"}:
-            postdict["hashes"] = v.split(" ")
-        elif k in {"-S", "--special-set"}:
-            predict.setdefault("profile_special", {})
-            predict["profile_special"] = json.loads(v)
+    parser = args_parser.get_parser()
+    parsed_args = vars(parser.parse_args())
+
+    # This section is to take the parsed arguments and convert them to the
+    # current globals system. Once the config module is complete, this section
+    # will go away.
+    postdict["echo"] = parsed_args["echo"]
+    postdict["log"] = parsed_args["log"]
+    postdict["input"] = parsed_args["input"]
+
+    if parsed_args["profile"]:
+        postdict["profile"] = parsed_args["profile"]
+
+    if parsed_args["use_special_profile"]:
+        profile_use_special = parsed_args["use_special_profile"]
+
+    if parsed_args["special_profile"]:
+        predict.setdefault("profile_special", {})
+        predict["profile_special"] = json.loads(parsed_args["special_profile"])
+
+    cfg_modify = parsed_args["modify_config"]
+    cfg_modify = parsed_args["overwrite_config"]
+
+    if parsed_args["config_file"]:
+        configfile = Path(parsed_args["config_file"])
+
+    if parsed_args["game_dir"]:
+        gamerel = Path(parsed_args["game_dir"])
+
+    if parsed_args["hashes"]:
+        postdict["hashes"] = parsed_args["hashes"].split(" ")
 
     main_action(*args, predict=predict, postdict=postdict)
 
