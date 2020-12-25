@@ -1,6 +1,6 @@
 # FILE/MOD CONTROL
 import os
-
+from pathlib import Path, PurePath
 
 class Signal:
     __slots__ = ["truth", "message"]
@@ -37,7 +37,7 @@ class Signal:
 hashes = ["md5"]
 
 
-def hashfile(file, out=None, modes=hashes, blocksize=65536):
+def hash_file(file, out=None, modes=hashes, blocksize=65536):
     lines = []
     for mode in modes:
         hasher = hashlib.new(mode)
@@ -55,59 +55,72 @@ def hashfile(file, out=None, modes=hashes, blocksize=65536):
 
 
 def is_subfile(filename, folder):
-    if os.path.exists(filename):
-        if os.path.commonprefix([filename, folder]) == folder:
-            if os.path.isfile(filename):
-                return Signal(True, "SubFile")
-            return Signal(False, "SubDir")
+    if not filename.exists():
+        return Signal(False, "DoesNotExist")
+
+    if not filename.is_relative_to(folder):
         return Signal(False, "NonSub")
-    return Signal(False, "DoesNotExist")
 
+    if filename.is_dir():
+        return Signal(False, "SubDir")
 
-def in_scope(filename, permit_DNE=False):
-    if os.path.exists(filename) or permit_DNE:
-        if local_in_scope:
-            tfile = filename[len(os.path.commonprefix([filename, localdir])) :]
-            tfile = tfile.split("/")[1]
-            if tfile in localsources:
-                return Signal(False, "IsLocalSource")
-        if base_in_scope:
-            if os.path.commonprefix([filename, basedir]) == basedir:
-                return Signal(False, "InBase")
-        if edit_in_scope:
-            if os.path.commonprefix([filename, editdir]) == editdir:
-                return Signal(False, "InEdits")
-        if os.path.commonprefix([filename, scopedir]) == scopedir:
-            if os.path.isfile(filename):
-                return Signal(True, "FileInScope")
-            return Signal(False, "DirInScope")
+    if filename.is_file():
+        return Signal(True, "SubFile")
+
+    return Signal(False, "UnknownError")
+    
+
+def in_scope(filename, localdir, basedir, editdir, scopedir, permit_DNE=False):
+    if not (filename.exists() or permit_DNE):
+        return Signal(False, "DoesNotExist")
+
+    if not filename.is_relative_to(scopedir):
         return Signal(False, "OutOfScope")
-    return Signal(False, "DoesNotExist")
+
+    if filename.is_relative_to(basedir):
+        return Signal(True, "InBase")
+
+    if filename.is_relative_to(editdir):
+        return Signal(True, "InEdits")
+
+    if filename.is_dir():
+        return Signal(True, "DirInScope")
+
+    if filename.is_file():
+        return Signal(True, "FileInScope")
+
+    return Signal(False, "UnknownError")
 
 
-def in_source(filename, permit_DNE=False):
-    if os.path.exists(filename) or permit_DNE:
-        if os.path.commonprefix([filename, modsdir]) == scopedir:
-            if os.path.isfile(filename):
-                return Signal(True, "FileInSource")
-            return Signal(False, "DirInSource")
+def in_source(filename, modsdir, scopedir, permit_DNE=False):
+    if not (filename.exists() or permit_DNE):
+        return Signal(False, "DoesNotExist")
+
+    if not (filename.is_relative_to(scopedir) and modsdir.is_relative_to(scopedir)):
         return Signal(False, "OutOfSource")
-    return Signal(False, "DoesNotExist")
+
+    if filename.is_dir():
+        return Signal(True, "DirInSource")
+
+    if filename.is_file():
+        return Signal(True, "FileInSource")
+
+    return Signal(False, "UnknownError")
 
 
 def alt_print(*args, **kwargs):
     if do_echo:
         return print(*args, **kwargs)
     if do_log:
-        tlog = logsdir + "/" + "temp-" + logfile_prefix + thetime() + logfile_suffix
-        f = open(tlog, "w")
-        print(file=f, *args, **kwargs)
-        f.close()
-        f = open(tlog, "r")
-        data = f.read()
-        f.close()
-        os.remove(tlog)
-        return logging.getLogger(__name__).info(data)
+        tlog = PurePath.joinpath(logsdir, f"temp-{logfile_prefix}{thetime()}{logfile_suffix}")
+        with alt_open(tlog, "w") as temp_file:
+            print(file=temp_file, *args, **kwargs)
+
+        with alt_open(tlog, "r") as temp_file:
+            data = temp_file.read()
+
+        tlog.unlink()
+        return logging.getLogger(__name__).info(data)        
 
 
 def alt_warn(message):
@@ -123,15 +136,16 @@ def alt_input(*args, **kwargs):
         print(*args)
         return kwargs.get("default", None)
     if do_log:
-        tlog = logsdir + "/" + "temp-" + logfile_prefix + thetime() + logfile_suffix
-        f = open(tlog, "w")
-        print(file=f, *args)
-        f.close()
-        f = open(tlog, "r")
-        data = f.read()
-        f.close()
-        os.remove(tlog)
+        tlog = PurePath.joinpath(logsdir, f"temp-{logfile_prefix}{thetime()}{logfile_suffix}")
+        with alt_open(tlog, "w") as temp_file:
+            print(file=temp_file, *args)
+
+        with alt_open(tlog, "r") as temp_file:
+            data = temp_file.read()
+
+        tlog.unlink()
         logging.getLogger(__name__).info(data)
+
         if do_input:
             return input()
         return kwargs.get("default", None)

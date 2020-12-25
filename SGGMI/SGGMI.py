@@ -47,14 +47,19 @@ import logging
 import json
 import warnings
 import hashlib
-from pathlib import Path
+from pathlib import Path, PurePath
 from shutil import copyfile, rmtree
 from datetime import datetime
 from collections import defaultdict
 from distutils.dir_util import copy_tree
 from distutils.errors import DistutilsFileError
 
-from sggmi import util, args_parser
+from sggmi import (
+  args_parser,
+  util,
+  sggmi_sjson,
+  sggmi_xml
+)
 
 # Configurable Globals
 
@@ -78,7 +83,7 @@ DNE = ()  # 'Does Not Exist' singleton
 
 def lua_addimport(base, path):
     with open(base, "a") as basefile:
-        basefile.write('\nImport "../' + path + '"')
+        basefile.write(f"\nImport {path}")
 
 
 # FILE/MOD CONTROL
@@ -94,14 +99,14 @@ def alt_print(*args, **kwargs):
     if do_echo:
         return print(*args, **kwargs)
     if do_log:
-        tlog = logsdir + "/" + "temp-" + logfile_prefix + thetime() + logfile_suffix
-        f = alt_open(tlog, "w")
-        print(file=f, *args, **kwargs)
-        f.close()
-        f = alt_open(tlog, "r")
-        data = f.read()
-        f.close()
-        os.remove(tlog)
+        tlog = logsdir / f"temp-{logfile_prefix}{thetime()}{logfile_suffix}"
+        with alt_open(tlog, "w") as temp_file:
+            print(file=temp_file, *args, **kwargs)
+
+        with alt_open(tlog, "r") as temp_file:
+            data = temp_file.read()
+
+        tlog.unlink()
         return logging.getLogger(__name__).info(data)
 
 
@@ -118,15 +123,16 @@ def alt_input(*args, **kwargs):
         print(*args)
         return kwargs.get("default", None)
     if do_log:
-        tlog = logsdir + "/" + "temp-" + logfile_prefix + thetime() + logfile_suffix
-        f = alt_open(tlog, "w")
-        print(file=f, *args)
-        f.close()
-        f = alt_open(tlog, "r")
-        data = f.read()
-        f.close()
-        os.remove(tlog)
+        tlog = logsdir / f"temp-{logfile_prefix}{thetime()}{logfile_suffix}"
+        with alt_open(tlog, "w") as temp_file:
+            print(file=temp_file, *args)
+
+        with alt_open(tlog, "r") as temp_file:
+            data = temp_file.read()
+
+        tlog.unlink()
         logging.getLogger(__name__).info(data)
+
         if do_input:
             return input()
         return kwargs.get("default", None)
@@ -218,37 +224,36 @@ def modfile_startswith(tokens, keyword, n):
 
 def modfile_loadcommand(reldir, tokens, to, n, mode, cfg={}, **load):
     for scopepath in to:
-        path = scopedir + "/" + scopepath
-        if in_scope(path):
+        path = PurePath.joinpath(scopedir, scopepath)
+        if util.in_scope(path, localdir, basedir, editdir, scopedir):
             args = [tokens[i::n] for i in range(n)]
             for i in range(len(args[-1])):
                 sources = [
-                    reldir + "/" + arg[i].replace('"', "").replace("\\", "/")
+                    PurePath.joinpath(reldir, arg[i].replace('"', ""))
                     for arg in args
                 ]
                 paths = []
                 num = -1
                 for source in sources:
-                    if os.path.isdir(modsdir + "/" + source):
+                    if PurePath.joinpath(modsdir, source).is_dir():
                         tpath = []
-                        for file in os.scandir(source):
-                            file = file.path.replace("\\", "/")
-                            if in_scope(file):
-                                tpath.append(file)
+                        for entry in PurePath.joinpath(modsdir, source).iterdir():
+                            if util.in_scope(entry, localdir, basedir, editdir, scopedir):
+                                tpath.append(entry.as_posix())
                         paths.append(tpath)
                         if num > len(tpath) or num < 0:
                             num = len(tpath)
-                    elif in_scope(modsdir + "/" + source):
-                        paths.append(source)
+                    elif util.in_scope(PurePath.joinpath(modsdir, source), localdir, basedir, editdir, scopedir):
+                        paths.append(PurePath.joinpath(modsdir, source).resolve().as_posix())
                 if paths:
                     for j in range(abs(num)):
                         sources = [x[j] if isinstance(x, list) else x for x in paths]
                         for src in sources:
                             todeploy[src] = util.merge_dict(todeploy.get(src), cfg)
-                        f = lambda x: map(lambda y: deploy_from_scope + "/" + y, x)
+                        f = lambda x: map(lambda y: PurePath.joinpath(deploy_from_scope, y), x)
                         codes[scopepath].append(
                             Mod(
-                                "\n".join(sources),
+                                "\n".join([Path(source).resolve().as_posix() for source in sources]),
                                 tuple(f(sources)),
                                 mode,
                                 scopepath,
@@ -259,102 +264,104 @@ def modfile_loadcommand(reldir, tokens, to, n, mode, cfg={}, **load):
 
 
 def modfile_load(filename, echo=True):
-    sig = is_subfile(filename, modsdir)
-    if sig:
-        prefix = os.path.commonprefix([filename, modsdir])
-        relname = filename[len(prefix) + 1 :]
-        try:
-            file = alt_open(filename, "r")
-        except IOError:
-            return
-        if echo:
-            alt_print(relname)
+    if util.is_subfile(filename, modsdir).message == "SubDir":
+        for entry in Path(filename).iterdir():
+            modfile_load(entry, echo)
+        return
 
-        reldir = "/".join(relname.split("/")[:-1])
-        p = default_priority
-        to = default_target
-        cfg = {}
+    relname = filename.relative_to(modsdir)
+    try:
+        file = alt_open(filename, "r")
+    except IOError:
+        return
 
-        with file:
-            for line in modfile_splitlines(file.read()):
-                tokens = modfile_tokenise(line)
-                if len(tokens) == 0:
-                    continue
+    if echo:
+        alt_print(relname)
 
-                elif modfile_startswith(tokens, KWRD_to, 0):
-                    to = [s.replace("\\", "/") for s in tokens[1:]]
-                    if len(to) == 0:
-                        to = default_target
-                elif modfile_startswith(tokens, KWRD_load, 0):
-                    n = len(KWRD_load) + len(KWRD_priority)
-                    if tokens[len(KWRD_load) : n] == KWRD_priority:
-                        if len(tokens) > n:
-                            try:
-                                p = int(tokens[n])
-                            except ValueError:
-                                pass
-                        else:
-                            p = default_priority
-                if modfile_startswith(tokens, KWRD_include, 1):
-                    for s in tokens[1:]:
-                        modfile_load(
-                            reldir + "/" + s.replace('"', "").replace("\\", "/"), echo
-                        )
-                elif modfile_startswith(tokens, KWRD_deploy, 1):
-                    for s in tokens[1:]:
-                        check = is_subfile(s, modsdir)
-                        if check:
-                            todeploy[s] = util.merge_dict(todeploy.get(s), cfg)
-                        elif check.message == "SubDir":
-                            for f in os.scandir(s):
-                                S = f.path.replace("\\", "/")
-                                todeploy[S] = util.merge_dict(todeploy.get(S), cfg)
+    reldir = relname.parent
+    p = default_priority
+    to = default_target
+    cfg = {}
 
-                elif modfile_startswith(tokens, KWRD_import, 1):
-                    modfile_loadcommand(
-                        reldir,
-                        tokens[len(KWRD_import) :],
-                        to,
-                        1,
-                        "lua",
-                        cfg,
-                        priority=p,
-                    )
-                elif modfile_startswith(tokens, sggmi_xml.KEYWORD, 1):
-                    modfile_loadcommand(
-                        reldir,
-                        tokens[len(sggmi_xml.KEYWORD) :],
-                        to,
-                        1,
-                        "xml",
-                        cfg,
-                        priority=p,
-                    )
-                elif modfile_startswith(tokens, sggmi_sjson.KEYWORD, 1):
-                    if sjson:
-                        modfile_loadcommand(
-                            reldir,
-                            tokens[len(sggmi_sjson.KEYWORD) :],
-                            to,
-                            1,
-                            "sjson",
-                            cfg,
-                            priority=p,
-                        )
+    with file:
+        for line in modfile_splitlines(file.read()):
+            tokens = modfile_tokenise(line)
+            if len(tokens) == 0:
+                continue
+
+            elif modfile_startswith(tokens, KWRD_to, 0):
+                to = [Path(s).as_posix() for s in tokens[1:]]
+                if len(to) == 0:
+                    to = default_target
+
+            elif modfile_startswith(tokens, KWRD_load, 0):
+                n = len(KWRD_load) + len(KWRD_priority)
+                if tokens[len(KWRD_load) : n] == KWRD_priority:
+                    if len(tokens) > n:
+                        try:
+                            p = int(tokens[n])
+                        except ValueError:
+                            pass
                     else:
-                        alt_warn("SJSON module not found! Skipped command: " + line)
+                        p = default_priority
 
-    elif sig.message == "SubDir":
-        for file in os.scandir(filename):
-            modfile_load(file.path.replace("\\", "/"), echo)
+            if modfile_startswith(tokens, KWRD_include, 1):
+                for s in tokens[1:]:
+                    modfile_load(
+                        PurePath.joinpath(reldir, s.replace('"', "")),
+                        echo
+                    )
+
+            elif modfile_startswith(tokens, KWRD_deploy, 1):
+                for token in tokens[1:]:
+                    check = util.is_subfile(s, modsdir)
+                    if check:
+                        todeploy[s] = util.merge_dict(todeploy.get(s), cfg)
+                    elif check.message == "SubDir":
+                        for entry in Path(s).iterdir():
+                            S = entry.resolve().as_posix()
+                            todeploy[S] = util.merge_dict(todeploy.get(S), cfg)
+
+            elif modfile_startswith(tokens, KWRD_import, 1):
+                modfile_loadcommand(
+                    reldir,
+                    tokens[len(KWRD_import) :],
+                    to,
+                    1,
+                    "lua",
+                    cfg,
+                    priority=p,
+                )
+            elif modfile_startswith(tokens, sggmi_xml.KEYWORD, 1):
+                modfile_loadcommand(
+                    reldir, tokens[len(sggmi_xml.KEYWORD) :], to, 1, "xml", cfg, priority=p
+                )
+            elif modfile_startswith(tokens, sggmi_sjson.KEYWORD, 1):
+                if sjson:
+                    modfile_loadcommand(
+                        reldir,
+                        tokens[len(sggmi_sjson.KEYWORD) :],
+                        to,
+                        1,
+                        "sjson",
+                        cfg,
+                        priority=p,
+                    )
+
+                else:
+                    alt_warn("SJSON module not found! Skipped command: " + line)
 
 
 def deploy_mods():
-    for fs, cfg in todeploy.items():
-        Path(deploydir + "/" + "/".join(fs.split("/")[:-1])).mkdir(
+    for file_path in todeploy.keys():
+        PurePath.joinpath(deploydir, Path(file_path).resolve().parent.relative_to(modsdir)).mkdir(
             parents=True, exist_ok=True
         )
-        copyfile(modsdir + "/" + fs, deploydir + "/" + fs)
+
+        copyfile(
+            Path(file_path),
+            PurePath.joinpath(deploydir, Path(file_path).relative_to(modsdir)),
+        )
 
 
 def sort_mods(base, mods):
@@ -364,10 +371,14 @@ def sort_mods(base, mods):
 
 
 def make_base_edits(base, mods, echo=True):
-    Path(basedir + "/" + "/".join(base.split("/")[:-1])).mkdir(
+    PurePath.joinpath(basedir, Path(base).parent).mkdir(
         parents=True, exist_ok=True
     )
-    copyfile(scopedir + "/" + base, basedir + "/" + base)
+    copyfile(
+        PurePath.joinpath(scopedir, base),
+        PurePath.joinpath(basedir, base),
+    )
+
     if echo:
         i = 0
         alt_print("\n" + base)
@@ -375,56 +386,74 @@ def make_base_edits(base, mods, echo=True):
     try:
         for mod in mods:
             if mod.mode == "lua":
-                lua_addimport(scopedir + "/" + base, mod.data[0])
+                lua_addimport(
+                    PurePath.joinpath(scopedir, base),
+                    mod.data[0],
+                )
             elif mod.mode == "xml":
-                sggmi_xml.merge(scopedir + "/" + base, mod.data[0])
+                sggmi_xml.merge(
+                    PurePath.joinpath(scopedir, base),
+                    mod.data[0],
+                )
             elif mod.mode == "sjson":
-                sggmi_sjson.merge_files(scopedir + "/" + base, mod.data[0])
+                sggmi_sjson.merge_files(
+                    PurePath.joinpath(scopedir, base),
+                    mod.data[0],
+                )
             if echo:
                 k = i + 1
                 for s in mod.src.split("\n"):
                     i += 1
                     alt_print(
-                        " #"
-                        + str(i)
+                        f" #{i}"
                         + " +" * (k < i)
                         + " " * ((k >= i) + 5 - len(str(i)))
-                        + s
+                        + f"{Path(s).relative_to(modsdir)}"
                     )
     except Exception as e:
-        copyfile(basedir + "/" + base, scopedir + "/" + base)
+        copyfile(
+            PurePath.joinpath(basedir, base),
+            PurePath.joinpath(scopedir, base),
+        )
         raise RuntimeError(
             "Encountered uncaught exception while implementing mod changes"
         ) from e
 
-    Path(editdir + "/" + "/".join(base.split("/")[:-1])).mkdir(
+    PurePath.joinpath(editdir, Path(base).parent).mkdir(
         parents=True, exist_ok=True
     )
-    hashfile(scopedir + "/" + base, editdir + "/" + base + edited_suffix)
+    util.hash_file(
+        PurePath.joinpath(scopedir, base),
+        PurePath.joinpath(editdir, f"{base}{edited_suffix}")
+    )
 
 
-def cleanup(folder=None, echo=True):
-    if not os.path.exists(folder):
+def cleanup(target=None, echo=True):
+    if not target.exists():
         return True
-    if os.path.isdir(folder):
+
+    if target.is_dir():
         empty = True
-        for content in os.scandir(folder):
-            if cleanup(content, echo):
+        for entry in target.iterdir():
+            if cleanup(entry, echo):
                 empty = False
         if empty:
-            os.rmdir(folder)
+            target.rmdir()
             return False
         return True
-    if isinstance(folder, str):
-        return None
-    folderpath = folder.path.replace("\\", "/")
-    path = folderpath[len(basedir) + 1 :]
-    if os.path.isfile(scopedir + "/" + path):
-        if is_edited(path):
-            copyfile(folderpath, scopedir + "/" + path)
+
+    target_relative_to_basedir = target.relative_to(basedir)
+    if PurePath.joinpath(scopedir, target_relative_to_basedir).is_file():
+        if util.is_edited(target_relative_to_basedir, scopedir, editdir, edited_suffix):
+            copyfile(
+                target,
+                PurePath.joinpath(scopedir, target_relative_to_basedir),
+            )
+
         if echo:
-            alt_print(path)
-        os.remove(folderpath)
+            alt_print(target_relative_to_basedir)
+
+        target.unlink()
         return False
     return True
 
@@ -446,9 +475,9 @@ def thetime():
 
 def preplogfile():
     if do_log:
-        Path(logsdir).mkdir(parents=True, exist_ok=True)
+        logsdir.mkdir(parents=True, exist_ok=True)
         logging.basicConfig(
-            filename=logsdir + "/" + logfile_prefix + thetime() + logfile_suffix,
+            filename=logsdir / f"{logfile_prefix}{thetime()}{logfile_suffix}",
             level=logging.INFO,
         )
     logging.captureWarnings(do_log and not do_echo)
@@ -456,11 +485,11 @@ def preplogfile():
 
 def update_scope(rel=".."):
     global gamedir
-    gamedir = os.path.join(os.path.realpath(rel), "").replace("\\", "/")[:-1]
+    gamedir = Path(rel).resolve()
     global scopeparent
-    scopeparent = gamedir.split("/")[-1]
+    scopeparent = gamedir.name
     global scopedir
-    scopedir = gamedir + "/" + scope
+    scopedir = PurePath.joinpath(gamedir, scope)
 
 
 def configure_globals(condict={}, flow=True):
@@ -476,16 +505,16 @@ def configure_globals(condict={}, flow=True):
     logfile_suffix = util.get_attribute(condict, "log_suffix", logfile_suffix)
 
     global logsdir
-    logsdir = os.path.join(os.path.realpath(logsrel), "").replace("\\", "/")
+    logsdir = Path(logsrel).resolve().parent
     preplogfile()
 
     global hashes
     hashes = util.get_attribute(condict, "hashes", hashes)
 
     global thisfile, localdir, localparent
-    thisfile = os.path.realpath(__file__).replace("\\", "/")
-    localdir = "/".join(thisfile.split("/")[:-1])
-    localparent = localdir.split("/")[-2]
+    thisfile = Path(__file__).resolve()
+    localdir = thisfile.parent
+    localparent = localdir.parent
 
     global profiles, profile, folderprofile
     profiles = {}
@@ -520,56 +549,27 @@ def configure_globals(condict={}, flow=True):
     baserel = util.get_attribute(profile, "folder_basecache", baserel)
     editrel = util.get_attribute(profile, "folder_editcache", editrel)
 
-    global basedir
-    basedir = (scopedir + "/" + baserel).replace("\\", "/")
-    if not os.path.isabs(basedir):
-        basedir = os.path.join(os.path.realpath(basedir), "").replace("\\", "/")[:-1]
+    global basedir, editdir, modsdir, deploydir
+    basedir = PurePath.joinpath(scopedir, baserel).resolve() 
+    editdir = PurePath.joinpath(scopedir, editrel).resolve()
+    modsdir = PurePath.joinpath(scopedir, modsrel).resolve()
+    deploydir = PurePath.joinpath(scopedir, scopemods).resolve()
 
-    global editdir
-    editdir = (scopedir + "/" + editrel).replace("\\", "/")
-    if not os.path.isabs(editdir):
-        editdir = os.path.join(os.path.realpath(editdir), "").replace("\\", "/")[:-1]
-
-    global modsdir
-    modsdir = (scopedir + "/" + modsrel).replace("\\", "/")
-    if not os.path.isabs(modsdir):
-        modsdir = os.path.join(os.path.realpath(modsdir), "").replace("\\", "/")[:-1]
-
-    global deploydir
-    deploydir = (scopedir + "/" + scopemods).replace("\\", "/")
-    if not os.path.isabs(deploydir):
-        deploydir = os.path.join(os.path.realpath(deploydir), "").replace("\\", "/")[
-            :-1
-        ]
-
-    global local_in_scope, base_in_scope, edit_in_scope, mods_in_scope, deploy_in_scope, game_has_scope
-    local_in_scope = (
-        base_in_scope
-    ) = edit_in_scope = mods_in_scope = deploy_in_scope = None
-
-    game_has_scope = in_scope(scopedir).message == "DirInScope"
-    local_in_scope = in_scope(thisfile).message == "FileInScope"
+    game_has_scope = util.in_scope(scopedir, localdir, basedir, editdir, scopedir).message == "DirInScope"
+    local_in_scope = util.in_scope(thisfile, localdir, basedir, editdir, scopedir).message == "FileInScope"
 
     if not game_has_scope:
         alt_warn(MSG_GameHasNoScope.format(scopedir, scopeparent, configfile))
         if flow:
             alt_exit(1)
 
-    base_in_scope = in_scope(basedir, True).message == "DirInScope"
-    edit_in_scope = in_scope(editdir, True).message == "DirInScope"
-    mods_in_scope = in_scope(basedir, True).message == "DirInScope"
-    deploy_in_scope = in_scope(deploydir, True).message == "DirInScope"
-
-    if not deploy_in_scope:
+    if not util.in_scope(deploydir, localdir, basedir, editdir, scopedir, True).message == "DirInScope":
         alt_warn(MSG_DeployNotInScope.format(deploydir, scopedir, configfile))
         if flow:
             alt_exit(1)
 
     global deploy_from_scope
-    deploy_from_scope = deploydir[
-        len(os.path.commonprefix([scopedir, deploydir])) + 1 :
-    ]
-
+    deploy_from_scope = deploydir.relative_to(scopedir)
 
 def configsetup(predict={}, postdict={}):
     condict = CFG_framework
@@ -710,27 +710,28 @@ def start(*args, **kwargs):
     todeploy = {}
 
     # remove anything in the base cache that is not in the edit cache
-    alt_print("Cleaning edits... (if there are issues validate/reinstall files)")
+    alt_print("\nCleaning edits... (if there are issues validate/reinstall files)")
     restorebase()
 
     # remove the edit cache and base cache from the last run
-    def onerror(func, path, exc_info):
+    def on_error(func, path, exc_info):
         if not os.access(path, os.W_OK):
             os.chmod(path, stat.S_IWUSR)
             func(path)
         else:
             raise
 
-    rmtree(editdir, onerror)
-    Path(editdir).mkdir(parents=True, exist_ok=True)
-    rmtree(basedir, onerror)
-    Path(basedir).mkdir(parents=True, exist_ok=True)
-    Path(modsdir).mkdir(parents=True, exist_ok=True)
-    Path(deploydir).mkdir(parents=True, exist_ok=True)
+    rmtree(editdir, on_error)
+    rmtree(basedir, on_error)
+
+    editdir.mkdir(parents=True, exist_ok=True)
+    basedir.mkdir(parents=True, exist_ok=True)
+    modsdir.mkdir(parents=True, exist_ok=True)
+    deploydir.mkdir(parents=True, exist_ok=True)
 
     alt_print("\nReading mod files...")
-    for mod in os.scandir(modsdir):
-        modfile_load(mod.path.replace("\\", "/") + "/" + modfile)
+    for mod in modsdir.iterdir():
+        modfile_load(mod / modfile)
 
     deploy_mods()
 

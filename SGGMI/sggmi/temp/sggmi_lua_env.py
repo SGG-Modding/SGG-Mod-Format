@@ -1,5 +1,7 @@
 # Lua Environments
-import lupa, os, re
+import lupa, re
+from pathlib import Path, PurePath
+
 from sggmi_file_mod_control import in_source, Signal
 
 def is_varname(s):
@@ -163,8 +165,8 @@ class Lua:
             with open(filename, "r") as code:
 
                 lua.oldfile = lua.curfile
-                lua.curfile = os.path.realpath(filename).replace("\\", "/")
-                lua.curfolder = "/".join((lua.curfile.split("/"))[:-1])
+                lua.curfile = Path(filename).resolve()
+                lua.curfolder = lua.curfile.parent
 
                 lua.execute(code.read())
 
@@ -251,7 +253,7 @@ class Lua:
     def define_common(lua):
         def lua_import(filename, namespace=None):
 
-            filename = lua.curfolder + "/" + filename
+            filename = lua.curfolder / filename
 
             signal = Signal(True, "CheckNotIntegrated")  # in_source(filename)
             if not signal:
