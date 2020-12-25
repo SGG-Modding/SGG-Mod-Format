@@ -1,3 +1,5 @@
+from pathlib import Path, PurePath
+
 class Signal:
     truth = False
     message = None
@@ -39,39 +41,66 @@ def hash_file(file, out=None, modes=[], blocksize=65536):
             ofile.write(content)
     return content
 
+
 def is_subfile(filename, folder):
-    if os.path.exists(filename):
-        if os.path.commonprefix([filename, folder]) == folder:
-            if os.path.isfile(filename):
-                return Signal(True, "SubFile")
-            return Signal(False, "SubDir")
+    if not filename.exists():
+        return Signal(False, "DoesNotExist")
+
+    if not filename.is_relative_to(folder):
         return Signal(False, "NonSub")
-    return Signal(False, "DoesNotExist")
 
-def in_scope(filename, permit_DNE=False):
-    if os.path.exists(filename) or permit_DNE:
-        if local_in_scope:
-            tfile = filename[len(os.path.commonprefix([filename, localdir])) :]
-            tfile = tfile.split("/")[1]
-            if tfile in localsources:
-                return Signal(False, "IsLocalSource")
-        if base_in_scope:
-            if os.path.commonprefix([filename, basedir]) == basedir:
-                return Signal(False, "InBase")
-        if edit_in_scope:
-            if os.path.commonprefix([filename, editdir]) == editdir:
-                return Signal(False, "InEdits")
-        if os.path.commonprefix([filename, scopedir]) == scopedir:
-            if os.path.isfile(filename):
-                return Signal(True, "FileInScope")
-            return Signal(False, "DirInScope")
+    if filename.is_dir():
+        return Signal(False, "SubDir")
+
+    if filename.is_file():
+        return Signal(True, "SubFile")
+
+    return Signal(False, "UnknownError")
+    
+
+def in_scope(filename, localdir, basedir, editdir, scopedir, permit_DNE=False):
+    if not (filename.exists() or permit_DNE):
+        return Signal(False, "DoesNotExist")
+
+    if not filename.is_relative_to(scopedir):
         return Signal(False, "OutOfScope")
-    return Signal(False, "DoesNotExist")
 
-def is_edited(base):
-    if os.path.isfile(editdir + "/" + base + edited_suffix):
-        efile = open(editdir + "/" + base + edited_suffix, "r")
-        data = efile.read()
-        efile.close()
-        return data == hashfile(scopedir + "/" + base)
+    if filename.is_relative_to(basedir):
+        return Signal(True, "InBase")
+
+    if filename.is_relative_to(editdir):
+        return Signal(True, "InEdits")
+
+    if filename.is_dir():
+        return Signal(True, "DirInScope")
+
+    if filename.is_file():
+        return Signal(True, "FileInScope")
+
+    return Signal(False, "UnknownError")
+
+
+def in_source(filename, modsdir, scopedir, permit_DNE=False):
+    if not (filename.exists() or permit_DNE):
+        return Signal(False, "DoesNotExist")
+
+    if not (filename.is_relative_to(scopedir) and modsdir.is_relative_to(scopedir)):
+        return Signal(False, "OutOfSource")
+
+    if filename.is_dir():
+        return Signal(True, "DirInSource")
+
+    if filename.is_file():
+        return Signal(True, "FileInSource")
+
+    return Signal(False, "UnknownError")
+
+
+def is_edited(base, scopedir, editdir, edited_suffix):
+    edited_path = editdir / f"{base}{edited_suffix}"
+    if edited_path.is_file():
+        with open(edited_path, "r") as edited_file:
+            data = edited_file.read()
+
+        return data == hash_file(PurePath.joinpath(scopedir, base))
     return False
