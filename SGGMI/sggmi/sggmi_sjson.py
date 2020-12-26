@@ -10,7 +10,7 @@ try:
     import sjson  # pip: SJSON
 except Exception as e:
     print("Could not import sjson, skipping sjson edits.")
-        
+
 from collections import OrderedDict
 import os
 
@@ -31,22 +31,22 @@ def read_file(filename):
             file_data = file_in.read().replace("\\", "\\\\")
         return sjson.loads(file_data)
     except sjson.ParseException as e:
-        alt_print(e)
+        alt_print(e, config=config)
     except FileNotFoundError:
-        alt_print(f"sggmi_sjson (read_file): {filename} does not exist!")
+        alt_print(f"sggmi_sjson (read_file): {filename} does not exist!", config=config)
     except Exception as e:
-        alt_print(e)
+        alt_print(e, config=config)
 
     return None
 
 
 def write_file(filename, content):
     if not Path(filename).exists():
-        alt_print(f"sggmi_sjson (write_file): {filename} not found!")
+        alt_print(f"sggmi_sjson (write_file): {filename} not found!", config=config)
         return
 
     if not Path(filename).is_file():
-        alt_print(f"sggmi_sjson (write_file): {filename} is not a file!")
+        alt_print(f"sggmi_sjson (write_file): {filename} is not a file!", config=config)
         return
 
     if isinstance(content, OrderedDict):
@@ -91,7 +91,7 @@ def write_file(filename, content):
         with open(filename, "w") as file_out:
             file_out.write(final_output)
     except Exception as e:
-        alt_print(f"sggmi_sjson (write_file): \n{e}")
+        alt_print(f"sggmi_sjson (write_file): \n{e}", config=config)
 
 
 def merge_data(base_data, input_data):

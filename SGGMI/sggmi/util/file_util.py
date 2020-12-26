@@ -1,5 +1,6 @@
 from pathlib import Path, PurePath
 
+
 class Signal:
     truth = False
     message = None
@@ -20,7 +21,8 @@ class Signal:
         return str(self.message)
 
     def __repr__(self):
-        return (f"{self.__class__.__name__}({self.truth}, {self.message})")
+        return f"{self.__class__.__name__}({self.truth}, {self.message})"
+
 
 def hash_file(file, out=None, modes=[], blocksize=65536):
     """
@@ -56,19 +58,19 @@ def is_subfile(filename, folder):
         return Signal(True, "SubFile")
 
     return Signal(False, "UnknownError")
-    
 
-def in_scope(filename, localdir, basedir, editdir, scopedir, permit_DNE=False):
+
+def in_scope(filename, config, permit_DNE=False):
     if not (filename.exists() or permit_DNE):
         return Signal(False, "DoesNotExist")
 
-    if not filename.is_relative_to(scopedir):
+    if not filename.is_relative_to(config.scope_dir):
         return Signal(False, "OutOfScope")
 
-    if filename.is_relative_to(basedir):
+    if filename.is_relative_to(config.base_cache_dir):
         return Signal(True, "InBase")
 
-    if filename.is_relative_to(editdir):
+    if filename.is_relative_to(config.edit_cache_dir):
         return Signal(True, "InEdits")
 
     if filename.is_dir():
@@ -80,11 +82,14 @@ def in_scope(filename, localdir, basedir, editdir, scopedir, permit_DNE=False):
     return Signal(False, "UnknownError")
 
 
-def in_source(filename, modsdir, scopedir, permit_DNE=False):
+def in_source(filename, config, permit_DNE=False):
     if not (filename.exists() or permit_DNE):
         return Signal(False, "DoesNotExist")
 
-    if not (filename.is_relative_to(scopedir) and modsdir.is_relative_to(scopedir)):
+    if not (
+        filename.is_relative_to(config.scope_dir)
+        and config.mods_dir.is_relative_to(config.scope_dir)
+    ):
         return Signal(False, "OutOfSource")
 
     if filename.is_dir():
@@ -96,11 +101,25 @@ def in_source(filename, modsdir, scopedir, permit_DNE=False):
     return Signal(False, "UnknownError")
 
 
-def is_edited(base, scopedir, editdir, edited_suffix):
-    edited_path = editdir / f"{base}{edited_suffix}"
+def is_edited(base, config):
+    edited_path = config.edit_cache_dir / f"{base}{config.edited_suffix}"
     if edited_path.is_file():
         with open(edited_path, "r") as edited_file:
             data = edited_file.read()
 
-        return data == hash_file(PurePath.joinpath(scopedir, base))
+        return data == hash_file(PurePath.joinpath(config.scope_dir, base))
     return False
+
+
+def check_scopes(config):
+    game_scope = in_scope(config.scope_dir, config)
+    if not game_scope.message == "DirInScope":
+        print(f"FAILED {config.scope_dir} is not in scope: {game_scope.message}")
+        return Signal(False, "GameNotInScope")
+
+    deploy_scope = in_scope(config.deploy_dir, config)
+    if not in_scope(config.deploy_dir, config, True).message == "DirInScope":
+        print(f"FAILED {config.scope_dir} is not in scope: {deploy_scope.message}")
+        return Signal(False, "DeployNotInScope")
+
+    return Signal(True)
