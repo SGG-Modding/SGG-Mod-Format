@@ -16,7 +16,7 @@ ModUtil = {
 		Overrides = {},
 		WrapCallbacks = {},
 		PerFunctionEnv = {}
-	}	,
+	},
 	Experimental = {
 		Context = {},
 		Metatables = {},
@@ -585,11 +585,11 @@ ModUtil.Experimental.Metatables.DirectLocalLevel = {
 
 --[[
 	Example Use:
-	for i, name, value in pairs(ModUtil.LocalLevel(level)) do
+	for i, name, value in pairs(ModUtil.Experimental.LocalLevel(level)) do
 		--
 	end
 ]]
-function ModUtil.DirectLocalLevel(level)
+function ModUtil.Experimental.DirectLocalLevel(level)
 	local localLevel = { level = level }
 	setmetatable( localLevel, ModUtil.Experimental.Metatables.DirectLocalLevel )
 	return localLevel
@@ -597,7 +597,7 @@ end
 
 ModUtil.Experimental.Metatables.DirectLocalLevels = {
 	__index = function( _, level )
-		return level, ModUtil.DirectLocalLevel( level )
+		return level, ModUtil.Experimental.DirectLocalLevel( level )
 	end,
 	__next = function( _, level )
 		if level == nil then
@@ -605,7 +605,7 @@ ModUtil.Experimental.Metatables.DirectLocalLevels = {
 		end
 		level = level + 1
 		if debug.getinfo(level + 1, "f") then
-			return level, ModUtil.DirectLocalLevel( level )
+			return level, ModUtil.Experimental.DirectLocalLevel( level )
 		end
 	end,
 	__pairs = function( self )
@@ -617,14 +617,14 @@ ModUtil.Experimental.Metatables.DirectLocalLevels = {
 }
 --[[
 	Example Use:
-	for level,localLevel in pairs(ModUtil.LocalLevels) do
+	for level,localLevel in pairs(ModUtil.Experimental.LocalLevels) do
 		for i, name, value in pairs(localLevel) do
 			--
 		end
 	end
 ]]
-ModUtil.DirectLocalLevels = {}
-setmetatable(ModUtil.DirectLocalLevels, ModUtil.Experimental.Metatables.DirectLocalLevels)
+ModUtil.Experimental.DirectLocalLevels = {}
+setmetatable(ModUtil.Experimental.DirectLocalLevels, ModUtil.Experimental.Metatables.DirectLocalLevels)
 
 ModUtil.Experimental.Metatables.LocalsInterface = {
 	__index = function( self, name )
@@ -660,7 +660,7 @@ ModUtil.Experimental.Metatables.LocalsInterface = {
 --[[
 	Interface only valid within the scope it was constructed
 ]]
-function ModUtil.GetLocalsInterface( names )
+function ModUtil.Experimental.LocalsInterface( names )
 	local lookup = {}
 	if names then
 		-- assume names is strictly either a list or a lookup table
@@ -673,7 +673,7 @@ function ModUtil.GetLocalsInterface( names )
 	local order = {}
 	local index = {}
 
-	local level, localLevel = next( ModUtil.DirectLocalLevels, 1 )
+	local level, localLevel = next( ModUtil.Experimental.DirectLocalLevels, 1 )
 	while level do
 		for i, name, value in pairs( localLevel ) do
 			if (not names or lookup[ name ]) and index[ name ] == nil then
@@ -681,7 +681,7 @@ function ModUtil.GetLocalsInterface( names )
 				table.insert( order, name )
 			end
 		end
-		level,localLevel = next( ModUtil.DirectLocalLevels, level )
+		level,localLevel = next( ModUtil.Experimental.DirectLocalLevels, level )
 	end
 	local interface = { index = index, order = order }
 	setmetatable( interface, ModUtil.Experimental.Metatables.LocalsInterface )
@@ -722,8 +722,8 @@ ModUtil.Experimental.Metatables.DirectPairLocals = {
 	end
 }
 
-ModUtil.DirectPairLocals = {}
-setmetatable(ModUtil.DirectPairLocals, ModUtil.Experimental.Metatables.DirectPairLocals)
+ModUtil.Experimental.DirectPairLocals = {}
+setmetatable(ModUtil.Experimental.DirectPairLocals, ModUtil.Experimental.Metatables.DirectPairLocals)
 
 ModUtil.Experimental.Metatables.Locals = {
 	__index = function( _, name)
@@ -793,11 +793,11 @@ ModUtil.Experimental.Metatables.Locals = {
 	be used.
 
 	For example, if your function is called from CreateTraitRequirements,
-	you could access its 'local screen' as ModUtil.Locals.screen
-	and its 'local hasRequirement' as ModUtil.Locals.hasRequirement.
+	you could access its 'local screen' as ModUtil.Experimental.Locals.screen
+	and its 'local hasRequirement' as ModUtil.Experimental.Locals.hasRequirement.
 ]]
-ModUtil.Locals = {}
-setmetatable(ModUtil.Locals, ModUtil.Experimental.Metatables.Locals)
+ModUtil.Experimental.Locals = {}
+setmetatable(ModUtil.Experimental.Locals, ModUtil.Experimental.Metatables.Locals)
 
 ModUtil.Experimental.Metatables.DirectUpValues = {
 	__index = function( self, idx )
@@ -857,7 +857,7 @@ ModUtil.Experimental.Metatables.UpValues = {
 
 	func - the function to get upvalues from
 ]]
-function ModUtil.GetUpValues( func )
+function ModUtil.Experimental.GetUpValues( func )
 	local ind = {}
 	local name
 	local i = 1
@@ -872,13 +872,13 @@ function ModUtil.GetUpValues( func )
 	return ups, ind
 end
 
-function ModUtil.GetDirectUpValues( func )
+function ModUtil.Experimental.GetDirectUpValues( func )
 	local ups = { func = func }
 	setmetatable(ups, ModUtil.Experimental.Metatables.DirectUpValues)
 	return ups
 end
 
-function ModUtil.GetBottomUpValues( baseTable, indexArray )
+function ModUtil.Experimental.GetBottomUpValues( baseTable, indexArray )
 	local baseValue = ModUtil.SafeGet( ModUtil.Internal.Overrides[baseTable], indexArray )
 	if baseValue then
 		baseValue = baseValue[#baseValue].Base
@@ -890,10 +890,10 @@ function ModUtil.GetBottomUpValues( baseTable, indexArray )
 			baseValue = ModUtil.SafeGet( baseTable, indexArray )
 		end
 	end 
-	return ModUtil.GetUpValues( baseValue )
+	return ModUtil.Experimental.GetUpValues( baseValue )
 end
 
-function ModUtil.GetBottomDirectUpValues( baseTable, indexArray )
+function ModUtil.Experimental.GetBottomDirectUpValues( baseTable, indexArray )
 	local baseValue = ModUtil.SafeGet( ModUtil.Internal.Overrides[baseTable], indexArray )
 	if baseValue then
 		baseValue = baseValue[#baseValue].Base
@@ -905,7 +905,7 @@ function ModUtil.GetBottomDirectUpValues( baseTable, indexArray )
 			baseValue = ModUtil.SafeGet( baseTable, indexArray )
 		end
 	end 
-	return ModUtil.GetDirectUpValues( baseValue )
+	return ModUtil.Experimental.GetDirectUpValues( baseValue )
 end
 
 --[[
@@ -915,12 +915,12 @@ end
 
 	basePath - the path to the function, as a string
 ]]
-function ModUtil.GetBaseBottomUpValues( basePath )
-	return ModUtil.GetBottomUpValues( _G, ModUtil.PathArray( basePath ) )
+function ModUtil.Experimental.GetBaseBottomUpValues( basePath )
+	return ModUtil.Experimental.GetBottomUpValues( _G, ModUtil.PathArray( basePath ) )
 end
 
-function ModUtil.GetBaseBottomDirectUpValues( basePath )
-	return ModUtil.GetBottomDirectUpValues( _G, ModUtil.PathArray( basePath ) )
+function ModUtil.Experimental.GetBaseBottomDirectUpValues( basePath )
+	return ModUtil.Experimental.GetBottomDirectUpValues( _G, ModUtil.PathArray( basePath ) )
 end
 
 ModUtil.Experimental.Metatables.EntangledIsomorphism = {
@@ -1891,7 +1891,7 @@ function ModUtil.Experimental.CreateContext( callEnvAndArgsProducer )
 
 	return function( targetPath_or_targetIndexArray, call, ... )
 		
-		local oldContextInfo = ModUtil.Locals._ContextInfo
+		local oldContextInfo = ModUtil.Experimental.Locals._ContextInfo
 		local contextInfo = {
 			call = call,
 			parent = oldContextInfo
