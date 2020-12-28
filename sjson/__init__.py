@@ -236,7 +236,11 @@ def _decode_string(stream, allow_identifier=False):
             break
 
         if raw_quotes:
-            if stream.peek(3) == b'"""':
+            # SGG allows unescaped quotation marks as the last character in a block quote.
+            # For example, see Game/Text/pl/CodexText.pl.sjson
+            # In this case, there will be 4 (or more) quotation marks in a row, and the block
+            # quote ends with the _last_ 3, not the first 3.
+            if stream.peek(3) == b'"""' and stream.peek(4) != b'""""':
                 stream.skip(3)
                 break
             else:
