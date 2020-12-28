@@ -7,24 +7,21 @@ Author: MagicGonads
 
 ]]
 
--- BETA VERSION
-
-local Config = {
-	AutoCollapse = true,
-}
-
 ModUtil = {
-	Config = Config,
 	ModName = "ModUtil",
-	WrapCallbacks = {},
 	Mods = {},
-	Overrides = {},
-	PerFunctionEnv = {},
 	Anchors = {Menu={},CloseFuncs={}},
-	Context = {},
 	Metatables = {},
-	FuncsToLoad = {},
-	MarkedForCollapse = {},
+	Internal = {
+		Overrides = {},
+		WrapCallbacks = {},
+		PerFunctionEnv = {}
+	}	,
+	Experimental = {
+		Context = {},
+		Metatables = {},
+		New = {},
+	}
 }
 SaveIgnores["ModUtil"]=true
 
@@ -51,24 +48,6 @@ function ModUtil.RegisterMod( modName, parent )
 	return parent[modName]
 end
 
--- internal
-function ModUtil.LoadFuncs( triggerArgs )
-	for _,v in pairs(ModUtil.FuncsToLoad) do
-		v(triggerArgs)
-	end
-	ModUtil.FuncsToLoad = {}
-end
-OnAnyLoad{ModUtil.LoadFuncs}
-
---[[
-	Run the provided function once on the next in-game load.
-
-	triggerFunction - the function to run
-]]
-function ModUtil.LoadOnce( triggerFunction )
-	table.insert( ModUtil.FuncsToLoad, triggerFunction )
-end
-
 --[[
 	Tell each screen anchor that they have been forced closed by the game
 ]]
@@ -80,6 +59,38 @@ function ModUtil.ForceClosed( triggerArgs )
 	ModUtil.Anchors.Menu = {}
 end
 OnAnyLoad{ModUtil.ForceClosed}
+
+local funcsToLoad = {}
+
+local function loadFuncs( triggerArgs )
+	for _,v in pairs(funcsToLoad) do
+		v(triggerArgs)
+	end
+	funcsToLoad = {}
+end
+OnAnyLoad{loadFuncs}
+
+--[[
+	Run the provided function once on the next in-game load.
+
+	triggerFunction - the function to run
+]]
+function ModUtil.LoadOnce( triggerFunction )
+	table.insert( funcsToLoad, triggerFunction )
+end
+
+--[[
+	Cancel running the provided function once on the next in-game load.
+
+	triggerFunction - the function to cancel running
+]]
+function ModUtil.CancelLoadOnce( triggerFunction )
+	for i,v in ipairs(funcsToLoad) do
+		if v == triggerFunction then
+			table.remove( funcsToLoad, i )
+		end
+	end
+end
 
 -- Data Misc
 
@@ -117,36 +128,6 @@ function ModUtil.ToString( o )
 			s = s .. ModUtil.KeyString( k ) ..' = ' .. ModUtil.ToString( v )
 		end
 		return s .. '}'
-	else
-		return ModUtil.ValueString( o )
-	end
-end
-
-function ModUtil.ToStringLimited( o, n, m, t, j)
-	if type( o ) == 'table' then
-		local first = true
-		local s = ''
-		local i = 0
-		local go = true
-		if not j then j = 1 end
-		if not m then m = 0 end
-		if not t then t = {} end
-		for k,v in pairs( o ) do
-			if t[j] then go = type( v ) == t[j] or t[j] == true end
-			if go then
-				i = i + 1
-				if n then if i > n+m then return s end end
-				if m < i then
-					if not first then s = s .. ', ' else first = false end
-					if type( v ) == "table" and t[j+1] then
-						s = s .. ModUtil.KeyString( k ) ..' = ('..ModUtil.ToStringLimited( v, n, m, t, j+1 )..')'
-					else
-						s = s .. ModUtil.KeyString( k ) ..' = '..ModUtil.ValueString( v )
-					end
-				end
-			end
-		end
-		return s
 	else
 		return ModUtil.ValueString( o )
 	end
@@ -197,18 +178,57 @@ function ModUtil.IsUnKeyed( tableArg )
 	return true
 end
 
-function ModUtil.AutoIsUnKeyed( tableArg )
-	if ModUtil.Config.AutoCollapse then
-		if not ModUtil.MarkedForCollapse[ tableArg ] then
-			return ModUtil.IsUnKeyed( tableArg )
-		else
-			return false
-		end
+-- Data Manipulation
+
+local function CollapseTable( tableArg )
+	-- from UtilityScripts.lua
+	if tableArg == nil then
+		return
+	end
+
+	local collapsedTable = {}
+	local index = 1
+	for _, v in pairs( tableArg ) do
+		collapsedTable[index] = v
+		index = index + 1
+	end
+
+	return collapsedTable
+
+end
+
+local markedForCollapse = {}
+
+local function autoIsUnKeyed( tableArg )
+	if not markedForCollapse[ tableArg ] then
+		return ModUtil.IsUnKeyed( tableArg )
 	end
 	return false
 end
 
--- Data Manipulation
+function ModUtil.CollapseMarked()
+	for tbl,state in pairs( markedForCollapse ) do
+		if state then
+			local ctbl = CollapseTable( tbl )
+			for k,_ in pairs( tbl ) do
+				tbl[ k ] = nil
+			end
+			for k,v in pairs( ctbl ) do
+				tbl[ k ] = v
+			end
+		end
+	end
+	markedForCollapse = {}
+end
+OnAnyLoad{ ModUtil.CollapseMarked }
+
+function ModUtil.MarkForCollapse( tableArg )
+	markedForCollapse[ tableArg ] = true
+end
+
+function ModUtil.UnmarkForCollapse( tableArg )
+	markedForCollapse[ tableArg ] = false
+end
 
 --[[
 	Safely create a new empty table at Table.key.
@@ -216,7 +236,7 @@ end
 	Table - the table to modify
 	key	 - the key at which to store the new empty table
 ]]
-function ModUtil.NewTable( tableArg, key )
+function ModUtil.Experimental.NewTable( tableArg, key )
 	if type( tableArg ) ~= "table" then return end
 	if tableArg[key] == nil then
 		tableArg[key] = {}
@@ -268,11 +288,11 @@ function ModUtil.SafeSet( baseTable, indexArray, value )
 	local node = baseTable
 	for i = 1, n-1 do
 		local k = indexArray[i]
-		ModUtil.NewTable( node, k )
+		ModUtil.Experimental.NewTable( node, k )
 		node = node[k]
 	end
 	if ( node[indexArray[n]] == nil ) ~= ( value == nil ) then
-		if ModUtil.AutoIsUnKeyed( baseTable ) then
+		if autoIsUnKeyed( baseTable ) then
 			ModUtil.MarkForCollapse( node )
 		end
 	end
@@ -313,7 +333,7 @@ end
 	}
 ]]
 function ModUtil.MapNilTable( inTable, nilTable )
-	local unkeyed = ModUtil.AutoIsUnKeyed( inTable )
+	local unkeyed = autoIsUnKeyed( inTable )
 	for nilKey, nilVal in pairs( nilTable ) do
 		local inVal = inTable[nilKey]
 		if type(nilVal) == "table" and type( inVal ) == "table" then
@@ -355,7 +375,7 @@ end
 	}
 ]]
 function ModUtil.MapSetTable( inTable, setTable )
-	local unkeyed = ModUtil.AutoIsUnKeyed( inTable )
+	local unkeyed = autoIsUnKeyed( inTable )
 	for setKey, setVal in pairs( setTable ) do
 		local inVal = inTable[setKey]
 		if type( setVal ) == "table" and type( inVal ) == "table" then
@@ -367,41 +387,6 @@ function ModUtil.MapSetTable( inTable, setTable )
 			end
 		end
 	end
-end
-
-local function CollapseTable( tableArg )
-	-- from UtilityScripts.lua
-	if tableArg == nil then
-		return
-	end
-
-	local collapsedTable = {}
-	local index = 1
-	for _, v in pairs( tableArg ) do
-		collapsedTable[index] = v
-		index = index + 1
-	end
-
-	return collapsedTable
-
-end
-
-function ModUtil.CollapseMarked()
-	for tbl,_ in pairs( ModUtil.MarkedForCollapse ) do
-		local ctbl = CollapseTable( tbl )
-		for k,_ in pairs(tbl) do
-			tbl[k]=nil
-		end
-		for k,v in pairs(ctbl) do
-			tbl[k] = v
-		end
-	end
-	ModUtil.MarkedForCollapse = {}
-end
-OnAnyLoad{ModUtil.CollapseMarked}
-
-function ModUtil.MarkForCollapse( table )
-	ModUtil.MarkedForCollapse[table] = true
 end
 
 -- Path Manipulation
@@ -485,70 +470,91 @@ function ModUtil.PathSetTable( path, setTable, base )
 	return ModUtil.MapSetTable( ModUtil.PathGet( path, base ), setTable )
 end
 
+-- Extended Global Utilities
+
+local is52 = getfenv == nil
+
+function call( func, ... )
+	return func( ... )
+end
+
+if is52 then
+
+	function getfenv( fn )
+		local i = 1
+		while true do
+			local name, val = debug.getupvalue(fn, i)
+			if name == "_ENV" then
+				return val
+			elseif not name then
+				break
+			end
+			i = i + 1
+		end
+	end
+
+	--[[
+		Replace a function's _ENV with a new environment table.
+
+		Global variable lookups (including function calls) in that function
+		will use the new environment table rather than the normal one.
+
+		This is useful for function-specific overrides. The new environment
+		table should generally have _G as its __index, so that any globals
+		other than those being overridden can still be read.
+	]]
+	function setfenv( fn, env )
+		local i = 1
+		while true do
+			local name = debug.getupvalue( fn, i )
+			if name == "_ENV" then
+				debug.upvaluejoin( fn, i, (function()
+					return env
+				end), 1 )
+				break
+			elseif not name then
+				break
+			end
+			i = i + 1
+		end
+		return fn
+	end
+	
+else
+
+	rawnext = next
+	function next(t,k)
+		local m = getmetatable(t)
+		local n = m and m.__next or rawnext
+		return n(t,k)
+	end
+
+	rawpairs = pairs
+	function pairs(t,k)
+		local m = getmetatable(t)
+		local n = m and m.__pairs or rawpairs
+		return n(t)
+	end
+
+	rawipairs = ipairs
+	function ipairs(t,k)
+		local m = getmetatable(t)
+		local n = m and m.__ipairs or rawipairs
+		return n(t)
+	end
+
+	rawlen = function(t) return #t end
+	function len(t)
+		local m = getmetatable(t)
+		local n = m and m.__len or rawlen
+		return n(t)
+	end
+
+end
+
 -- Metaprogramming Shenanigans
 
-function getfenv( fn )
-	local i = 1
-	while true do
-		local name, val = debug.getupvalue(fn, i)
-		if name == "_ENV" then
-			return val
-		elseif not name then
-			break
-		end
-		i = i + 1
-	end
-end
-
---[[
-	Replace a function's _ENV with a new environment table.
-
-	Global variable lookups (including function calls) in that function
-	will use the new environment table rather than the normal one.
-
-	This is useful for function-specific overrides. The new environment
-	table should generally have _G as its __index, so that any globals
-	other than those being overridden can still be read.
-]]
-function setfenv( fn, env )
-	local i = 1
-	while true do
-		local name = debug.getupvalue( fn, i )
-		if name == "_ENV" then
-			debug.upvaluejoin( fn, i, (function()
-				return env
-			end), 1 )
-			break
-		elseif not name then
-			break
-		end
-		i = i + 1
-	end
-	return fn
-end
-
-rawnext = next
-function next(t,k)
-  	local m = getmetatable(t)
-  	local n = m and m.__next or rawnext
-  	return n(t,k)
-end
-
-rawpairs = pairs
-function pairs(t,k)
-	local m = getmetatable(t)
-  	local n = m and m.__pairs or rawpairs
-  	return n(t)
-end
-
-rawipairs = ipairs
-function ipairs(t,k)
-  	local m = getmetatable(t)
-  	local n = m and m.__ipairs or rawipairs
-  	return n(t)
-end
-
-ModUtil.Metatables.LocalLevel = {
+ModUtil.Experimental.Metatables.DirectLocalLevel = {
 	__index = function( self, idx )
 		return debug.getlocal( rawget(self,"level") + 1, idx )
 	end,
@@ -583,15 +589,15 @@ ModUtil.Metatables.LocalLevel = {
 		--
 	end
 ]]
-function ModUtil.LocalLevel(level)
+function ModUtil.DirectLocalLevel(level)
 	local localLevel = { level = level }
-	setmetatable( localLevel, ModUtil.Metatables.LocalLevel )
+	setmetatable( localLevel, ModUtil.Experimental.Metatables.DirectLocalLevel )
 	return localLevel
 end
 
-ModUtil.Metatables.LocalLevels = {
+ModUtil.Experimental.Metatables.DirectLocalLevels = {
 	__index = function( _, level )
-		return level, ModUtil.LocalLevel( level )
+		return level, ModUtil.DirectLocalLevel( level )
 	end,
 	__next = function( _, level )
 		if level == nil then
@@ -599,7 +605,7 @@ ModUtil.Metatables.LocalLevels = {
 		end
 		level = level + 1
 		if debug.getinfo(level + 1, "f") then
-			return level, ModUtil.LocalLevel( level )
+			return level, ModUtil.DirectLocalLevel( level )
 		end
 	end,
 	__pairs = function( self )
@@ -617,28 +623,28 @@ ModUtil.Metatables.LocalLevels = {
 		end
 	end
 ]]
-ModUtil.LocalLevels = {}
-setmetatable(ModUtil.LocalLevels, ModUtil.Metatables.LocalLevels)
+ModUtil.DirectLocalLevels = {}
+setmetatable(ModUtil.DirectLocalLevels, ModUtil.Experimental.Metatables.DirectLocalLevels)
 
-ModUtil.Metatables.LocalsInterface = {
+ModUtil.Experimental.Metatables.LocalsInterface = {
 	__index = function( self, name )
 		local pair = rawget(self,"index")[name]
 		if pair ~= nil then
-			local _,value = debug.getlocal( pair.level + 1, pair.i )
+			local _,value = debug.getlocal( pair.level + 1, pair.index )
 			return value
 		end
 	end,
 	__newindex = function( self, name, value )
 		local pair = rawget(self,"index")[name]
 		if pair ~= nil then
-			debug.setlocal( pair.level + 1, pair.i, value )
+			debug.setlocal( pair.level + 1, pair.index, value )
 		end
 	end,
 	__next = function( self, name )
 		local pair
 		name, pair = next( rawget(self,"index"), name )
 		if pair ~= nil then
-			local _, value = debug.getlocal( pair.level + 1, pair.i )
+			local _, value = debug.getlocal( pair.level + 1, pair.index )
 			return name, value
 		end
 	end,
@@ -646,15 +652,8 @@ ModUtil.Metatables.LocalsInterface = {
 		return getmetatable( self ).__next, self, nil
 	end,
 	__ipairs = function( self )
-		return function( self, i )
-			local name
-			i, name = next( rawget(t,"order"), i )
-			pair = rawget(self,"index")[name]
-			if pair ~= nil then
-				local _, value = debug.getlocal( pair.level + 1, pair.i )
-				return i, value
-			end
-		end, self, 0
+		-- basically does nothing, but conforms to ipairs contract
+		return getmetatable( self ).__next, self, 0
 	end
 }
 
@@ -674,23 +673,59 @@ function ModUtil.GetLocalsInterface( names )
 	local order = {}
 	local index = {}
 
-	local level,localLevel = next(ModUtil.LocalLevels, 1)
+	local level, localLevel = next( ModUtil.DirectLocalLevels, 1 )
 	while level do
-		for i, name, value in pairs(localLevel) do
-			if (not names or lookup[name]) and index[name] == nil then
-				index[name] = {level = level - 1, i = i}
+		for i, name, value in pairs( localLevel ) do
+			if (not names or lookup[ name ]) and index[ name ] == nil then
+				index[ name ] = { level = level - 1, index = i }
 				table.insert( order, name )
 			end
 		end
-		level,localLevel = next(ModUtil.LocalLevels, level)
+		level,localLevel = next( ModUtil.DirectLocalLevels, level )
 	end
-	local interface = {index = index, order = order}
-	setmetatable(interface, ModUtil.Metatables.LocalsInterface)
+	local interface = { index = index, order = order }
+	setmetatable( interface, ModUtil.Experimental.Metatables.LocalsInterface )
 
 	return interface, index, order
 end
 
-ModUtil.Metatables.Locals = {
+ModUtil.Experimental.Metatables.DirectPairLocals = {
+	__index = function( _, pair )
+		return debug.getlocal( pair.level + 1, pair.index )
+	end,
+	__newindex = function( _, pair, value )
+		debug.setlocal( pair.level + 1, pair.index, value)
+	end,
+	__next = function( _, pair )
+		local nextpair = {level = 1, index = 1}
+		if pair == nil then
+			return nextpair, debug.getlocal( 2, 1 )
+		end
+		
+		nextpair.level = pair.level
+		nextpair.index = pair.index + 1
+		while debug.getinfo( nextpair.level + 1, "f") do
+			local name, value = debug.getlocal( nextpair.level + 1, nextpair.index )
+			if name then
+				return nextpair, name, value
+			end
+			nextpair.level = nextpair.level + 1
+			nextpair.index = 1
+		end
+		
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return getmetatable( self ).__next, self, 0
+	end
+}
+
+ModUtil.DirectPairLocals = {}
+setmetatable(ModUtil.DirectPairLocals, ModUtil.Experimental.Metatables.DirectPairLocals)
+
+ModUtil.Experimental.Metatables.Locals = {
 	__index = function( _, name)
 		local level = 2
 		while debug.getinfo(level, "f") do
@@ -744,27 +779,11 @@ ModUtil.Metatables.Locals = {
 		end
 	end,
 	__pairs = function( self )
-		return getmetatable(self).__next, self, nil
+		return getmetatable( self ).__next, self, nil
 	end,
 	__ipairs = function( self )
-		return function( self, i )
-			local level = 2
-			local j = 0
-			while debug.getinfo(level, "f") do
-				local idx = 1
-				while true do
-					j = j + 1
-					local n, v = debug.getlocal(level, idx)
-					if not n then
-						break
-					elseif j > i then
-						return j, v
-					end
-					idx = idx + 1
-				end
-				level = level + 1
-			end
-		end, self, 0
+		-- basically does nothing, but conforms to ipairs contract
+		return getmetatable( self ).__next, self, 0
 	end
 }
 
@@ -778,33 +797,54 @@ ModUtil.Metatables.Locals = {
 	and its 'local hasRequirement' as ModUtil.Locals.hasRequirement.
 ]]
 ModUtil.Locals = {}
-setmetatable(ModUtil.Locals, ModUtil.Metatables.Locals)
+setmetatable(ModUtil.Locals, ModUtil.Experimental.Metatables.Locals)
 
-ModUtil.Metatables.UpValues = {
+ModUtil.Experimental.Metatables.DirectUpValues = {
+	__index = function( self, idx )
+		return debug.getupvalue( rawget(self,"func"), idx )
+	end,
+	__newindex = function( self, idx, value )
+		debug.setupvalue( rawget(self,"func"), idx, value )
+	end,
+	__len = function( self )
+		return debug.getinfo( rawget( self, "func" ), 'u' ).nups
+	end,
+	__next = function ( self, idx )
+		idx = idx + 1
+		return idx, debug.getupvalue( rawget(self,"func"), idx )
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return getmetatable( self ).__next, self, 0
+	end
+}
+
+ModUtil.Experimental.Metatables.UpValues = {
 	__index = function( self, name )
-		local _, v = debug.getupvalue( rawget(self,"func"), rawget(self,"ind")[name] )
+		local _, v = debug.getupvalue( rawget( self, "func" ), rawget( self, "ind" )[ name ] )
 		return v
 	end,
 	__newindex = function( self, name, value )
-		debug.setupvalue( rawget(self,"func"), rawget(self,"ind")[name], value )
+		debug.setupvalue( rawget( self, "func" ), rawget( self, "ind" )[ name ], value )
+	end,
+	__len = function ( self )
+		return rawget( self, "n" )
 	end,
 	__next = function ( self, name )
+		local i
 		name, i = next( rawget(self,"ind"), name )
 		if i ~= nil then
 			return debug.getupvalue( rawget(self,"func"), i )
 		end
 	end,
 	__pairs = function( self )
-		return getmetatable(self).__next, self, nil
+		return getmetatable( self ).__next, self, nil
 	end,
 	__ipairs = function( self )
-		return function( self, i )
-			i = i + 1
-			local name,v = debug.getupvalue( rawget(self,"func"), i )
-			if name ~= nil then
-				return i, v
-			end
-		end, self, 0
+		-- basically does nothing, but conforms to ipairs contract
+		return getmetatable( self ).__next, self, 0
 	end
 }
 
@@ -827,17 +867,23 @@ function ModUtil.GetUpValues( func )
 		ind[name] = i
 		i = i + 1
 	end
-	local ups = {func = func, ind = ind}
-	setmetatable(ups, ModUtil.Metatables.UpValues)
+	local ups = {func = func, ind = ind, n = debug.getinfo( func, 'u' ).nups}
+	setmetatable(ups, ModUtil.Experimental.Metatables.UpValues)
 	return ups, ind
 end
 
+function ModUtil.GetDirectUpValues( func )
+	local ups = { func = func }
+	setmetatable(ups, ModUtil.Experimental.Metatables.DirectUpValues)
+	return ups
+end
+
 function ModUtil.GetBottomUpValues( baseTable, indexArray )
-	local baseValue = ModUtil.SafeGet( ModUtil.Overrides[baseTable], indexArray )
+	local baseValue = ModUtil.SafeGet( ModUtil.Internal.Overrides[baseTable], indexArray )
 	if baseValue then
 		baseValue = baseValue[#baseValue].Base
 	else
-		baseValue = ModUtil.SafeGet( ModUtil.WrapCallbacks[baseTable], indexArray )
+		baseValue = ModUtil.SafeGet( ModUtil.Internal.WrapCallbacks[baseTable], indexArray )
 		if baseValue then
 			baseValue = baseValue[1].Func
 		else
@@ -845,6 +891,21 @@ function ModUtil.GetBottomUpValues( baseTable, indexArray )
 		end
 	end 
 	return ModUtil.GetUpValues( baseValue )
+end
+
+function ModUtil.GetBottomDirectUpValues( baseTable, indexArray )
+	local baseValue = ModUtil.SafeGet( ModUtil.Internal.Overrides[baseTable], indexArray )
+	if baseValue then
+		baseValue = baseValue[#baseValue].Base
+	else
+		baseValue = ModUtil.SafeGet( ModUtil.Internal.WrapCallbacks[baseTable], indexArray )
+		if baseValue then
+			baseValue = baseValue[1].Func
+		else
+			baseValue = ModUtil.SafeGet( baseTable, indexArray )
+		end
+	end 
+	return ModUtil.GetDirectUpValues( baseValue )
 end
 
 --[[
@@ -856,6 +917,250 @@ end
 ]]
 function ModUtil.GetBaseBottomUpValues( basePath )
 	return ModUtil.GetBottomUpValues( _G, ModUtil.PathArray( basePath ) )
+end
+
+function ModUtil.GetBaseBottomDirectUpValues( basePath )
+	return ModUtil.GetBottomDirectUpValues( _G, ModUtil.PathArray( basePath ) )
+end
+
+ModUtil.Experimental.Metatables.EntangledIsomorphism = {
+	__index = function( self, key )
+		return rawget( self, "data" )[ key ]
+	end,
+	__newindex = function( self, key, value )
+		local data, inverse = rawget( self, "data" ), rawget( self, "inverse" )
+		if value ~= nil then
+			local k = inverse[ value ]
+			if k ~= nil and k ~= key then
+				data[ k ] = nil
+			end
+			inverse[ value ] = key
+		end
+		if key ~= nil then
+			local v = data[ key ]
+			if v ~= nil and v ~= value then
+				inverse[ v ] = nil
+			end
+			data[ key ] = value
+		end		
+	end,
+	__len = function( self )
+		return len(rawget( self, "data" ))
+	end,
+	__next = function( self, key )
+		return next( rawget( self, "data" ), key )
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return getmetatable( self ).__next, self, 0
+	end
+}
+
+ModUtil.Experimental.Metatables.EntangledIsomorphismInverse = {
+	__index = function( self, value )
+		return rawget( self, "inverse" )[ value ]
+	end,
+	__newindex = function( self, value, key )
+		local data, inverse = rawget( self, "data" ), rawget( self, "inverse" )
+		if value ~= nil then
+			local k = inverse[ value ]
+			if k ~= nil and k ~= key then
+				data[ k ] = nil
+			end
+			inverse[ value ] = key
+		end
+		if key ~= nil then
+			local v = data[key]
+			if v ~= nil and v ~= value then
+				inverse[ v ] = nil
+			end
+			data[ key ] = value
+		end	
+	end,
+	__len = function( self )
+		return len(rawget( self, "inverse" ))
+	end,
+	__next = function( self, value )
+		return next( rawget( self, "inverse" ), value )
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return getmetatable( self ).__next, self, 0
+	end
+}
+
+function ModUtil.Experimental.New.EntangledInvertiblePair()
+	local data, inverse = {}, {}
+	data, inverse = { data = data, inverse = inverse }, { data = data, inverse = inverse }
+	setmetatable( data, ModUtil.Experimental.Metatables.EntangledIsomorphism )
+	setmetatable( inverse, ModUtil.Experimental.Metatables.EntangledIsomorphismInverse )
+	return { data = data, inverse = inverse }
+end
+
+function ModUtil.Experimental.New.EntangledInvertiblePairFromTable( tableArg )
+	local pair = ModUtil.Experimental.New.EntangledInvertiblePair()
+	for key, value in pairs( tableArg ) do
+		pair.data[ key ] = value
+	end
+	return pair
+end
+
+function ModUtil.Experimental.New.EntangledInvertiblePairFromInverse( inverseArg )
+	local pair = ModUtil.Experimental.New.EntangledInvertiblePair()
+	for value, key in pairs( inverseArg ) do
+		pair.inverse[ value ] = key
+	end
+	return pair
+end
+
+ModUtil.Experimental.Metatables.PreImageNode = {
+	__index = function( self, idx )
+		local data = rawget( self, "data" )
+		if idx == nil then
+			idx = len(data)
+		end
+		return data[ idx ]
+	end,
+	__newindex = function( self, idx, key )
+		local data = rawget( self, "data" )
+		local n = len(data)
+		if idx == nil then
+			idx = n
+		end
+
+		data[ idx ] = value
+		if key == nil and idx < n then
+			local inverse = rawget( data, "inverse" )
+			data = rawget( data, "data" )
+			for i = idx, n-1 do
+				data[i]=data[i+1]
+				inverse[data[i]]=i
+			end
+		end
+	end,
+	__len = function( self )
+		return len(rawget( self, "data" ))
+	end,
+	__next = function( self, value )
+		return next( rawget( self, "inverse" ), value )
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return getmetatable( self ).__next, self, 0
+	end
+}
+
+ModUtil.Experimental.Metatables.EntangledPreImageNode = {
+	__index = ModUtil.Experimental.Metatables.PreImageNode.__index,
+	__newindex = function( self, idx, key )
+		local data = rawget( self, "data" )
+		local n = len(data)
+		if idx == nil then
+			idx = n
+		end
+
+		local value = rawget( data, "value" )
+		if value ~= nil then
+			rawget( rawget( data, "parent" ), "data" )[idx] = value
+		end
+		data[ idx ] = value
+		if key == nil and idx < n then
+			local inverse = rawget( data, "inverse" )
+			data = rawget( data, "data" )
+			for i = idx, n-1 do
+				data[i]=data[i+1]
+				inverse[data[i]]=i
+			end
+		end
+	end,
+	__len = ModUtil.Experimental.Metatables.PreImageNode.__len,
+	__next = ModUtil.Experimental.Metatables.PreImageNode.__next,
+	__pairs = ModUtil.Experimental.Metatables.PreImageNode.__pairs,
+	__ipairs = ModUtil.Experimental.Metatables.PreImageNode.__ipairs
+}
+
+
+function ModUtil.Experimental.New.EntangledPreImageNode( self, value )
+	local data, inverse = {}, {}
+	data, inverse = {parent = self, value = value, data = data, inverse = inverse }, {parent = self, value = value, data = data, inverse = inverse }
+	local pair = {data, inverse}
+	setmetatable( pair, ModUtil.Experimental.Metatables.EntangledPreImageNode )
+	return pair
+end
+
+ModUtil.Experimental.Metatables.EntangledMorphism = {
+	__index = function( self, key )
+		return rawget( self, "data" )[ key ]
+	end,
+	__newindex = function( self, key, value )
+		rawget( self, "data" )[ key ] = value
+		rawget( self, "preImage" )[ value ][ nil ] = key
+	end,
+	__next = function( self, key )
+		return next( rawget( self, "data" ), key )
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return getmetatable( self ).__next, self, 0
+	end
+}
+
+ModUtil.Experimental.Metatables.EntangledMorphismPreImage = {
+	__index = function( self, value )
+		return rawget( self, "preImage" )[ value ]
+	end,
+	__newindex = function( self, value, keys )
+		local preImage = rawget( self, "preImage" )
+		local preImagePair = preImage[value]
+		if preImagePair == nil then
+			preImagePair = ModUtil.Experimental.New.EntangledPreImageNode( self, value )
+			preImage[value] = preImagePair
+		end
+		for _, key in pairs(preImagePair) do
+			rawget( self, "data" )[ key ] = value
+		end
+	end,
+	__next = function( self, value )
+		return next( rawget( self, "preImage" ), value )
+	end,
+	__pairs = function( self )
+		return getmetatable( self ).__next, self, nil
+	end,
+	__ipairs = function( self )
+		return getmetatable( self ).__next, self, 0
+	end
+}
+
+function ModUtil.Experimental.New.EntangledPair()
+	local data, preImage = {}, {}
+	data, preImage = { data = data, preImage = preImage }, { data = data, preImage = preImage }
+	setmetatable( data, ModUtil.Experimental.Metatables.EntangledMorphism )
+	setmetatable( preImage, ModUtil.Experimental.Metatables.EntangledMorphismPreImage )
+	return {data = data, preImage = preImage}
+end
+
+function ModUtil.Experimental.New.EntangledPairFromTable( tableArg )
+	local pair = ModUtil.Experimental.New.EntangledPair()
+	for key, value in pairs( tableArg ) do
+		pair.data[key] = value
+	end
+	return pair
+end
+
+function ModUtil.Experimental.New.EntangledPairFromPreImage( preImage )
+	local pair = ModUtil.Experimental.New.EntangledPair()
+	for value, keys in pairs( preImage ) do
+		pair.preImage[ value ] = keys
+	end
+	return pair
 end
 
 -- Globalisation
@@ -919,7 +1224,7 @@ end
 
 		ModUtil.GlobaliseFuncs(YourModName.UIFunctions, "YourModNameUI")
 
-	So that the global functions are called YourModNameUI__OnButton1 etc.
+	So that the global functions are called "YourModNameUI.OnButton1" etc.
 
 	tableArg	- The table containing the functions to globalise
 	prefixPath	- (optional) if present, add this path as a prefix to the
@@ -973,7 +1278,7 @@ end
 
 	Wrappers are stored in a structure like this:
 
-	ModUtil.WrapCallbacks[_G].UIFunctions.OnButton1Pushed = {
+	ModUtil.Internal.WrapCallbacks[_G].UIFunctions.OnButton1Pushed = {
 		{id:1, mod=MyModObject, wrap=wrapper, func=<original unwrapped function>}
 	}
 
@@ -981,7 +1286,7 @@ end
 		WrapFunction(_G, ["UIFunctions", "OnButton1Pushed"], wrapperFunction2, SomeOtherMod)
 	then the resulting structure will be like:
 
-	ModUtil.WrapCallbacks[_G].UIFunctions.OnButton1Pushed = {
+	ModUtil.Internal.WrapCallbacks[_G].UIFunctions.OnButton1Pushed = {
 		{id:1, mod=MyModObject,	wrap=wrapper,	func=<original unwrapped function>}
 		{id:2, mod=SomeOtherMod, wrap=wrapper2, func=<original function + wrapper1>}
 	}
@@ -1006,11 +1311,11 @@ function ModUtil.WrapFunction( funcTable, indexArray, wrapFunc, modObject )
 	local func = ModUtil.SafeGet( funcTable, indexArray )
 	if type( func ) ~= "function" then return end
 
-	ModUtil.NewTable( ModUtil.WrapCallbacks, funcTable )
-	local tempTable = ModUtil.SafeGet( ModUtil.WrapCallbacks[funcTable], indexArray )
+	ModUtil.Experimental.NewTable( ModUtil.Internal.WrapCallbacks, funcTable )
+	local tempTable = ModUtil.SafeGet( ModUtil.Internal.WrapCallbacks[funcTable], indexArray )
 	if tempTable == nil then
 		tempTable = {}
-		ModUtil.SafeSet( ModUtil.WrapCallbacks[funcTable], indexArray, tempTable )
+		ModUtil.SafeSet( ModUtil.Internal.WrapCallbacks[funcTable], indexArray, tempTable )
 	end
 	table.insert( tempTable, { Id = #tempTable + 1, Mod = modObject, Wrap = wrapFunc, Func = func } )
 	
@@ -1023,21 +1328,21 @@ end
 	Internal utility that reapplies the list of wrappers when the base function changes.
 
 	For example. if the list of wrappers looks like:
-	ModUtil.WrapCallbacks[_G].UIFunctions.OnButton1Pushed = {
+	ModUtil.Internal.WrapCallbacks[_G].UIFunctions.OnButton1Pushed = {
 		{id:1, mod=MyModObject,	wrap=wrapper,	func=<original unwrapped function>}
 		{id:2, mod=SomeOtherMod, wrap=wrapper2, func=<original function + wrapper1>}
 		{id:3, mod=ModNumber3,	 wrap=wrapper3, func=<original function + wrapper1 + wrapper 2>}
 	}
 
 	and the base function is modified by setting [1].func to a new value, like so:
-	ModUtil.WrapCallbacks[_G].UIFunctions.OnButton1Pushed = {
+	ModUtil.Internal.WrapCallbacks[_G].UIFunctions.OnButton1Pushed = {
 		{id:1, mod=MyModObject,	wrap=wrapper,	func=<new function>}
 		{id:2, mod=SomeOtherMod, wrap=wrapper2, func=<original function + wrapper1>}
 		{id:3, mod=ModNumber3,	 wrap=wrapper3, func=<original function + wrapper1 + wrapper 2>}
 	}
 
 	Then rewrap function will fix up eg. [2].func, [3].func so that the correct wrappers are applied
-	ModUtil.WrapCallbacks[_G].UIFunctions.OnButton1Pushed = {
+	ModUtil.Internal.WrapCallbacks[_G].UIFunctions.OnButton1Pushed = {
 		{id:1, mod=MyModObject,	wrap=wrapper,	func=<new function>}
 		{id:2, mod=SomeOtherMod, wrap=wrapper2, func=<new function + wrapper1>}
 		{id:3, mod=ModNumber3,	 wrap=wrapper3, func=<new function + wrapper1 + wrapper 2>}
@@ -1050,7 +1355,7 @@ end
 	indexArray	- the array of path elements to the function in the table
 ]]
 function ModUtil.RewrapFunction( funcTable, indexArray )
-	local wrapCallbacks = ModUtil.SafeGet( ModUtil.WrapCallbacks[funcTable], indexArray )
+	local wrapCallbacks = ModUtil.SafeGet( ModUtil.Internal.WrapCallbacks[funcTable], indexArray )
 	local preFunc = nil
 	
 	for i,t in ipairs( wrapCallbacks ) do
@@ -1080,7 +1385,7 @@ function ModUtil.UnwrapFunction( funcTable, indexArray )
 	local func = ModUtil.SafeGet( funcTable, indexArray )
 	if type( func ) ~= "function" then return end
 
-	local tempTable = ModUtil.SafeGet( ModUtil.WrapCallbacks[funcTable], indexArray )
+	local tempTable = ModUtil.SafeGet( ModUtil.Internal.WrapCallbacks[funcTable], indexArray )
 	if not tempTable then return end 
 	local funcData = table.remove( tempTable ) -- removes the last value
 	if not funcData then return end
@@ -1151,7 +1456,7 @@ end
 local function getBaseValueForWraps( baseTable, indexArray )
 	local baseValue = ModUtil.SafeGet( baseTable, indexArray )
 	local wrapCallbacks = nil
-	wrapCallbacks = ModUtil.SafeGet( ModUtil.WrapCallbacks[baseTable], indexArray )
+	wrapCallbacks = ModUtil.SafeGet( ModUtil.Internal.WrapCallbacks[baseTable], indexArray )
 	if wrapCallbacks then if wrapCallbacks[1] then
 		baseValue = wrapCallbacks[1].Func 
 	end end
@@ -1165,7 +1470,7 @@ local function setBaseValueForWraps( baseTable, indexArray, value)
 	if type(baseValue) ~= "function" or type(value) ~= "function" then return false end
 
 	local wrapCallbacks = nil
-	wrapCallbacks = ModUtil.SafeGet( ModUtil.WrapCallbacks[baseTable], indexArray )
+	wrapCallbacks = ModUtil.SafeGet( ModUtil.Internal.WrapCallbacks[baseTable], indexArray )
 	if wrapCallbacks then if wrapCallbacks[1] then
 		baseValue = wrapCallbacks[1].Func 
 		wrapCallbacks[1].Func = value
@@ -1189,7 +1494,7 @@ end
 	For example, ModUtil.Override(_G, ["UIFunctions", "OnButton1"], overrideFunc, MyMod)
 	will result in a data structure like:
 
-	ModUtil.Overrides[_G].UIFunctions.OnButton1 = {
+	ModUtil.Internal.Overrides[_G].UIFunctions.OnButton1 = {
 		{id=1, mod=MyMod, value=overrideFunc, base=<original value of UIFunctions.OnButton1>}
 	}
 
@@ -1205,11 +1510,11 @@ function ModUtil.Override( baseTable, indexArray, value, modObject )
 
 	local baseValue = getBaseValueForWraps( baseTable, indexArray )
 	
-	ModUtil.NewTable( ModUtil.Overrides, baseTable )
-	local tempTable = ModUtil.SafeGet( ModUtil.Overrides[baseTable], indexArray )
+	ModUtil.Experimental.NewTable( ModUtil.Internal.Overrides, baseTable )
+	local tempTable = ModUtil.SafeGet( ModUtil.Internal.Overrides[baseTable], indexArray )
 	if tempTable == nil then
 		tempTable = {}
-		ModUtil.SafeSet( ModUtil.Overrides[baseTable], indexArray, tempTable )
+		ModUtil.SafeSet( ModUtil.Internal.Overrides[baseTable], indexArray, tempTable )
 	end
 	table.insert( tempTable, { Id = #tempTable + 1, Mod = modObject, Value = value, Base = baseValue } )
 	
@@ -1233,7 +1538,7 @@ end
 ]]
 function ModUtil.Restore( baseTable, indexArray )
 	if not baseTable then return end
-	local tempTable = ModUtil.SafeGet( ModUtil.Overrides[baseTable], indexArray )
+	local tempTable = ModUtil.SafeGet( ModUtil.Internal.Overrides[baseTable], indexArray )
 	if not tempTable then return end
 	local baseData = table.remove( tempTable ) -- remove the last entry
 	if not baseData then return end
@@ -1399,11 +1704,11 @@ local function getFunctionEnv( baseTable, indexArray )
 	local func = getBaseValueForWraps( baseTable, indexArray )
 	if type(func) ~= "function" then return nil end
 
-	ModUtil.NewTable( ModUtil.PerFunctionEnv, baseTable )
-	local env = ModUtil.SafeGet(ModUtil.PerFunctionEnv[baseTable], indexArray)
+	ModUtil.Experimental.NewTable( ModUtil.Internal.PerFunctionEnv, baseTable )
+	local env = ModUtil.SafeGet(ModUtil.Internal.PerFunctionEnv[baseTable], indexArray)
 	if not env then
 		env = makeOverrideTable( baseTable )
-		ModUtil.SafeSet( ModUtil.PerFunctionEnv[baseTable], indexArray, env )
+		ModUtil.SafeSet( ModUtil.Internal.PerFunctionEnv[baseTable], indexArray, env )
 		setfenv( func, env )
 	end
 	return env
@@ -1580,14 +1885,60 @@ function ModUtil.WrapBaseWithinFunction( funcPath, baseFuncPath, wrapFunc, modOb
 	ModUtil.WrapWithinFunction( _G, indexArray, envIndexArray, wrapFunc, modObject )
 end
 
--- Context Managers (High WIP)
+-- Context Managers (WIP)
 
-function ModUtil.Context.Within(path, func)
-	local parentEnv = ModUtil.Locals.env or _G
-	local env = getFunctionEnv(parentEnv, path)
-	return env
+function ModUtil.Experimental.CreateContext( callEnvAndArgsProducer )
+
+	return function( targetPath_or_targetIndexArray, call, ... )
+		
+		local oldContextInfo = ModUtil.Locals._ContextInfo
+		local contextInfo = {
+			call = call,
+			parent = oldContextInfo
+		}
+		
+		targetPath_or_targetIndexArray = targetPath_or_targetIndexArray or {}
+		if type(targetPath_or_targetIndexArray) == "string" then
+			targetPath_or_targetIndexArray = ModUtil.PathArray(targetPath_or_targetIndexArray)
+		end
+
+		if oldContextInfo ~= nil then
+			contextInfo.indexArray = ModUtil.JoinIndexArrays(oldContextInfo.indexArray,targetPath_or_targetIndexArray)
+			contextInfo.baseTable = oldContextInfo.baseTable
+		else
+			contextInfo.indexArray = targetPath_or_targetIndexArray
+			contextInfo.baseTable = _G
+		end
+
+		local contextData,contextArgs = callEnvAndArgsProducer( contextInfo, ... )
+		contextData = contextData or _G
+		contextArgs = contextArgs or {}
+
+		local _ContextInfo = contextInfo
+		_ContextInfo.data = contextData
+		_ContextInfo.args = contextArgs
+		
+		setfenv(call,contextData)
+		call(table.unpack(contextArgs))
+
+	end
 end
 
-function ModUtil.Context.Meta(path, func)
-	---
-end
+--ModUtil.Experimental.Context.Call = ModUtil.Experimental.CreateContext( --[[TODO]] )
+ModUtil.Experimental.Context.Meta = ModUtil.Experimental.CreateContext( function( info )
+		local table = ModUtil.SafeGet( info.baseTable, info.indexArray )
+		local meta = getmetatable(table)
+		if not meta then
+			meta = {}
+			setmetatable(table,meta)
+		end
+		return meta
+	end )
+ModUtil.Experimental.Context.Data = ModUtil.Experimental.CreateContext( function( info ) 
+	local table = ModUtil.SafeGet( info.baseTable, info.indexArray )
+	if not table then
+		table = {}
+		ModUtil.SafeGet( info.baseTable, info.indexArray, table )
+	end
+	return table
+end )

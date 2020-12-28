@@ -156,11 +156,10 @@ local function ClosePrintStack()
 		ModUtil.Anchors.PrintStack.KeepOpen = false
 		
 		CloseScreen(GetAllIds(ModUtil.Anchors.PrintStack.Components),0)
+		ModUtil.Anchors.CloseFuncs["PrintStack"] = nil
 		ModUtil.Anchors.PrintStack = nil
 	end
 end
-
-OnAnyLoad{ ClosePrintStack }
 
 local function OrderPrintStack(screen,components)
 	
@@ -249,6 +248,7 @@ function ModUtil.Hades.PrintStack( text, delay, color, bgcol, fontsize, font, so
 	if not ModUtil.Anchors.PrintStack then
 		first = true
 		ModUtil.Anchors.PrintStack = { Components = {} }
+		ModUtil.Anchors.CloseFuncs["PrintStack"] = ClosePrintStack
 	end
 	local screen = ModUtil.Anchors.PrintStack
 	local components = screen.Components
@@ -361,11 +361,11 @@ function ModUtil.Hades.NewMenuYesNo( group, closeFunc, openFunc, yesFunc, noFunc
 
 	components.CloseButton = CreateScreenComponent({ Name = "ButtonClose", Scale = 0.7, Group = group })
 	Attach({ Id = components.CloseButton.Id, DestinationId = components.Background.Id, OffsetX = 0, OffsetY = ScreenCenterY - 315 })
-	components.CloseButton.OnPressedFunctionName = "ModUtil.Hades.CloseMenuYesNo"
+	components.CloseButton.OnPressedFunctionName = ModUtil.JoinPath("ModUtil.Hades.CloseMenuYesNo")
 	components.CloseButton.ControlHotkey = "Cancel"
 
 	components.YesButton = CreateScreenComponent({ Name = "BoonSlot1", Group = group, Scale = 0.35, })
-	components.YesButton.OnPressedFunctionName = "ModUtil.Anchors.Menu."..group..".Funcs.Yes"
+	components.YesButton.OnPressedFunctionName = ModUtil.JoinPath("ModUtil.Anchors.Menu."..group..".Funcs.Yes")
 	SetScaleX({Id = components.YesButton.Id, Fraction = 0.75})
 	SetScaleY({Id = components.YesButton.Id, Fraction = 1.15})
 	Attach({ Id = components.YesButton.Id, DestinationId = components.Background.Id, OffsetX = -150, OffsetY = 75 })
@@ -375,7 +375,7 @@ function ModUtil.Hades.NewMenuYesNo( group, closeFunc, openFunc, yesFunc, noFunc
 	})
 	
 	components.NoButton = CreateScreenComponent({ Name = "BoonSlot1", Group = group, Scale = 0.35, })
-	components.NoButton.OnPressedFunctionName = "ModUtil.Anchors.Menu."..group..".Funcs.No"
+	components.NoButton.OnPressedFunctionName = ModUtil.JoinPath("ModUtil.Anchors.Menu."..group..".Funcs.No")
 	SetScaleX({Id = components.NoButton.Id, Fraction = 0.75})
 	SetScaleY({Id = components.NoButton.Id, Fraction = 1.15})
 	Attach({ Id = components.NoButton.Id, DestinationId = components.Background.Id, OffsetX = 150, OffsetY = 75 })
@@ -389,8 +389,8 @@ end
 
 function ModUtil.Hades.CloseMenuYesNo( screen, button )
 	PlaySound({ Name = "/SFX/Menu Sounds/GeneralWhooshMENU" })
-	_G["ModUtil.Anchors.Menu."..screen.Name..".Funcs.Yes"]=nil
-	_G["ModUtil.Anchors.Menu."..screen.Name..".Funcs.No"]=nil
+	_G[ModUtil.JoinPath("ModUtil.Anchors.Menu."..screen.Name..".Funcs.Yes")]=nil
+	_G[ModUtil.JoinPath("ModUtil.Anchors.Menu."..screen.Name..".Funcs.No")]=nil
 	ModUtil.Hades.CloseMenu( screen, button )
 end
 
