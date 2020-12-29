@@ -522,13 +522,6 @@ if is52 then
 	
 else
 
-	rawnext = next
-	function next(t,k)
-		local m = getmetatable(t)
-		local n = m and m.__next or rawnext
-		return n(t,k)
-	end
-
 	rawpairs = pairs
 	function pairs(t,k)
 		local m = getmetatable(t)
@@ -550,6 +543,13 @@ else
 		return n(t)
 	end
 
+end
+
+rawnext = next
+function next(t,k)
+	local m = getmetatable(t)
+	local n = m and m.__next or rawnext
+	return n(t,k)
 end
 
 -- Metaprogramming Shenanigans
