@@ -8,8 +8,6 @@ Author: MagicGonads
 ]]
 
 ModUtil = {
-	ModName = "ModUtil",
-	Mods = {},
 	Anchors = {
 		Menu = {},
 		CloseFuncs = {}
@@ -49,10 +47,14 @@ function ModUtil.RegisterMod( modName, parent )
 	end
 	if not parent[ modName ] then
 		parent[ modName ] = {}
-		table.insert( ModUtil.Mods, parent[ modName ] )
+		local prefix = ModUtil.Mods.Index[ parent ]
+		if prefix ~= nil then
+			prefix = prefix .. '.'
+		else
+			prefix = ''
+		end
+		ModUtil.Mods.Table[ prefix .. modName ] = parent[ modName ]
 	end
-	parent[ modName ].ModName = modName
-	parent[ modName ].ModParent = parent
 	return parent[ modName ]
 end
 
@@ -66,17 +68,17 @@ function ModUtil.ForceClosed( triggerArgs )
 	ModUtil.Anchors.CloseFuncs = {}
 	ModUtil.Anchors.Menu = {}
 end
-OnAnyLoad{ ModUtil.ForceClosed }
+OnAnyLoad{ function( triggerArgs ) ModUtil.ForceClosed( triggerArgs ) end }
 
-local funcsToLoad = {}
+ModUtil.Internal.FuncsToLoad = {}
 
-local function loadFuncs( triggerArgs )
-	for _, v in pairs( funcsToLoad ) do
+function ModUtil.Internal.LoadFuncs( triggerArgs )
+	for _, v in pairs( ModUtil.Internal.FuncsToLoad ) do
 		v( triggerArgs )
 	end
-	funcsToLoad = {}
+	ModUtil.Internal.FuncsToLoad = {}
 end
-OnAnyLoad{ loadFuncs }
+OnAnyLoad{ function( triggerArgs ) ModUtil.Internal.LoadFuncs( triggerArgs ) end }
 
 --[[
 	Run the provided function once on the next in-game load.
@@ -84,7 +86,7 @@ OnAnyLoad{ loadFuncs }
 	triggerFunction - the function to run
 ]]
 function ModUtil.LoadOnce( triggerFunction )
-	table.insert( funcsToLoad, triggerFunction )
+	table.insert( ModUtil.Internal.FuncsToLoad, triggerFunction )
 end
 
 --[[
@@ -93,9 +95,9 @@ end
 	triggerFunction - the function to cancel running
 ]]
 function ModUtil.CancelLoadOnce( triggerFunction )
-	for i,v in ipairs(funcsToLoad) do
+	for i,v in ipairs( ModUtil.Internal.FuncsToLoad) do
 		if v == triggerFunction then
-			table.remove( funcsToLoad, i )
+			table.remove( ModUtil.Internal.FuncsToLoad, i )
 		end
 	end
 end
@@ -126,19 +128,32 @@ function ModUtil.TableKeysString( o )
 	end
 end
 
-function ModUtil.ToString( o )
+function ModUtil.ToString( o, seen )
 	--https://stackoverflow.com/a/27028488
-	if type( o ) == 'table' then
+	seen = seen or {}
+	if type( o ) == 'table' and not seen[o] then
 		local first = true
 		local s = '{'
 		for k,v in pairs( o ) do
 			if not first then s = s .. ', ' else first = false end
-			s = s .. ModUtil.KeyString( k ) ..' = ' .. ModUtil.ToString( v )
+			s = s .. ModUtil.KeyString( k ) ..' = ' .. ModUtil.ToString( v, seen )
 		end
 		return s .. '}'
 	else
 		return ModUtil.ValueString( o )
 	end
+end
+
+function ModUtil.PrintToFile( file, ... )
+    local out = {}
+	for _, v in ipairs( { ... } ) do
+		table.insert( out, "\t" )
+		table.insert( out, ModUtil.ToString( v ) )
+	end
+	table.insert( out, "\n" )
+	table.remove( out,1 )
+	
+	file:write( table.unpack( out ) )
 end
 
 function ModUtil.ChunkText( text, chunkSize, maxChunks )
@@ -1056,17 +1071,11 @@ end
 --[[
 	Globalise all the functions in your mod object.
 
-	modObject - The mod object created by ModUtil.RegisterMod
+	mod - The mod object created by ModUtil.RegisterMod
 ]]
-function ModUtil.GlobaliseModFuncs( modObject )
-	local parent = modObject
-	local prefix = modObject.ModName
-	while parent.ModParent do
-		parent = parent.ModParent
-		if parent == _G then break end
-		prefix = parent.ModName .. "." .. prefix
-	end
-	ModUtil.GlobaliseFuncs( modObject, prefix )
+function ModUtil.GlobaliseModFuncs( mod )
+	local prefix = ModUtil.Mods.Index[ mod ]
+	ModUtil.GlobaliseFuncs( mod, prefix )
 end
 
 -- Function Wrapping
@@ -1080,12 +1089,12 @@ end
 
 	Multiple wrappers can be applied to the same function.
 
-	As an example, for WrapFunction( _G, { "UIFunctions", "OnButton1Pushed" }, wrapper, MyModObject )
+	As an example, for WrapFunction( _G, { "UIFunctions", "OnButton1Pushed" }, wrapper, MyMod )
 
 	Wrappers are stored in a structure like this:
 
 	ModUtil.Internal.WrapCallbacks[ _G ].UIFunctions.OnButton1Pushed = {
-		{ id = 1, mod = MyModObject, wrap=wrapper, func = <original unwrapped function> }
+		{ id = 1, mod = MyMod, wrap=wrapper, func = <original unwrapped function> }
 	}
 
 	If a second wrapper is applied via
@@ -1093,7 +1102,7 @@ end
 	then the resulting structure will be like:
 
 	ModUtil.Internal.WrapCallbacks[ _G ].UIFunctions.OnButton1Pushed = {
-		{id = 1, mod = MyModObject,	wrap = wrapper,	func = <original unwrapped function> }
+		{id = 1, mod = MyMod,	wrap = wrapper,	func = <original unwrapped function> }
 		{id = 2, mod = SomeOtherMod, wrap = wrapper2, func = <original function + wrapper1> }
 	}
 
@@ -1109,9 +1118,9 @@ end
 	funcTable	 - the table the function is stored in (usually _G)
 	indexArray	- the array of path elements to the function in the table
 	wrapFunc		- the wrapping function
-	modObject	 - (optional) the mod installing the wrapper, for informational purposes
+	mod	 - (optional) the mod installing the wrapper, for informational purposes
 ]]
-function ModUtil.WrapFunction( funcTable, indexArray, wrapFunc, modObject )
+function ModUtil.WrapFunction( funcTable, indexArray, wrapFunc, mod )
 	if type( wrapFunc ) ~= "function" then return end
 	if not funcTable then return end
 	local func = ModUtil.SafeGet( funcTable, indexArray )
@@ -1123,7 +1132,7 @@ function ModUtil.WrapFunction( funcTable, indexArray, wrapFunc, modObject )
 		tempTable = {}
 		ModUtil.SafeSet( ModUtil.Internal.WrapCallbacks[ funcTable ], indexArray, tempTable )
 	end
-	table.insert( tempTable, { Id = #tempTable + 1, Mod = modObject, Wrap = wrapFunc, Func = func } )
+	table.insert( tempTable, { Id = #tempTable + 1, Mod = mod, Wrap = wrapFunc, Func = func } )
 
 	ModUtil.SafeSet( funcTable, indexArray, function( ... )
 		return wrapFunc( func, ... )
@@ -1135,21 +1144,21 @@ end
 
 	For example. if the list of wrappers looks like:
 	ModUtil.Internal.WrapCallbacks[ _G ].UIFunctions.OnButton1Pushed = {
-		{id = 1, mod = MyModObject,	wrap = wrapper,	func = <original unwrapped function> }
+		{id = 1, mod = MyMod,	wrap = wrapper,	func = <original unwrapped function> }
 		{id = 2, mod = SomeOtherMod, wrap = wrapper2, func = <original function + wrapper1> }
 		{id = 3, mod = ModNumber3,	 wrap = wrapper3, func = <original function + wrapper1 + wrapper 2> }
 	}
 
 	and the base function is modified by setting [ 1 ].func to a new value, like so:
 	ModUtil.Internal.WrapCallbacks[ _G ].UIFunctions.OnButton1Pushed = {
-		{id = 1, mod = MyModObject,	wrap = wrapper,	func = <new function> }
+		{id = 1, mod = MyMod,	wrap = wrapper,	func = <new function> }
 		{id = 2, mod = SomeOtherMod, wrap = wrapper2, func = <original function + wrapper1> }
 		{id = 3, mod = ModNumber3,	 wrap = wrapper3, func = <original function + wrapper1 + wrapper 2> }
 	}
 
 	Then rewrap function will fix up eg. [ 2 ].func, [ 3 ].func so that the correct wrappers are applied
 	ModUtil.Internal.WrapCallbacks[ _G ].UIFunctions.OnButton1Pushed = {
-		{id = 1, mod = MyModObject,	wrap = wrapper,	func = <new function> }
+		{id = 1, mod = MyMod,	wrap = wrapper,	func = <new function> }
 		{id = 2, mod = SomeOtherMod, wrap = wrapper2, func = <new function + wrapper1> }
 		{id = 3, mod = ModNumber3,	 wrap = wrapper3, func = <new function + wrapper1 + wrapper 2> }
 	}
@@ -1226,11 +1235,11 @@ end
 	wrapFunc	- the function to wrap around the base function
 		this function receives the base function as its first parameter.
 		all subsequent parameters should be the same as the base function
-	modObject	- (optional) the object for your mod, for debug purposes
+	mod	- (optional) the object for your mod, for debug purposes
 ]]
-function ModUtil.WrapBaseFunction( baseFuncPath, wrapFunc, modObject )
+function ModUtil.WrapBaseFunction( baseFuncPath, wrapFunc, mod )
 	local pathArray = ModUtil.PathArray( baseFuncPath )
-	ModUtil.WrapFunction( _G, pathArray, wrapFunc, modObject )
+	ModUtil.WrapFunction( _G, pathArray, wrapFunc, mod )
 end
 
 --[[
@@ -1311,9 +1320,9 @@ end
 	baseTable	- the table in which to override, usually _G (globals)
 	indexArray	- the list of indices
 	value	- the new value
-	modObject	- (optional) the mod that performed the override, for debugging purposes
+	mod	- (optional) the mod that performed the override, for debugging purposes
 ]]
-function ModUtil.Override( baseTable, indexArray, value, modObject )
+function ModUtil.Override( baseTable, indexArray, value, mod )
 	if not baseTable then return end
 
 	local baseValue = getBaseValueForWraps( baseTable, indexArray )
@@ -1324,7 +1333,7 @@ function ModUtil.Override( baseTable, indexArray, value, modObject )
 		tempTable = {}
 		ModUtil.SafeSet( ModUtil.Internal.Overrides[ baseTable ], indexArray, tempTable )
 	end
-	table.insert( tempTable, { Id = #tempTable + 1, Mod = modObject, Value = value, Base = baseValue } )
+	table.insert( tempTable, { Id = #tempTable + 1, Mod = mod, Value = value, Base = baseValue } )
 
 	if not setBaseValueForWraps( baseTable, indexArray, value ) then
 		ModUtil.SafeSet( baseTable, indexArray, value )
@@ -1365,12 +1374,12 @@ end
 
 	basePath	- the path to override, as a string
 	value	- the new value to store at the path
-	modObject	- (optional) the mod performing the override,
+	mod	- (optional) the mod performing the override,
 		for debug purposes
 ]]
-function ModUtil.BaseOverride( basePath, value, modObject )
+function ModUtil.BaseOverride( basePath, value, mod )
 	local pathArray = ModUtil.PathArray( basePath )
-	ModUtil.Override( _G, pathArray, value, modObject )
+	ModUtil.Override( _G, pathArray, value, mod )
 end
 
 --[[
@@ -1612,9 +1621,9 @@ end
 	indexArray	- the list of indices identifying the function within with the wrap will apply
 	envIndexArray	- the list of indices identifying the function whose calls will be wrapped
 	wrapFunc	- the wrapping function
-	modObject	- (optional) the mod performing the wrapping, for debug purposes
+	mod	- (optional) the mod performing the wrapping, for debug purposes
 ]]
-function ModUtil.WrapWithinFunction( baseTable, indexArray, envIndexArray, wrapFunc, modObject )
+function ModUtil.WrapWithinFunction( baseTable, indexArray, envIndexArray, wrapFunc, mod )
 	if type(wrapFunc) ~= "function" then return end
 	if not baseTable then return end
 	local env = getFunctionEnv( baseTable, indexArray )
@@ -1633,7 +1642,7 @@ function ModUtil.WrapWithinFunction( baseTable, indexArray, envIndexArray, wrapF
 		)
 	end
 
-	ModUtil.WrapFunction( env, envIndexArray, wrapFunc, modObject )
+	ModUtil.WrapFunction( env, envIndexArray, wrapFunc, mod )
 end
 
 --[[
@@ -1688,12 +1697,12 @@ end
 	wrapFunc	- the function to wrap around the base function
 		this function receives the base function as its first parameter.
 		all subsequent parameters should be the same as the base function
-	modObject	- (optional) the object for your mod, for debug purposes
+	mod	- (optional) the object for your mod, for debug purposes
 ]]
-function ModUtil.WrapBaseWithinFunction( funcPath, baseFuncPath, wrapFunc, modObject )
+function ModUtil.WrapBaseWithinFunction( funcPath, baseFuncPath, wrapFunc, mod )
 	local indexArray = ModUtil.PathArray( funcPath )
 	local envIndexArray = ModUtil.PathArray( baseFuncPath )
-	ModUtil.WrapWithinFunction( _G, indexArray, envIndexArray, wrapFunc, modObject )
+	ModUtil.WrapWithinFunction( _G, indexArray, envIndexArray, wrapFunc, mod )
 end
 
 -- Automatically updating data structures (WIP)
@@ -2061,3 +2070,80 @@ ModUtil.Experimental.Nodes.Data.UpValues = {
 		return false
 	end
 }
+
+-- Mods tracking (WIP)
+
+call( function()
+	local mods = ModUtil.Experimental.New.EntangledInvertiblePair()
+	ModUtil.Mods = {Table = mods.Data, Index = mods.Inverse}
+	ModUtil.Mods.Table.ModUtil = ModUtil
+end )
+
+--[[
+	Users should only ever opt-in to running this function
+]]
+function ModUtil.Experimental.EnableModHistory()
+	if not ModHistory then
+		ModHistory = {}
+		if PersistVariable then PersistVariable{ Name = "ModHistory" } end
+		SaveIgnores["ModHistory"] = nil
+	end
+end
+
+function ModUtil.Experimental.DisableModHistory()
+	if not ModHistory then
+		ModHistory = {}
+		if PersistVariable then PersistVariable{ Name = "ModHistory" } end
+		SaveIgnores["ModHistory"] = nil
+	end
+end
+
+function ModUtil.Experimental.UpdateModHistoryEntry( options )
+	if options.Override then
+		ModUtil.Experimental.EnableModHistory()
+	end
+	if ModHistory then
+		local mod = options.Mod
+		local path = options.Path
+		if mod == nil then
+			mod = ModUtil.Mods.Table[path]
+		end
+		if path == nil then
+			path = ModUtil.Mods.Index[mod]
+		end
+		local entry = ModHistory[path]
+		if entry == nil then
+			entry = {}
+			ModHistory[path] = entry
+		end
+		if options.Version then
+			entry.Version = options.Version
+		end
+		if options.FirstTime or options.All then
+			if not entry.FirstTime then
+				entry.FirstTime = os.time()
+			end
+		end
+		if options.LastTime or options.All then
+			entry.LastTime = os.time()
+		end
+
+		if options.Count or options.All then
+			local count = entry.Count
+			if not count then
+				count = 0
+			end
+			entry.Count = count + 1
+		end
+	end
+end
+
+function ModUtil.Experimental.PopulateModHistory( options )
+	if not options then
+		options = {}
+	end
+	for path, mod in pairs(ModUtil.Mods.Table) do
+		options.Path, options.Mod = path, mod
+		ModUtil.Experimental.UpdateModHistoryEntry( options )
+	end
+end
