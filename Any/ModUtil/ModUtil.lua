@@ -920,6 +920,52 @@ function ModUtil.Experimental.GetBaseBottomDirectUpValues( basePath )
 	return ModUtil.Experimental.GetBottomDirectUpValues( _G, ModUtil.PathArray( basePath ) )
 end
 
+ModUtil.Experimental.Metatables.RawMetaMeta = {
+	__newindex = function( self, key, value )
+		rawget( self, "meta" )[ key ] = value
+	end,
+	__index = function( self, key )
+		if ModUtil.Experimental.Locals._RawMetaMeta == ModUtil.Experimental.Metatables.RawMetaMeta then
+			return nil
+		else
+			return rawget( self, "meta" )[ key ]
+		end
+	end
+}
+
+ModUtil.Experimental.Metatables.RawInterface = {
+    __index = function( self, key )
+        return rawget( rawget( self, "obj" ), key )
+    end,
+    __newindex = function( self, key, value )
+        rawset( rawget( self, "obj" ), key, value )
+    end,
+    __next = function( self, key )
+        -- thread 'safe' but not thread 'meta-safe'
+        local obj = rawget( self, "obj" )
+        local trueMeta = debug.getmetatable( obj )
+		local tempMeta = { meta = trueMeta }
+		local _RawMetaMeta = ModUtil.Experimental.Metatables.RawMetaMeta
+        setmetatable( tempMeta, _RawMetaMeta )
+        setmetatable( obj, tempMeta )
+        local out = { next( obj ) }
+        setmetatable( obj, trueMeta )
+        return key, table.unpack( out )
+    end,
+    __pairs = function( self )
+        return getmetatable( self ).__next, self, nil
+    end,
+    __ipairs = function( self )
+        return getmetatable( self ).__next, self, 0
+    end
+}
+
+function ModUtil.Experimental.New.RawInterface( obj )
+    local tbl = { obj = obj }
+    setmetatable( tbl, ModUtil.Experimental.Metatables.RawInterface )
+    return tbl
+end
+
 -- Globalisation
 
 ModUtil.Metatables.GlobalisedFunc = {
