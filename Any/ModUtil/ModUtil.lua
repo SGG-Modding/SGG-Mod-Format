@@ -220,17 +220,17 @@ local function CollapseTable( tableArg )
 
 end
 
-local markedForCollapse = {}
+ModUtil.Internal.MarkedForCollapse = {}
 
 local function autoIsUnKeyed( tableArg )
-	if not markedForCollapse[ tableArg ] then
+	if not ModUtil.Internal.MarkedForCollapse[ tableArg ] then
 		return ModUtil.IsUnKeyed( tableArg )
 	end
 	return false
 end
 
 function ModUtil.CollapseMarked()
-	for tbl, state in pairs( markedForCollapse ) do
+	for tbl, state in pairs( ModUtil.Internal.MarkedForCollapse ) do
 		if state then
 			local ctbl = CollapseTable( tbl )
 			for k in pairs( tbl ) do
@@ -241,16 +241,16 @@ function ModUtil.CollapseMarked()
 			end
 		end
 	end
-	markedForCollapse = {}
+	ModUtil.Internal.MarkedForCollapse = {}
 end
 OnAnyLoad{ ModUtil.CollapseMarked }
 
 function ModUtil.MarkForCollapse( tableArg )
-	markedForCollapse[ tableArg ] = true
+	ModUtil.Internal.MarkedForCollapse[ tableArg ] = true
 end
 
 function ModUtil.UnmarkForCollapse( tableArg )
-	markedForCollapse[ tableArg ] = false
+	ModUtil.Internal.MarkedForCollapse[ tableArg ] = false
 end
 
 --[[
