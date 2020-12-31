@@ -183,6 +183,15 @@ function ModUtil.ChunkText( text, chunkSize, maxChunks )
 	return chunks
 end
 
+function ModUtil.ReplaceTable( target, data )
+	for k in pairs( target ) do
+		target[k] = data[k]
+	end
+	for k,v in pairs( data ) do
+		target[k] = v
+	end
+end
+
 function ModUtil.InvertTable( tableArg )
 	local inverseTable = {}
 	for key, value in ipairs( tableArg ) do
@@ -222,6 +231,36 @@ local function CollapseTable( tableArg )
 
 	return collapsedTable
 
+end
+
+local function ShallowCopyTable( orig )
+	-- from UtilityScripts.lua
+	if orig == nil then
+		return
+	end
+
+	local copy = {}
+	for k, v in pairs( orig ) do
+		copy[k] = v
+	end
+	return copy
+end
+
+local function DeepCopyTable( orig )
+	-- from UtilityScripts.lua
+	local orig_type = type( orig )
+	local copy
+	if orig_type == 'table' then
+		copy = {}
+		-- slightly more efficient to call next directly instead of using pairs
+		for k, v in next, orig, nil do
+			copy[ k ] = DeepCopyTable( v )
+		end
+	else
+		copy = orig
+	end
+
+	return copy
 end
 
 ModUtil.Internal.MarkedForCollapse = {}
@@ -516,6 +555,10 @@ end
 -- Extended Global Utilities
 
 function call( func, ... )
+	return func( ... )
+end
+
+function envcall( _ENV, func, ... )
 	return func( ... )
 end
 
@@ -985,61 +1028,81 @@ function ModUtil.Experimental.New.RawInterface( obj )
     return tbl
 end
 
--- Make lexical environments use locals instead of upvalues ( Broken :[ )
+--[[ 
+	Make lexical environments use locals instead of upvalues
+]]
+function ModUtil.Experimental.ReplaceGlobalEnvironment()
+	
+	local
+	setmetatable, debug, rawget, rawset, rawnext, rawlen, next, _G
+	=
+	setmetatable, debug, rawget, rawset, rawnext, rawlen, next, _G
 
---[[
-call( function()
+	setmetatable( _G, {})
 
-	local rawget, next, getmetatable, debug = rawget, next, getmetatable, debug
-
-	local function getenv( self )
+	local function getenv()
 		local level = 3
 		while debug.getinfo( level, "f" ) do
-			local idx = 1
-			while true do
-				local n, v = debug.getlocal( level, idx )
-				if n == "_ENV" then
-					return v
-				elseif not n then
-					break
+			local idx, name, value = 1, true, nil
+			while name do
+				name, value = debug.getlocal( level, idx )
+				if name == "_ENV" then
+					return value, false
 				end
 				idx = idx + 1
 			end
 			level = level + 1
 		end
-		return rawget( self, "_ENV" )
+		return _G, true
 	end
 
-	ModUtil.Experimental.Metatables.GlobalEnvironment = {
-		__index = function( self, key )
-			return getenv( self )[ key ]
+	local __next = function( _, key )
+		local env, raw = getenv()
+		if raw then
+			return rawnext( env, key )
+		else
+			return next( env, key )
+		end
+	end
+
+	local meta = {
+		__index = function( _, key )
+			local env, raw = getenv()
+			if raw then
+				return rawget( env, key )
+			else
+				return env[key]
+			end
 		end,
-		__newindex = function( self, key, value )
-			getenv( self )[ key ] = value
+		__newindex = function( _, key, value )
+			local env, raw = getenv()
+			if raw then
+				rawset( env, key, value )
+			else
+				env[key] = value
+			end
 		end,
-		__len = function( self )
-			return #( getenv( self ) )
-		end,
-		__next = function( self, key )
-			return next( getenv( self ), key )
-		end,
-		__pairs = function( self )
-			return getmetatable( self ).__next, self, nil
-		end,
-		__ipairs = function( self )
-			return getmetatable( self ).__next, self, 0
+		__len = function()
+			local env, raw = getenv()
+			if raw then
+				return rawlen( env )
+			else
+				return #env
+			end
 		end
 	}
+	meta.__next = __next
+	meta.__pairs = function( self )
+		return __next, self, nil
+	end
+	meta.__ipairs = function( self )
+		return __next, self, 0
+	end
 
-	local env = { _ENV = _ENV }
-	setmetatable( env, ModUtil.Experimental.Metatables.GlobalEnvironment )
-	_G = env
+	setmetatable( _G, meta )
+end
 
-end )
-
-_ENV = _G
-
---]]
+ModUtil.Experimental.ReplaceGlobalEnvironment()
 
 -- Globalisation
 
@@ -1593,22 +1656,6 @@ local function getFunctionEnv( baseTable, indexArray )
 	return env
 end
 
-local function DeepCopyTable( orig )
-	local orig_type = type( orig )
-	local copy
-	if orig_type == 'table' then
-		copy = {}
-		-- slightly more efficient to call next directly instead of using pairs
-		for k, v in next, orig, nil do
-			copy[ k ] = DeepCopyTable( v )
-		end
-	else
-		copy = orig
-	end
-
-	return copy
-end
-
 --[[
 	Overrides the value at envIndexArray within the function referred to by
 	indexArray in baseTable, by replacing it with value.
@@ -2016,16 +2063,21 @@ call( function()
 
 	-- bind everything needed to locals for context invariance
 	local
-	ModUtil, table, getmetatable, setmetatable, pairs, ipairs, next, type, rawget, rawset
+	ModUtil, table, getmetatable, setmetatable, next, type, rawget, rawset, pairs, ipairs, call
 	=
-	ModUtil, table, getmetatable, setmetatable, pairs, ipairs, next, type, rawget, rawset
+	ModUtil, table, getmetatable, setmetatable, next, type, rawget, rawset, pairs, ipairs, call
 
 	ModUtil.Experimental.Metatables.ContextEnvironment = {
 		__index = function( self, key )
+
 			if key == "_G" then
 				return rawget( self, "global" )
 			end
-			return rawget( self, "data" )[key]
+			local value = rawget( self, "data" )[key]
+			if value ~= nil then
+				return value
+			end
+			return (rawget( self, "fallback" ) or {})[key]
 		end,
 		__newindex = function( self, key, value )
 			rawget( self, "data" )[key] = value
@@ -2056,11 +2108,11 @@ call( function()
 	}
 
 	ModUtil.Experimental.Metatables.Context = {
-		__call = function( self, targetPath_or_targetIndexArray, call, ... )
+		__call = function( self, targetPath_or_targetIndexArray, callContext, ... )
 
 			local oldContextInfo = ModUtil.Experimental.Locals._ContextInfo
 			local contextInfo = {
-				call = call,
+				call = callContext,
 				parent = oldContextInfo
 			}
 
@@ -2090,9 +2142,8 @@ call( function()
 			_ContextInfo.args = contextArgs
 
 			
-			setfenv( call, contextData )
 			local _ENV = contextData
-			call(table.unpack(contextArgs))
+			callContext(table.unpack(contextArgs))
 
 		end
 	}
@@ -2110,7 +2161,7 @@ call( function()
 			tbl = {}
 			ModUtil.SafeSet( info.baseTable, info.indexArray, tbl )
 		end
-		local env = { data = tbl }
+		local env = { data = tbl, fallback = _G }
 		env.global = env
 		setmetatable( env, ModUtil.Experimental.Metatables.ContextEnvironment )
 		return env
