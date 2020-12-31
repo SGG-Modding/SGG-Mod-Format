@@ -558,10 +558,6 @@ function call( func, ... )
 	return func( ... )
 end
 
-function envcall( _ENV, func, ... )
-	return func( ... )
-end
-
 rawnext = next
 function next( t, k )
 	local m = getmetatable( t )
@@ -1003,16 +999,7 @@ ModUtil.Experimental.Metatables.RawInterface = {
         rawset( rawget( self, "obj" ), key, value )
     end,
     __next = function( self, key )
-        -- thread 'safe' but not thread 'meta-safe'
-        local obj = rawget( self, "obj" )
-        local trueMeta = debug.getmetatable( obj )
-		local tempMeta = { meta = trueMeta }
-		local _RawMetaMeta = ModUtil.Experimental.Metatables.RawMetaMeta
-        setmetatable( tempMeta, _RawMetaMeta )
-        setmetatable( obj, tempMeta )
-        local out = { next( obj, key ) }
-        setmetatable( obj, trueMeta )
-        return table.unpack( out )
+        return rawnext( rawget( self, "obj" ), key )
     end,
     __pairs = function( self )
         return getmetatable( self ).__next, self, nil
@@ -1028,20 +1015,20 @@ function ModUtil.Experimental.New.RawInterface( obj )
     return tbl
 end
 
---[[ 
+--[[
 	Make lexical environments use locals instead of upvalues
 ]]
 function ModUtil.Experimental.ReplaceGlobalEnvironment()
 	
 	local
-	setmetatable, debug, rawget, rawset, rawnext, rawlen, next, _G
+	setmetatable, debug, rawget, rawset, rawnext, rawlen, next
 	=
-	setmetatable, debug, rawget, rawset, rawnext, rawlen, next, _G
+	setmetatable, debug, rawget, rawset, rawnext, rawlen, next
 
-	setmetatable( _G, {})
+	setmetatable( _ENV, {})
 
 	local function getenv()
-		local level = 3
+		local level = 2
 		while debug.getinfo( level, "f" ) do
 			local idx, name, value = 1, true, nil
 			while name do
@@ -1053,7 +1040,7 @@ function ModUtil.Experimental.ReplaceGlobalEnvironment()
 			end
 			level = level + 1
 		end
-		return _G, true
+		return _ENV, true
 	end
 
 	local __next = function( _, key )
@@ -1099,10 +1086,15 @@ function ModUtil.Experimental.ReplaceGlobalEnvironment()
 		return __next, self, 0
 	end
 
-	setmetatable( _G, meta )
+	setmetatable( _ENV, meta )
 end
 
 ModUtil.Experimental.ReplaceGlobalEnvironment()
+
+function ModUtil.Experimental.SkipEnvironment( tbl )
+	if tbl ~= _ENV then return tbl end
+	return ModUtil.Experimental.New.RawInterface( _ENV )
+end
 
 -- Globalisation
 
@@ -1257,7 +1249,7 @@ function ModUtil.WrapFunction( funcTable, indexArray, wrapFunc, mod )
 	end
 	table.insert( tempTable, { Id = #tempTable + 1, Mod = mod, Wrap = wrapFunc, Func = func } )
 
-	ModUtil.SafeSet( funcTable, indexArray, function( ... )
+	ModUtil.SafeSet( ModUtil.Experimental.SkipEnvironment( funcTable ), indexArray, function( ... )
 		return wrapFunc( func, ... )
 	end )
 end
@@ -1303,7 +1295,7 @@ function ModUtil.RewrapFunction( funcTable, indexArray )
 		preFunc = function( ... )
 			return t.Wrap( t.Func, ... )
 		end
-		ModUtil.SafeSet( funcTable, indexArray, preFunc )
+		ModUtil.SafeSet( ModUtil.Experimental.SkipEnvironment( funcTable ), indexArray, preFunc )
 	end
 
 end
@@ -1320,7 +1312,7 @@ end
 ]]
 function ModUtil.UnwrapFunction( funcTable, indexArray )
 	if not funcTable then return end
-	local func = ModUtil.SafeGet( funcTable, indexArray )
+	local func = ModUtil.SafeGet( ModUtil.Experimental.SkipEnvironment( funcTable ), indexArray )
 	if type( func ) ~= "function" then return end
 
 	local tempTable = ModUtil.SafeGet( ModUtil.Internal.WrapCallbacks[ funcTable ], indexArray )
@@ -1328,7 +1320,7 @@ function ModUtil.UnwrapFunction( funcTable, indexArray )
 	local funcData = table.remove( tempTable ) -- removes the last value
 	if not funcData then return end
 
-	ModUtil.SafeSet( funcTable, indexArray, funcData.Func )
+	ModUtil.SafeSet( ModUtil.Experimental.SkipEnvironment( funcTable ), indexArray, funcData.Func )
 	return funcData
 end
 
@@ -1392,7 +1384,7 @@ end
 -- Override Management
 
 local function getBaseValueForWraps( baseTable, indexArray )
-	local baseValue = ModUtil.SafeGet( baseTable, indexArray )
+	local baseValue = ModUtil.SafeGet( ModUtil.Experimental.SkipEnvironment( baseTable ), indexArray )
 	local wrapCallbacks = nil
 	wrapCallbacks = ModUtil.SafeGet( ModUtil.Internal.WrapCallbacks[ baseTable ], indexArray )
 	if wrapCallbacks then
@@ -1405,7 +1397,7 @@ local function getBaseValueForWraps( baseTable, indexArray )
 end
 
 local function setBaseValueForWraps( baseTable, indexArray, value )
-	local baseValue = ModUtil.SafeGet( baseTable, indexArray )
+	local baseValue = ModUtil.SafeGet( ModUtil.Experimental.SkipEnvironment( baseTable ), indexArray )
 
 	if type(baseValue) ~= "function" or type(value) ~= "function" then return false end
 
@@ -1459,7 +1451,7 @@ function ModUtil.Override( baseTable, indexArray, value, mod )
 	table.insert( tempTable, { Id = #tempTable + 1, Mod = mod, Value = value, Base = baseValue } )
 
 	if not setBaseValueForWraps( baseTable, indexArray, value ) then
-		ModUtil.SafeSet( baseTable, indexArray, value )
+		ModUtil.SafeSet( ModUtil.Experimental.SkipEnvironment( baseTable ), indexArray, value )
 	end
 end
 
@@ -1484,7 +1476,7 @@ function ModUtil.Restore( baseTable, indexArray )
 	if not baseData then return end
 
 	if not setBaseValueForWraps( baseTable, indexArray, baseData.Base ) then
-		ModUtil.SafeSet( baseTable, indexArray, baseData.Base )
+		ModUtil.SafeSet( ModUtil.Experimental.SkipEnvironment( baseTable ), indexArray, baseData.Base )
 	end
 	return baseData
 end
@@ -1555,7 +1547,7 @@ local function makeOverrideTable( baseTable, overrides )
 		_Overrides = overrides or {},
 		_BaseTable = baseTable
 	}
-	setmetatable(overrideTable, ModUtil.Metatables.OverrideTable)
+	setmetatable( overrideTable, ModUtil.Metatables.OverrideTable )
 	return overrideTable
 end
 
@@ -1743,7 +1735,7 @@ function ModUtil.WrapWithinFunction( baseTable, indexArray, envIndexArray, wrapF
 			env,
 			envIndexArray,
 			function( ... )
-				local resolvedFunc = ModUtil.SafeGet( baseTable, envIndexArray )
+				local resolvedFunc = ModUtil.SafeGet( ModUtil.Experimental.SkipEnvironment( baseTable ), envIndexArray )
 				return resolvedFunc( ... )
 			end
 		)
@@ -2126,7 +2118,7 @@ call( function()
 				contextInfo.baseTable = oldContextInfo.baseTable
 			else
 				contextInfo.indexArray = {}
-				contextInfo.baseTable = _ENV
+				contextInfo.baseTable = _G
 			end
 
 			local callContextProcessor = rawget( self, "callContextProcessor" )
@@ -2134,16 +2126,15 @@ call( function()
 
 			local contextData, contextArgs = callContextProcessor( contextInfo, ... )
 			local data = rawget( contextData,'data' )
-			contextData = contextData or _ENV
+			contextData = contextData or _G
 			contextArgs = contextArgs or {}
 
 			local _ContextInfo = contextInfo
 			_ContextInfo.data = contextData
 			_ContextInfo.args = contextArgs
 
-			
 			local _ENV = contextData
-			callContext(table.unpack(contextArgs))
+			call( callContext, table.unpack( contextArgs ) )
 
 		end
 	}
@@ -2169,8 +2160,8 @@ call( function()
 
 	ModUtil.Experimental.Context.Call = ModUtil.Experimental.New.Context( function( info )
 		local obj = ModUtil.SafeGet( info.baseTable, info.indexArray )
-		while type(obj) ~= "function" do
-			if obj ~= "table" then return end
+		while type( obj ) ~= "function" do
+			if type( obj ) ~= "table" then return end
 			local meta = getmetatable(obj)
 			if meta.__call then
 				table.insert( info.indexArray, ModUtil.Experimental.Nodes.Data.Metatable )
@@ -2178,9 +2169,11 @@ call( function()
 				obj = meta.__call
 			end
 		end
-		local env = getFunctionEnv( info.baseTable, info.indexArray )
 		info.indexArray = ModUtil.JoinIndexArrays( info.indexArray, info.targetIndexArray )
-		return ModUtil.SafeGet( env, info.targetIndexArray )
+		local env = { data = getFunctionEnv( info.baseTable, info.indexArray ), fallback = _G }
+		env.global = env
+		setmetatable( env, ModUtil.Experimental.Metatables.ContextEnvironment )
+		return env
 	end )
 	ModUtil.Experimental.Context.Meta = ModUtil.Experimental.New.Context( function( info )
 		table.insert( info.indexArray, ModUtil.Experimental.Nodes.Data.Metatable )
