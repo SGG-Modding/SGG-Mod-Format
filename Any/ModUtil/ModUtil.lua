@@ -304,8 +304,8 @@ end
 ]]
 function ModUtil.NewTable( tableArg, key )
 	if type( tableArg ) ~= "table" then return end
-	if ModUtil.Experimental.Nodes.Inverse[ key ] then
-		return ModUtil.Experimental.Nodes.Inverse[ key ].New( tableArg )
+	if ModUtil.Experimental.Nodes.Index[ key ] then
+		return ModUtil.Experimental.Nodes.Index[ key ].New( tableArg )
 	end
 	if tableArg[ key ] == nil then
 		tableArg[ key ] = {}
@@ -331,8 +331,8 @@ function ModUtil.SafeGet( baseTable, indexArray )
 		if type( node ) ~= "table" then
 			return nil
 		end
-		if ModUtil.Experimental.Nodes.Inverse[ k ] then
-			node = ModUtil.Experimental.Nodes.Inverse[ k ].Get( node )
+		if ModUtil.Experimental.Nodes.Index[ k ] then
+			node = ModUtil.Experimental.Nodes.Index[ k ].Get( node )
 		else
 			node = node[ k ]
 		end
@@ -363,15 +363,15 @@ function ModUtil.SafeSet( baseTable, indexArray, value )
 	for i = 1, n - 1 do
 		local k = indexArray[ i ]
 		if not ModUtil.NewTable( node, k ) then return false end
-		if ModUtil.Experimental.Nodes.Inverse[ k ] then
-			node = ModUtil.Experimental.Nodes.Inverse[ k ].Get( node )
+		if ModUtil.Experimental.Nodes.Index[ k ] then
+			node = ModUtil.Experimental.Nodes.Index[ k ].Get( node )
 		else
 			node = node[ k ]
 		end
 	end
 	local k = indexArray[ n ]
-	if ModUtil.Experimental.Nodes.Inverse[ k ] then
-		return ModUtil.Experimental.Nodes.Inverse[ k ].Set( node, value )
+	if ModUtil.Experimental.Nodes.Index[ k ] then
+		return ModUtil.Experimental.Nodes.Index[ k ].Set( node, value )
 	end
 	if ( node[ k ] == nil ) ~= ( value == nil ) then
 		if autoIsUnKeyed( baseTable ) then
@@ -1881,21 +1881,21 @@ function ModUtil.Experimental.New.EntangledInvertiblePair()
 	data, inverse = { data = data, inverse = inverse }, { data = data, inverse = inverse }
 	setmetatable( data, ModUtil.Experimental.Metatables.EntangledIsomorphism )
 	setmetatable( inverse, ModUtil.Experimental.Metatables.EntangledIsomorphismInverse )
-	return { Data = data, Inverse = inverse }
+	return { Table = data, Index = inverse }
 end
 
 function ModUtil.Experimental.New.EntangledInvertiblePairFromTable( tableArg )
 	local pair = ModUtil.Experimental.New.EntangledInvertiblePair()
 	for key, value in pairs( tableArg ) do
-		pair.Data[ key ] = value
+		pair.Table[ key ] = value
 	end
 	return pair
 end
 
-function ModUtil.Experimental.New.EntangledInvertiblePairFromInverse( inverseArg )
+function ModUtil.Experimental.New.EntangledInvertiblePairFromIndex( indexArg )
 	local pair = ModUtil.Experimental.New.EntangledInvertiblePair()
-	for value, key in pairs( inverseArg ) do
-		pair.Inverse[ value ] = key
+	for value, key in pairs( indexArg ) do
+		pair.Index[ value ] = key
 	end
 	return pair
 end
@@ -2030,13 +2030,13 @@ function ModUtil.Experimental.New.EntangledPair()
 	data, preImage = { data = data, preImage = preImage }, { data = data, preImage = preImage }
 	setmetatable( data, ModUtil.Experimental.Metatables.EntangledMorphism )
 	setmetatable( preImage, ModUtil.Experimental.Metatables.EntangledMorphismPreImage )
-	return {Data = data, PreImage = preImage}
+	return {Map = data, PreImage = preImage}
 end
 
 function ModUtil.Experimental.New.EntangledPairFromTable( tableArg )
 	local pair = ModUtil.Experimental.New.EntangledPair()
 	for key, value in pairs( tableArg ) do
-		pair.Data[key] = value
+		pair.Map[key] = value
 	end
 	return pair
 end
@@ -2164,7 +2164,7 @@ call( function()
 			if type( obj ) ~= "table" then return end
 			local meta = getmetatable(obj)
 			if meta.__call then
-				table.insert( info.indexArray, ModUtil.Experimental.Nodes.Data.Metatable )
+				table.insert( info.indexArray, ModUtil.Experimental.Nodes.Table.Metatable )
 				table.insert( info.indexArray, "__call" )
 				obj = meta.__call
 			end
@@ -2176,7 +2176,7 @@ call( function()
 		return env
 	end )
 	ModUtil.Experimental.Context.Meta = ModUtil.Experimental.New.Context( function( info )
-		table.insert( info.indexArray, ModUtil.Experimental.Nodes.Data.Metatable )
+		table.insert( info.indexArray, ModUtil.Experimental.Nodes.Table.Metatable )
 		return step( info )
 	end )
 	ModUtil.Experimental.Context.Data = ModUtil.Experimental.New.Context( step )
@@ -2187,7 +2187,7 @@ end )
 
 ModUtil.Experimental.Nodes = ModUtil.Experimental.New.EntangledInvertiblePair()
 
-ModUtil.Experimental.Nodes.Data.Metatable = {
+ModUtil.Experimental.Nodes.Table.Metatable = {
 	New = function( obj )
 		if getmetatable( obj ) == nil then
 			setmetatable( obj, {} )
@@ -2202,7 +2202,7 @@ ModUtil.Experimental.Nodes.Data.Metatable = {
 	end
 }
 
-ModUtil.Experimental.Nodes.Data.UpValues = {
+ModUtil.Experimental.Nodes.Table.UpValues = {
 	New = function()
 		return false
 	end,
@@ -2214,13 +2214,25 @@ ModUtil.Experimental.Nodes.Data.UpValues = {
 	end
 }
 
+ModUtil.Experimental.Nodes.Table.Env = {
+	New = function( obj )
+		return getFunctionEnv( obj ) -- should write
+	end,
+	Get = function( obj )
+		return getFunctionEnv( obj ) -- get should probably not write anything
+	end,
+	Set = function( obj, value )
+		--setFunctionEnv( obj, value )
+		--return true
+		return false -- needs a proper setter
+	end
+}
+
 -- Mods tracking (WIP)
 
-call( function()
-	local mods = ModUtil.Experimental.New.EntangledInvertiblePair()
-	ModUtil.Mods = {Table = mods.Data, Index = mods.Inverse}
-	ModUtil.Mods.Table.ModUtil = ModUtil
-end )
+
+ModUtil.Mods = ModUtil.Experimental.New.EntangledInvertiblePair()
+ModUtil.Mods.Table.ModUtil = ModUtil
 
 --[[
 	Users should only ever opt-in to running this function
