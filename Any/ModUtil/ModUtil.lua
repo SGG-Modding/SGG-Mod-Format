@@ -108,7 +108,10 @@ function ModUtil.ValueString( o )
 	if type( o ) == 'string' then
 		return '"' .. o .. '"'
 	end
-	return tostring( o )
+	if type ( o ) == 'number' or type( o ) == 'boolean' then
+		return tostring( o )
+	end
+	return '<'..tostring( o )..'>'
 end
 
 function ModUtil.KeyString( o )
@@ -131,9 +134,10 @@ end
 function ModUtil.ToString( o, seen )
 	--https://stackoverflow.com/a/27028488
 	seen = seen or {}
-	if type( o ) == 'table' and not seen[o] then
+	if type( o ) == 'table' and not seen[ o ] then
+		seen[ o ] = true
 		local first = true
-		local s = '{'
+		local s = '<' .. tostring(o) .. ">{"
 		for k,v in pairs( o ) do
 			if not first then s = s .. ', ' else first = false end
 			s = s .. ModUtil.KeyString( k ) ..' = ' .. ModUtil.ToString( v, seen )
@@ -963,9 +967,9 @@ ModUtil.Experimental.Metatables.RawInterface = {
 		local _RawMetaMeta = ModUtil.Experimental.Metatables.RawMetaMeta
         setmetatable( tempMeta, _RawMetaMeta )
         setmetatable( obj, tempMeta )
-        local out = { next( obj ) }
+        local out = { next( obj, key ) }
         setmetatable( obj, trueMeta )
-        return key, table.unpack( out )
+        return table.unpack( out )
     end,
     __pairs = function( self )
         return getmetatable( self ).__next, self, nil
@@ -980,6 +984,62 @@ function ModUtil.Experimental.New.RawInterface( obj )
     setmetatable( tbl, ModUtil.Experimental.Metatables.RawInterface )
     return tbl
 end
+
+-- Make lexical environments use locals instead of upvalues ( Broken :[ )
+
+--[[
+call( function()
+
+	local rawget, next, getmetatable, debug = rawget, next, getmetatable, debug
+
+	local function getenv( self )
+		local level = 3
+		while debug.getinfo( level, "f" ) do
+			local idx = 1
+			while true do
+				local n, v = debug.getlocal( level, idx )
+				if n == "_ENV" then
+					return v
+				elseif not n then
+					break
+				end
+				idx = idx + 1
+			end
+			level = level + 1
+		end
+		return rawget( self, "_ENV" )
+	end
+
+	ModUtil.Experimental.Metatables.GlobalEnvironment = {
+		__index = function( self, key )
+			return getenv( self )[ key ]
+		end,
+		__newindex = function( self, key, value )
+			getenv( self )[ key ] = value
+		end,
+		__len = function( self )
+			return #( getenv( self ) )
+		end,
+		__next = function( self, key )
+			return next( getenv( self ), key )
+		end,
+		__pairs = function( self )
+			return getmetatable( self ).__next, self, nil
+		end,
+		__ipairs = function( self )
+			return getmetatable( self ).__next, self, 0
+		end
+	}
+
+	local env = { _ENV = _ENV }
+	setmetatable( env, ModUtil.Experimental.Metatables.GlobalEnvironment )
+	_G = env
+
+end )
+
+_ENV = _G
+
+--]]
 
 -- Globalisation
 
@@ -1960,6 +2020,41 @@ call( function()
 	=
 	ModUtil, table, getmetatable, setmetatable, pairs, ipairs, next, type, rawget, rawset
 
+	ModUtil.Experimental.Metatables.ContextEnvironment = {
+		__index = function( self, key )
+			if key == "_G" then
+				return rawget( self, "global" )
+			end
+			return rawget( self, "data" )[key]
+		end,
+		__newindex = function( self, key, value )
+			rawget( self, "data" )[key] = value
+			if key == "_G" then
+				rawset( self, "global", value )
+			end
+		end,
+		__len = function( self )
+			return #rawget( self, "data" )
+		end,
+		__next = function( self, key )
+			local out, first = { key }, true
+			while out[2] == nil and (out[1] ~= nil or first) do
+				first = false
+				out = { next( rawget( self, "data" ), out[1] ) }
+				if out[1] == "_G" then
+					out = { "_G", rawget( self, "global" ) }
+				end
+			end
+			return table.unpack(out)
+		end,
+		__pairs = function( self )
+			return getmetatable( self ).__next, self, nil
+		end,
+		__ipairs = function( self )
+			return getmetatable( self ).__next, self, 0
+		end
+	}
+
 	ModUtil.Experimental.Metatables.Context = {
 		__call = function( self, targetPath_or_targetIndexArray, call, ... )
 
@@ -1969,12 +2064,11 @@ call( function()
 				parent = oldContextInfo
 			}
 
-			targetPath_or_targetIndexArray = targetPath_or_targetIndexArray or {}
 			if type(targetPath_or_targetIndexArray) == "string" then
 				targetPath_or_targetIndexArray = ModUtil.PathArray(targetPath_or_targetIndexArray)
 			end
 
-			contextInfo.targetIndexArray = targetPath_or_targetIndexArray
+			contextInfo.targetIndexArray = targetPath_or_targetIndexArray or {}
 			if oldContextInfo ~= nil then
 				contextInfo.indexArray = oldContextInfo.indexArray
 				contextInfo.baseTable = oldContextInfo.baseTable
@@ -1983,10 +2077,11 @@ call( function()
 				contextInfo.baseTable = _ENV
 			end
 
-			local callContextProcessor = rawget(self,"callContextProcessor")
+			local callContextProcessor = rawget( self, "callContextProcessor" )
 			contextInfo.callContextProcessor = callContextProcessor
 
-			local contextData,contextArgs = callContextProcessor( contextInfo, ... )
+			local contextData, contextArgs = callContextProcessor( contextInfo, ... )
+			local data = rawget( contextData,'data' )
 			contextData = contextData or _ENV
 			contextArgs = contextArgs or {}
 
@@ -1994,8 +2089,9 @@ call( function()
 			_ContextInfo.data = contextData
 			_ContextInfo.args = contextArgs
 
+			
+			setfenv( call, contextData )
 			local _ENV = contextData
-			_ENV._G = _ENV
 			call(table.unpack(contextArgs))
 
 		end
@@ -2014,7 +2110,10 @@ call( function()
 			tbl = {}
 			ModUtil.SafeSet( info.baseTable, info.indexArray, tbl )
 		end
-		return tbl
+		local env = { data = tbl }
+		env.global = env
+		setmetatable( env, ModUtil.Experimental.Metatables.ContextEnvironment )
+		return env
 	end
 
 	ModUtil.Experimental.Context.Call = ModUtil.Experimental.New.Context( function( info )
@@ -2033,7 +2132,7 @@ call( function()
 		return ModUtil.SafeGet( env, info.targetIndexArray )
 	end )
 	ModUtil.Experimental.Context.Meta = ModUtil.Experimental.New.Context( function( info )
-		table.insert(info.indexArray, ModUtil.Experimental.Nodes.Data.Metatable)
+		table.insert( info.indexArray, ModUtil.Experimental.Nodes.Data.Metatable )
 		return step( info )
 	end )
 	ModUtil.Experimental.Context.Data = ModUtil.Experimental.New.Context( step )
