@@ -48,7 +48,7 @@ local next = next
 
 function rawinext( t, i )
 	i = i + 1 or 1
-	return i, t[i]
+	return i, rawget( t, i )
 end
 
 local rawinext = rawinext
