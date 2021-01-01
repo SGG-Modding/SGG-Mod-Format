@@ -1742,10 +1742,6 @@ end
 
 -- Context Managers (WIP)
 
-local function call( f, ... )
-	return f( ... )
-end
-
 ModUtil.Metatables.ContextEnvironment = {
 	__index = function( self, key )
 
@@ -1820,7 +1816,7 @@ ModUtil.Metatables.Context = {
 		_ContextInfo.args = contextArgs
 
 		local _ENV = contextData
-		call( callContext, table.unpack( contextArgs ) )
+		callContext( table.unpack( contextArgs ) )
 
 	end
 }
@@ -1905,7 +1901,7 @@ ModUtil.Nodes.Table.Environment = {
 		setmetatable( env, ModUtil.Metatables.ContextEnvironment )
 		ModUtil.WrapFunction( baseTable, indexArray, function( baseFunc, ... )
 			local _ENV = env
-			call( baseFunc, ... )
+			baseFunc( ... )
 		end )
 		return env
 	end,
