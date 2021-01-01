@@ -29,23 +29,54 @@ SaveIgnores[ "ModUtil" ] = true
 
 -- Extended Global Utilities
 
-if not rawnext then
-	-- hope this gets added to proper lua soon
-	rawnext = next
-	local rawnext = rawnext
-	function next( t, k )
-		local m = debug.getmetatable( t )
-		local n = m and m.__next or rawnext
-		return n( t, k )
-	end
+local debug = debug
+
+rawnext = next
+local rawnext = rawnext
+
+function next( t, k )
+	local m = debug.getmetatable( t )
+	local n = m and m.__next or rawnext
+	return n( t, k )
+end
+
+function rawpairs( t )
+	return rawnext, t, nil
+end
+
+local next = next
+
+function rawinext( t, i )
+	i = i + 1 or 1
+	return i, t[i]
+end
+
+local rawinext = rawinext
+
+function inext( t, i )
+	local m = debug.getmetatable( t )
+	local n = m and m.__inext or rawinext
+	return n( t, i )
+end
+
+function rawipairs( t )
+	return rawinext, t, nil
+end
+
+function qrawpairs( t )
+	return next, t, nil
+end
+
+function qrawipairs( t )
+	return inext, t, nil
 end
 
 -- Environment Context
 
 local
-rawget, rawset, rawnext, rawlen, ModUtil, table, getmetatable, setmetatable, next, type, pairs, ipairs, debug
+rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, qrawpairs, qrawipairs
 =
-rawget, rawset, rawnext, rawlen, ModUtil, table, getmetatable, setmetatable, next, type, pairs, ipairs, debug
+rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, qrawpairs, qrawipairs
 
 function ModUtil.RawInterface( obj )
 
@@ -61,16 +92,17 @@ function ModUtil.RawInterface( obj )
 		end,
 		__next = function( _, key )
 			return rawnext( obj, key )
+		end,
+		__inext = function( _ , idx )
+			return rawinext( obj, idx )
+		end,
+		__pairs = function( _ )
+			return rawpairs( obj )
+		end,
+		__ipairs = function( _ )
+			return rawipairs( _ )
 		end
 	}
-
-	local __next = meta.__next
-	meta.__pairs = function( self )
-		return __next, self, nil
-	end
-	meta.__ipairs = function( self )
-		return __next, self, 0
-	end
 
 	local interface = {}
 	setmetatable( interface, meta )
@@ -116,16 +148,14 @@ function ModUtil.ReplaceGlobalEnvironment()
 		end,
 		__next = function( _, key )
 			return next( env(), key )
+		end,
+		__pairs = function()
+			return qrawpairs( env() )
+		end,
+		__ipairs = function()
+			return qrawipairs( env() )
 		end
 	}
-
-	local __next = meta.__next
-	meta.__pairs = function( self )
-		return __next, self, nil
-	end
-	meta.__ipairs = function( self )
-		return __next, self, 0
-	end
 
 	debug.setmetatable( __G._G, meta )
 end
@@ -640,7 +670,7 @@ function ModUtil.JoinIndexArrays( a, b )
 		c[ i ] = v
 		j = i
 	end
-	for i,v in ipairs(b) do
+	for i, v in ipairs(b) do
 		c[ i + j ] = v
 	end
 	return c
@@ -654,7 +684,7 @@ end
 
 	path - a dot-separated string that represents a path into a table
 ]]
-function ModUtil.PathArray( path )
+function ModUtil.PathToIndexArray( path )
 	local s = ""
 	local i = {}
 	for c in path:gmatch( "." ) do
@@ -682,7 +712,7 @@ end
 				 If not provided, retreive a global.
 ]]
 function ModUtil.PathGet( path, base )
-	return ModUtil.ArrayGet( base or _G, ModUtil.PathArray( path ) )
+	return ModUtil.ArrayGet( base or _G, ModUtil.PathToIndexArray( path ) )
 end
 
 --[[
@@ -696,15 +726,7 @@ end
 				 If not provided, retreive a global.
 ]]
 function ModUtil.PathSet( path, value, base )
-	return ModUtil.ArraySet( base or _G, ModUtil.PathArray( path ), value )
-end
-
-function ModUtil.PathNilTable( path, nilTable, base )
-	return ModUtil.MapNilTable( ModUtil.PathGet( path, base ), nilTable )
-end
-
-function ModUtil.PathSetTable( path, setTable, base )
-	return ModUtil.MapSetTable( ModUtil.PathGet( path, base ), setTable )
+	return ModUtil.ArraySet( base or _G, ModUtil.PathToIndexArray( path ), value )
 end
 
 -- Metaprogramming Shenanigans
@@ -731,10 +753,10 @@ ModUtil.Metatables.DirectLocalLevel = {
 		end
 	end,
 	__pairs = function( self )
-		return getmetatable( self ).__next, self, nil
+		return qrawpairs( self )
 	end,
 	__ipairs = function( self )
-		return getmetatable( self ).__next, self, 0
+		return qrawipairs( self )
 	end
 }
 
@@ -764,10 +786,10 @@ ModUtil.Metatables.DirectLocalLevels = {
 		end
 	end,
 	__pairs = function( self )
-		return getmetatable( self ).__next, self, nil
+		return qrawpairs( self )
 	end,
 	__ipairs = function( self )
-		return getmetatable( self ).__next, self, 0
+		return qrawipairs( self )
 	end
 }
 --[[
@@ -804,11 +826,10 @@ ModUtil.Metatables.LocalsInterface = {
 		end
 	end,
 	__pairs = function( self )
-		return getmetatable( self ).__next, self, nil
+		return qrawpairs( self )
 	end,
 	__ipairs = function( self )
-		-- basically does nothing, but conforms to ipairs contract
-		return getmetatable( self ).__next, self, 0
+		return qrawipairs( self )
 	end
 }
 
@@ -872,10 +893,10 @@ ModUtil.Metatables.DirectPairLocals = {
 
 	end,
 	__pairs = function( self )
-		return getmetatable( self ).__next, self, nil
+		return qrawpairs( self )
 	end,
 	__ipairs = function( self )
-		return getmetatable( self ).__next, self, 0
+		return qrawipairs( self )
 	end
 }
 
@@ -936,11 +957,10 @@ ModUtil.Metatables.Locals = {
 		end
 	end,
 	__pairs = function( self )
-		return getmetatable( self ).__next, self, nil
+		return qrawpairs( self )
 	end,
 	__ipairs = function( self )
-		-- basically does nothing, but conforms to ipairs contract
-		return getmetatable( self ).__next, self, 0
+		return qrawipairs( self )
 	end
 }
 
@@ -968,13 +988,13 @@ ModUtil.Metatables.DirectUpValues = {
 	end,
 	__next = function ( self, idx )
 		idx = idx + 1
-		return idx, debug.getupvalue( rawget(self,"func"), idx )
+		return idx, debug.getupvalue( rawget( self, "func" ), idx )
 	end,
 	__pairs = function( self )
-		return getmetatable( self ).__next, self, nil
+		return qrawpairs( self )
 	end,
 	__ipairs = function( self )
-		return getmetatable( self ).__next, self, 0
+		return qrawipairs( self )
 	end
 }
 
@@ -997,11 +1017,10 @@ ModUtil.Metatables.UpValues = {
 		end
 	end,
 	__pairs = function( self )
-		return getmetatable( self ).__next, self, nil
+		return qrawpairs( self )
 	end,
 	__ipairs = function( self )
-		-- basically does nothing, but conforms to ipairs contract
-		return getmetatable( self ).__next, self, 0
+		return qrawipairs( self )
 	end
 }
 
@@ -1073,11 +1092,11 @@ end
 	basePath - the path to the function, as a string
 ]]
 function ModUtil.GetBaseBottomUpValues( basePath )
-	return ModUtil.GetBottomUpValues( _G, ModUtil.PathArray( basePath ) )
+	return ModUtil.GetBottomUpValues( _G, ModUtil.PathToIndexArray( basePath ) )
 end
 
 function ModUtil.GetBaseBottomDirectUpValues( basePath )
-	return ModUtil.GetBottomDirectUpValues( _G, ModUtil.PathArray( basePath ) )
+	return ModUtil.GetBottomDirectUpValues( _G, ModUtil.PathToIndexArray( basePath ) )
 end
 
 -- Globalisation
@@ -1120,7 +1139,7 @@ function ModUtil.GlobaliseFuncPath( path, prefixPath )
 	else
 		prefixPath = prefixPath .. '.'
 	end
-	ModUtil.GlobaliseFunc( _G,  ModUtil.PathArray( path ), prefixPath .. path )
+	ModUtil.GlobaliseFunc( _G,  ModUtil.PathToIndexArray( path ), prefixPath .. path )
 end
 
 --[[
@@ -1337,7 +1356,7 @@ end
 	mod	- (optional) the object for your mod, for debug purposes
 ]]
 function ModUtil.WrapBaseFunction( baseFuncPath, wrapFunc, mod )
-	local pathArray = ModUtil.PathArray( baseFuncPath )
+	local pathArray = ModUtil.PathToIndexArray( baseFuncPath )
 	ModUtil.WrapFunction( _G, pathArray, wrapFunc, mod )
 end
 
@@ -1345,7 +1364,7 @@ end
 	Internal function that reapplies all the wrappers to a function.
 ]]
 function ModUtil.RewrapBaseFunction( baseFuncPath )
-	local pathArray = ModUtil.PathArray( baseFuncPath )
+	local pathArray = ModUtil.PathToIndexArray( baseFuncPath )
 	ModUtil.RewrapFunction( _G, pathArray )
 end
 
@@ -1361,7 +1380,7 @@ end
 		eg. "CreateRoomReward" or "SetTraitsOnLoot"
 ]]
 function ModUtil.UnwrapBaseFunction( baseFuncPath )
-	local pathArray = ModUtil.PathArray( baseFuncPath )
+	local pathArray = ModUtil.PathToIndexArray( baseFuncPath )
 	ModUtil.UnwrapFunction( _G, pathArray )
 end
 
@@ -1477,7 +1496,7 @@ end
 		for debug purposes
 ]]
 function ModUtil.BaseOverride( basePath, value, mod )
-	local pathArray = ModUtil.PathArray( basePath )
+	local pathArray = ModUtil.PathToIndexArray( basePath )
 	ModUtil.Override( _G, pathArray, value, mod )
 end
 
@@ -1491,7 +1510,7 @@ end
 	basePath	- the path to restore, as a string
 ]]
 function ModUtil.BaseRestore( basePath )
-	local pathArray = ModUtil.PathArray( basePath )
+	local pathArray = ModUtil.PathToIndexArray( basePath )
 	ModUtil.Restore( _G, pathArray )
 end
 
@@ -1525,10 +1544,10 @@ ModUtil.Metatables.EntangledIsomorphism = {
 		return next( rawget( self, "data" ), key )
 	end,
 	__pairs = function( self )
-		return getmetatable( self ).__next, self, nil
+		return qrawpairs( self )
 	end,
 	__ipairs = function( self )
-		return getmetatable( self ).__next, self, 0
+		return qrawipairs( self )
 	end
 }
 
@@ -1560,10 +1579,10 @@ ModUtil.Metatables.EntangledIsomorphismInverse = {
 		return next( rawget( self, "inverse" ), value )
 	end,
 	__pairs = function( self )
-		return getmetatable( self ).__next, self, nil
+		return qrawpairs( self )
 	end,
 	__ipairs = function( self )
-		return getmetatable( self ).__next, self, 0
+		return qrawipairs( self )
 	end
 }
 
@@ -1623,10 +1642,10 @@ ModUtil.Metatables.PreImageNode = {
 		return next( rawget( self, "inverse" ), value )
 	end,
 	__pairs = function( self )
-		return getmetatable( self ).__next, self, nil
+		return qrawpairs( self )
 	end,
 	__ipairs = function( self )
-		return getmetatable( self ).__next, self, 0
+		return qrawipairs( self )
 	end
 }
 
@@ -1680,10 +1699,10 @@ ModUtil.Metatables.EntangledMorphism = {
 		return next( rawget( self, "data" ), key )
 	end,
 	__pairs = function( self )
-		return getmetatable( self ).__next, self, nil
+		return qrawpairs( self )
 	end,
 	__ipairs = function( self )
-		return getmetatable( self ).__next, self, 0
+		return qrawipairs( self )
 	end
 }
 
@@ -1709,10 +1728,10 @@ ModUtil.Metatables.EntangledMorphismPreImage = {
 		return next( rawget( self, "preImage" ), value )
 	end,
 	__pairs = function( self )
-		return getmetatable( self ).__next, self, nil
+		return qrawpairs( self )
 	end,
 	__ipairs = function( self )
-		return getmetatable( self ).__next, self, 0
+		return qrawipairs( self )
 	end
 }
 
@@ -1775,10 +1794,10 @@ ModUtil.Metatables.ContextEnvironment = {
 		return table.unpack(out)
 	end,
 	__pairs = function( self )
-		return getmetatable( self ).__next, self, nil
+		return qrawpairs( self )
 	end,
 	__ipairs = function( self )
-		return getmetatable( self ).__next, self, 0
+		return qrawipairs( self )
 	end
 }
 
@@ -1792,7 +1811,7 @@ ModUtil.Metatables.Context = {
 		}
 
 		if type(targetPath_or_targetIndexArray) == "string" then
-			targetPath_or_targetIndexArray = ModUtil.PathArray(targetPath_or_targetIndexArray)
+			targetPath_or_targetIndexArray = ModUtil.PathToIndexArray(targetPath_or_targetIndexArray)
 		end
 
 		contextInfo.targetIndexArray = targetPath_or_targetIndexArray or {}
