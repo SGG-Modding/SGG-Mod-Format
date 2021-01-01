@@ -48,7 +48,10 @@ local next = next
 
 function rawinext( t, i )
 	i = i + 1 or 1
-	return i, rawget( t, i )
+	local v = rawget( t, i )
+	if v ~= nil then
+		return i, v
+	end
 end
 
 local rawinext = rawinext
