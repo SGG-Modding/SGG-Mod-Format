@@ -15,7 +15,7 @@ OnAnyLoad{ function()
 	thread( function()
 		while ModUtil.Hades.UnfreezeLoop do
 			wait(15)
-			if ModUtil.SafeGet(CurrentRun,{'Hero','FreezeInputKeys'}) then
+			if ModUtil.ArrayGet(CurrentRun,{'Hero','FreezeInputKeys'}) then
 				if (not AreScreensActive()) and (not IsInputAllowed({})) then
 					UnfreezePlayerUnit()
 					DisableShopGamepadCursor()
