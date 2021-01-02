@@ -27,25 +27,24 @@ ModUtil = {
 }
 SaveIgnores[ "ModUtil" ] = true
 
--- Extended Global Utilities
+-- Extended Global Utilities (assuming lua 5.2)
 
 local debug = debug
 
+-- doesn't invoke __index
 rawnext = next
 local rawnext = rawnext
 
+-- invokes __next
 function next( t, k )
 	local m = debug.getmetatable( t )
 	local n = m and m.__next or rawnext
 	return n( t, k )
 end
 
-function rawpairs( t )
-	return rawnext, t, nil
-end
-
 local next = next
 
+-- doesn't invoke __index just like rawnext
 function rawinext( t, i )
 	i = i or 0
 	i = i + 1
@@ -57,30 +56,30 @@ end
 
 local rawinext = rawinext
 
+-- invokes __inext
 function inext( t, i )
 	local m = debug.getmetatable( t )
 	local n = m and m.__inext or rawinext
 	return n( t, i )
 end
 
+-- truly raw pairs, ignores __next and __pairs
+function rawpairs( t )
+	return rawnext, t, nil
+end
+
+-- truly raw ipairs, ignores __inext and __ipairs
 function rawipairs( t )
 	return rawinext, t, nil
 end
 
-function qrawpairs( t )
-	return next, t, nil
-end
-
-function qrawipairs( t )
-	return inext, t, nil
-end
-
 -- Environment Context
 
+-- bind to locals to minimise environment recursion and increase speed
 local
-rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, qrawpairs, qrawipairs
+rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, inext
 =
-rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, qrawpairs, qrawipairs
+rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, inext
 
 function ModUtil.RawInterface( obj )
 
@@ -153,6 +152,9 @@ function ModUtil.ReplaceGlobalEnvironment()
 		__next = function( _, key )
 			return next( env(), key )
 		end,
+		__inext = function( _, key )
+			return inext( env(), key )
+		end,
 		__pairs = function()
 			return pairs( env() )
 		end,
@@ -164,6 +166,7 @@ function ModUtil.ReplaceGlobalEnvironment()
 	debug.setmetatable( __G._G, meta )
 end
 
+-- the performance overhead of this has not been rigorously measured, but seems insignificant
 ModUtil.ReplaceGlobalEnvironment()
 
 local function skipenv( obj )
@@ -737,31 +740,32 @@ end
 
 ModUtil.Metatables.DirectLocalLevel = {
 	__index = function( self, idx )
-		return debug.getlocal( rawget(self,"level") + 1, idx )
+		return debug.getlocal( rawget( self,"level" ) + 1, idx )
 	end,
 	__newindex = function( self, idx, value )
-		local level = rawget(self,"level") + 1
-		local name = debug.getlocal( level, idx)
+		local level = rawget( self, "level" ) + 1
+		local name = debug.getlocal( level, idx )
 		if name ~= nil then
 			debug.setlocal( level, idx, value )
 		end
 	end,
-	__next = function( self, idx )
-		if idx == nil then
-			idx = 0
+	__len = function( self )
+		local level = rawget( self, "level" ) + 1
+		local idx = 1
+		while debug.getlocal( level, idx ) do
+			idx = idx + 1
 		end
+		return idx - 1
+	end,
+	__next = function( self, idx )
+		idx = idx or 0
 		idx = idx + 1
-		local name, val = debug.getlocal( rawget(self,"level") + 1, idx )
+		local name, val = debug.getlocal( rawget( self, "level" ) + 1, idx )
 		if val ~= nil then
 			return idx, name, val
 		end
 	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
-	end
+	__inext = ModUtil.Metatables.DirectLocalLevel.__next
 }
 
 --[[
@@ -780,21 +784,21 @@ ModUtil.Metatables.DirectLocalLevels = {
 	__index = function( _, level )
 		return level, ModUtil.DirectLocalLevel( level )
 	end,
-	__next = function( _, level )
-		if level == nil then
-			level = 0
+	__len = function()
+		local level = 2
+		while debug.getinfo( level, "f" ) do
+			level = level + 1
 		end
+		return level - 1
+	end,
+	__next = function( _, level )
+		level = level or 0
 		level = level + 1
 		if debug.getinfo(level + 1, "f") then
 			return level, ModUtil.DirectLocalLevel( level )
 		end
 	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
-	end
+	__inext = ModUtil.Metatables.DirectLocalLevels
 }
 --[[
 	Example Use:
@@ -821,6 +825,10 @@ ModUtil.Metatables.LocalsInterface = {
 			debug.setlocal( pair.level + 1, pair.index, value )
 		end
 	end,
+	__len = function( self )
+		-- locals can't have integer names
+		return 0 --#rawget( self, "index" )
+	end,
 	__next = function( self, name )
 		local pair
 		name, pair = next( rawget( self, "index" ), name )
@@ -829,11 +837,13 @@ ModUtil.Metatables.LocalsInterface = {
 			return name, value
 		end
 	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
+	__inext = function( self , i )
+		local pair
+		i, pair = inext( rawget( self, "index" ), i )
+		if pair ~= nil then
+			local _, value = debug.getlocal( pair.level + 1, pair.index )
+			return i, value
+		end
 	end
 }
 
@@ -878,6 +888,9 @@ ModUtil.Metatables.DirectPairLocals = {
 	__newindex = function( _, pair, value )
 		debug.setlocal( pair.level + 1, pair.index, value )
 	end,
+	__len = function()
+		return 0
+	end,
 	__next = function( _, pair )
 		local nextpair = { level = 1, index = 1 }
 		if pair == nil then
@@ -896,12 +909,7 @@ ModUtil.Metatables.DirectPairLocals = {
 		end
 
 	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
-	end
+	__inext = function() return end
 }
 
 ModUtil.DirectPairLocals = {}
@@ -941,6 +949,9 @@ ModUtil.Metatables.Locals = {
 			level = level + 1
 		end
 	end,
+	__len = function()
+		return 0
+	end,
 	__next = function( _, name )
 		if name == nil then
 			return debug.getlocal( 2, 1 )
@@ -960,12 +971,7 @@ ModUtil.Metatables.Locals = {
 			level = level + 1
 		end
 	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
-	end
+	__inext = ModUtil.Metatables.Locals.__next
 }
 
 --[[
@@ -991,15 +997,11 @@ ModUtil.Metatables.DirectUpValues = {
 		return debug.getinfo( rawget( self, "func" ), 'u' ).nups
 	end,
 	__next = function ( self, idx )
+		idx = idx or 0
 		idx = idx + 1
 		return idx, debug.getupvalue( rawget( self, "func" ), idx )
 	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
-	end
+	__inext = ModUtil.Metatables.DirectUpValues.__next
 }
 
 ModUtil.Metatables.UpValues = {
@@ -1020,11 +1022,12 @@ ModUtil.Metatables.UpValues = {
 			return debug.getupvalue( rawget( self, "func" ), i )
 		end
 	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
+	__inext = function ( self, idx )
+		local i
+		idx, i = next( rawget( self, "ind" ), idx )
+		if i ~= nil then
+			return debug.getupvalue( rawget( self, "func" ), i )
+		end
 	end
 }
 
@@ -1547,11 +1550,8 @@ ModUtil.Metatables.EntangledIsomorphism = {
 	__next = function( self, key )
 		return next( rawget( self, "data" ), key )
 	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
+	__inext = function( self, idx )
+		return inext( rawget( self, "data" ), idx )
 	end
 }
 
@@ -1582,11 +1582,8 @@ ModUtil.Metatables.EntangledIsomorphismInverse = {
 	__next = function( self, value )
 		return next( rawget( self, "inverse" ), value )
 	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
+	__inext = function( self, idx )
+		return inext( rawget( self, "inverse" ), idx )
 	end
 }
 
@@ -1645,11 +1642,8 @@ ModUtil.Metatables.PreImageNode = {
 	__next = function( self, value )
 		return next( rawget( self, "inverse" ), value )
 	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
+	__inext = function( self, value )
+		return inext( rawget( self, "inverse" ), value )
 	end
 }
 
@@ -1678,6 +1672,7 @@ ModUtil.Metatables.EntangledPreImageNode = {
 	end,
 	__len = ModUtil.Metatables.PreImageNode.__len,
 	__next = ModUtil.Metatables.PreImageNode.__next,
+	__inext = ModUtil.Metatables.PreImageNode.__next,
 	__pairs = ModUtil.Metatables.PreImageNode.__pairs,
 	__ipairs = ModUtil.Metatables.PreImageNode.__ipairs
 }
@@ -1699,14 +1694,14 @@ ModUtil.Metatables.EntangledMorphism = {
 		rawget( self, "data" )[ key ] = value
 		rawget( self, "preImage" )[ value ][ nil ] = key
 	end,
+	__len = function( self )
+		return #rawget( self, "data" )
+	end,
 	__next = function( self, key )
 		return next( rawget( self, "data" ), key )
 	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
+	__inext = function( self, idx )
+		return inext( rawget( self, "data" ), idx )
 	end
 }
 
@@ -1728,14 +1723,11 @@ ModUtil.Metatables.EntangledMorphismPreImage = {
 			data[ key ] = nil
 		end
 	end,
+	__len = function( self )
+		return #rawget( self, "preImage" )
+	end,
 	__next = function( self, value )
 		return next( rawget( self, "preImage" ), value )
-	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
 	end
 }
 
@@ -1797,11 +1789,16 @@ ModUtil.Metatables.ContextEnvironment = {
 		end
 		return table.unpack(out)
 	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
+	__inext = function( self, idx )
+		local out, first = { idx }, true
+		while out[2] == nil and (out[1] ~= nil or first) do
+			first = false
+			out = { inext( rawget( self, "data" ), out[1] ) }
+			if out[1] == "_G" then
+				out = { "_G", rawget( self, "global" ) }
+			end
+		end
+		return table.unpack(out)
 	end
 }
 
