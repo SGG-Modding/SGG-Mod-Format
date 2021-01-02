@@ -47,7 +47,8 @@ end
 local next = next
 
 function rawinext( t, i )
-	i = i + 1 or 1
+	i = i or 0
+	i = i + 1
 	local v = rawget( t, i )
 	if v ~= nil then
 		return i, v
@@ -153,10 +154,10 @@ function ModUtil.ReplaceGlobalEnvironment()
 			return next( env(), key )
 		end,
 		__pairs = function()
-			return qrawpairs( env() )
+			return pairs( env() )
 		end,
 		__ipairs = function()
-			return qrawipairs( env() )
+			return ipairs( env() )
 		end
 	}
 
