@@ -2035,19 +2035,23 @@ ModUtil.Nodes.Table.UpValues = {
 
 ModUtil.Nodes.Table.Environment = {
 	New = function( obj )
-		local env = getfenv( obj )
-		if env == __G._G then
-			env = {}
-			env.data = env.data or {}
-			env.fallback = _G
-			env.global = env
-			setmetatable( env, ModUtil.Metatables.Environment )
-			setfenv( obj, env )
+		if type( obj ) == "function" then
+			local env = getfenv( obj )
+			if env == __G._G or env == nil then
+				env = {}
+				env.data = env.data or {}
+				env.fallback = _G
+				env.global = env
+				setmetatable( env, ModUtil.Metatables.Environment )
+				setfenv( obj, env )
+			end
+			return env
 		end
-		return env
 	end,
 	Get = function( obj )
-		return getfenv( obj )
+		if type( obj ) == "function" then
+			return getfenv( obj )
+		end
 	end,
 	Set = function( obj, value )
 		setfenv( obj, value )
