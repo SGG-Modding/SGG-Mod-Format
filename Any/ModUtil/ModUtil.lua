@@ -73,13 +73,23 @@ function rawipairs( t )
 	return rawinext, t, nil
 end
 
+-- quasi-raw pairs, invokes __next but ignores __pairs
+function qrawpairs( t )
+    return next, t, nil
+end
+
+-- quasi-raw ipairs, invokes __inext but ignores __ipairs
+function qrawipairs( t )
+    return inext, t, nil
+end
+
 -- Environment Context
 
 -- bind to locals to minimise environment recursion and increase speed
 local
-rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, inext
+rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, inext, qrawpairs, qrawipairs
 =
-rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, inext
+rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, inext, qrawpairs, qrawipairs
 
 function ModUtil.RawInterface( obj )
 
@@ -90,7 +100,7 @@ function ModUtil.RawInterface( obj )
 		__newindex = function( _, key, value )
 			rawset( obj, key, value )
 		end,
-		__len = function( _ )
+		__len = function()
 			return rawlen( obj )
 		end,
 		__next = function( _, key )
@@ -99,11 +109,11 @@ function ModUtil.RawInterface( obj )
 		__inext = function( _ , idx )
 			return rawinext( obj, idx )
 		end,
-		__pairs = function( _ )
+		__pairs = function()
 			return rawpairs( obj )
 		end,
-		__ipairs = function( _ )
-			return rawipairs( _ )
+		__ipairs = function(  )
+			return rawipairs( obj )
 		end
 	}
 
@@ -130,8 +140,9 @@ function ModUtil.ReplaceGlobalEnvironment()
 			while name do
 				name, value = debug.getlocal( level, idx )
 				if name == "_ENV" then
-					return value, false
+					return value
 				end
+
 				idx = idx + 1
 			end
 			level = level + 1
@@ -740,7 +751,7 @@ end
 
 ModUtil.Metatables.DirectLocalLevel = {
 	__index = function( self, idx )
-		return debug.getlocal( rawget( self,"level" ) + 1, idx )
+		return debug.getlocal( rawget( self, "level" ) + 1, idx )
 	end,
 	__newindex = function( self, idx, value )
 		local level = rawget( self, "level" ) + 1
@@ -765,8 +776,14 @@ ModUtil.Metatables.DirectLocalLevel = {
 			return idx, name, val
 		end
 	end,
-	__inext = ModUtil.Metatables.DirectLocalLevel.__next
+	__pairs = function( self )
+		return qrawpairs( self )
+	end,
+	__ipairs = function( self )
+		return qrawipairs( self )
+	end
 }
+ModUtil.Metatables.DirectLocalLevel.__inext = ModUtil.Metatables.DirectLocalLevel.__next
 
 --[[
 	Example Use:
@@ -798,8 +815,15 @@ ModUtil.Metatables.DirectLocalLevels = {
 			return level, ModUtil.DirectLocalLevel( level )
 		end
 	end,
-	__inext = ModUtil.Metatables.DirectLocalLevels
+	__pairs = function( self )
+		return qrawpairs( self )
+	end,
+	__ipairs = function( self )
+		return qrawipairs( self )
+	end
 }
+ModUtil.Metatables.DirectLocalLevels.__inext = ModUtil.Metatables.DirectLocalLevels.__next
+
 --[[
 	Example Use:
 	for level,localLevel in pairs(ModUtil.LocalLevels) do
@@ -844,6 +868,12 @@ ModUtil.Metatables.LocalsInterface = {
 			local _, value = debug.getlocal( pair.level + 1, pair.index )
 			return i, value
 		end
+	end,
+	__pairs = function( self )
+		return qrawpairs( self )
+	end,
+	__ipairs = function( self )
+		return qrawipairs( self )
 	end
 }
 
@@ -909,7 +939,13 @@ ModUtil.Metatables.DirectPairLocals = {
 		end
 
 	end,
-	__inext = function() return end
+	__inext = function() return end,
+	__pairs = function( self )
+		return qrawpairs( self )
+	end,
+	__ipairs = function( self )
+		return qrawipairs( self )
+	end
 }
 
 ModUtil.DirectPairLocals = {}
@@ -971,8 +1007,14 @@ ModUtil.Metatables.Locals = {
 			level = level + 1
 		end
 	end,
-	__inext = ModUtil.Metatables.Locals.__next
+	__pairs = function( self )
+		return qrawpairs( self )
+	end,
+	__ipairs = function( self )
+		return qrawipairs( self )
+	end
 }
+ModUtil.Metatables.Locals.__inext = ModUtil.Metatables.Locals.__next
 
 --[[
 	Access to local variables, in the current function and callers.
@@ -1001,8 +1043,14 @@ ModUtil.Metatables.DirectUpValues = {
 		idx = idx + 1
 		return idx, debug.getupvalue( rawget( self, "func" ), idx )
 	end,
-	__inext = ModUtil.Metatables.DirectUpValues.__next
+	__pairs = function( self )
+		return qrawpairs( self )
+	end,
+	__ipairs = function( self )
+		return qrawipairs( self )
+	end
 }
+ModUtil.Metatables.DirectUpValues.__inext = ModUtil.Metatables.DirectUpValues.__next
 
 ModUtil.Metatables.UpValues = {
 	__index = function( self, name )
@@ -1028,6 +1076,12 @@ ModUtil.Metatables.UpValues = {
 		if i ~= nil then
 			return debug.getupvalue( rawget( self, "func" ), i )
 		end
+	end,
+	__pairs = function( self )
+		return qrawpairs( self )
+	end,
+	__ipairs = function( self )
+		return qrawipairs( self )
 	end
 }
 
@@ -1552,6 +1606,12 @@ ModUtil.Metatables.EntangledIsomorphism = {
 	end,
 	__inext = function( self, idx )
 		return inext( rawget( self, "data" ), idx )
+	end,
+	__pairs = function( self )
+		return qrawpairs( self )
+	end,
+	__ipairs = function( self )
+		return qrawipairs( self )
 	end
 }
 
@@ -1584,6 +1644,12 @@ ModUtil.Metatables.EntangledIsomorphismInverse = {
 	end,
 	__inext = function( self, idx )
 		return inext( rawget( self, "inverse" ), idx )
+	end,
+	__pairs = function( self )
+		return qrawpairs( self )
+	end,
+	__ipairs = function( self )
+		return qrawipairs( self )
 	end
 }
 
@@ -1644,6 +1710,12 @@ ModUtil.Metatables.PreImageNode = {
 	end,
 	__inext = function( self, value )
 		return inext( rawget( self, "inverse" ), value )
+	end,
+	__pairs = function( self )
+		return qrawpairs( self )
+	end,
+	__ipairs = function( self )
+		return qrawipairs( self )
 	end
 }
 
@@ -1672,11 +1744,10 @@ ModUtil.Metatables.EntangledPreImageNode = {
 	end,
 	__len = ModUtil.Metatables.PreImageNode.__len,
 	__next = ModUtil.Metatables.PreImageNode.__next,
-	__inext = ModUtil.Metatables.PreImageNode.__next,
+	__inext = ModUtil.Metatables.PreImageNode.__inext,
 	__pairs = ModUtil.Metatables.PreImageNode.__pairs,
 	__ipairs = ModUtil.Metatables.PreImageNode.__ipairs
 }
-
 
 function ModUtil.New.EntangledPreImageNode( self, value )
 	local data, inverse = {}, {}
@@ -1702,6 +1773,12 @@ ModUtil.Metatables.EntangledMorphism = {
 	end,
 	__inext = function( self, idx )
 		return inext( rawget( self, "data" ), idx )
+	end,
+	__pairs = function( self )
+		return qrawpairs( self )
+	end,
+	__ipairs = function( self )
+		return qrawipairs( self )
 	end
 }
 
@@ -1799,6 +1876,12 @@ ModUtil.Metatables.ContextEnvironment = {
 			end
 		end
 		return table.unpack(out)
+	end,
+	__pairs = function( self )
+		return qrawpairs( self )
+	end,
+	__ipairs = function( self )
+		return qrawipairs( self )
 	end
 }
 
@@ -1912,7 +1995,7 @@ ModUtil.Nodes.Table.UpValues = {
 }
 
 ModUtil.Nodes.Table.Environment = {
-	New = function( baseTable, indexArray)
+	New = function( baseTable, indexArray )
 		ModUtil.NewTable( ModUtil.Internal.PerFunctionEnv, baseTable )
 		local env = ModUtil.ArrayNewTable( ModUtil.Internal.PerFunctionEnv[ baseTable ], indexArray )
 		env.data = env.data or {}
@@ -1929,7 +2012,12 @@ ModUtil.Nodes.Table.Environment = {
 		return ModUtil.ArrayGet( ModUtil.Internal.PerFunctionEnv[ baseTable ], indexArray )
 	end,
 	Set = function( baseTable, indexArray, _, value )
-		ModUtil.ArraySet( ModUtil.Internal.PerFunctionEnv[ baseTable ], indexArray, value )
+		local env = ModUtil.ArraySet( ModUtil.Internal.PerFunctionEnv[ baseTable ], indexArray, value )
+		ModUtil.UnwrapFunction( baseTable, indexArray )
+		ModUtil.WrapFunction( baseTable, indexArray, function( baseFunc, ... )
+			local _ENV = env
+			baseFunc( ... )
+		end )
 	end
 }
 
