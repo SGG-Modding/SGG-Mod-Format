@@ -424,12 +424,12 @@ function ModUtil.Slice( state, start, stop, step )
 	if start < 0 then
 		start = start + n
 	end
-	stop = stop or n - 1
+	stop = stop or n
 	if stop < 0 then
 		stop = stop + n
 	end
 
-	for i = start, stop, step do
+	for i = start, stop - 1, step do
 		table.insert( slice, state[i + 1] )
 	end
 
@@ -1960,14 +1960,20 @@ ModUtil.Context.Call = ModUtil.New.Context( function( info )
 			obj = meta.__call
 		end
 	end
-	table.insert( info.indexArray, ModUtil.Nodes.Table.Environment )
-	return ModUtil.ArrayNewTable( info.baseTable, info.indexArray )
+	local env = { data = ModUtil.NewTable( obj, ModUtil.Nodes.Table.Environment ), fallback = _G }
+	env.global = env
+	setmetatable( env, ModUtil.Metatables.ContextEnvironment )
+	return env
 end )
 
 ModUtil.Context.Meta = ModUtil.New.Context( function( info )
 	info.indexArray = ModUtil.JoinIndexArrays( info.indexArray, info.targetIndexArray )
-	table.insert( info.indexArray, ModUtil.Nodes.Table.Metatable )
-	local env = { data = ModUtil.ArrayNewTable( info.baseTable, info.indexArray ), fallback = _G }
+	local parent = ModUtil.SafeGet( info.baseTable, info.indexArray )
+	if parent == nil then
+		parent = {}
+		ModUtil.SafeSet( info.baseTable, info.indexArray, parent )
+	end
+	local env = { data = ModUtil.NewTable( parent, ModUtil.Nodes.Table.Metatable ), fallback = _G }
 	env.global = env
 	setmetatable( env, ModUtil.Metatables.ContextEnvironment )
 	return env
@@ -1975,7 +1981,14 @@ end )
 
 ModUtil.Context.Data = ModUtil.New.Context( function( info )
 	info.indexArray = ModUtil.JoinIndexArrays( info.indexArray, info.targetIndexArray )
-	local env = { data = ModUtil.ArrayNewTable( info.baseTable, info.indexArray ), fallback = _G }
+	local tempArray = ShallowCopyTable( info.indexArray )
+	local key = table.remove( tempArray )
+	local parent = ModUtil.SafeGet( info.baseTable, tempArray )
+	if parent == nil then
+		parent = {}
+		ModUtil.SafeSet( info.baseTable, tempArray, parent )
+	end
+	local env = { data = ModUtil.NewTable( parent, key ), fallback = _G }
 	env.global = env
 	setmetatable( env, ModUtil.Metatables.ContextEnvironment )
 	return env
