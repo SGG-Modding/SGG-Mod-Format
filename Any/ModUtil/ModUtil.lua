@@ -125,9 +125,9 @@ end
 
 -- bind to locals to minimise environment recursion and increase speed
 local
-rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, inext, qrawpairs, qrawipairs, getfenv, setfenv
+rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, inext, qrawpairs, qrawipairs, getfenv, setfenv, tostring
 =
-rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, inext, qrawpairs, qrawipairs, getfenv, setfenv
+rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, inext, qrawpairs, qrawipairs, getfenv, setfenv, tostring
 
 function ModUtil.RawInterface( obj )
 
@@ -523,11 +523,15 @@ end
 	key	 - the key at which to store the new empty table
 ]]
 function ModUtil.NewTable( tableArg, key )
-	if ModUtil.Nodes.Index[ key ] then
-		return ModUtil.Nodes.Index[ key ].New( tableArg )
+	local nodeType = ModUtil.Nodes.Index[ key ]
+	if nodeType then
+		return ModUtil.Nodes.Table[ nodeType ].New( tableArg )
+	end
+	if type( tableArg ) == "function" then
+		tableArg = ModUtil.NewTable( tableArg, ModUtil.Nodes.Table.Environment )
 	end
 	local tbl = tableArg[ key ]
-	if type(tbl) ~= "table" then
+	if type( tbl ) ~= "table" then
 		tbl = {}
 		tableArg[ key ] = tbl
 	end
@@ -548,14 +552,15 @@ end
 ]]
 function ModUtil.SafeGet( baseTable, indexArray )
 	local node = baseTable
-	for i, k in ipairs( indexArray ) do
+	for _, key in ipairs( indexArray ) do
 		if type( node ) ~= "table" then
 			return nil
 		end
-		if ModUtil.Nodes.Index[ k ] then
-			node = ModUtil.Nodes.Index[ k ].Get( node )
+		local nodeType = ModUtil.Nodes.Index[ key ]
+		if nodeType then
+			node = ModUtil.Nodes.Table[ nodeType ].Get( node )
 		else
-			node = node[ k ]
+			node = node[ key ]
 		end
 	end
 	return node
@@ -579,27 +584,29 @@ function ModUtil.SafeSet( baseTable, indexArray, value )
 	if next( indexArray ) == nil then
 		return false -- can't set the input argument
 	end
-	local n = #indexArray
+	local n = #indexArray -- change to shallow copy + table.remove later
 	local node = baseTable
 	for i = 1, n - 1 do
-		local k = indexArray[ i ]
-		if not ModUtil.NewTable( node, k ) then return false end
-		if ModUtil.Nodes.Index[ k ] then
-			node = ModUtil.Nodes.Index[ k ].Get( node )
+		local key = indexArray[ i ]
+		if not ModUtil.NewTable( node, key ) then return false end
+		local nodeType = ModUtil.Nodes.Index[ key ]
+		if nodeType then
+			node = ModUtil.Nodes.Table[ nodeType ].Get( node )
 		else
-			node = node[ k ]
+			node = node[ key ]
 		end
 	end
-	local k = indexArray[ n ]
-	if ModUtil.Nodes.Index[ k ] then
-		return ModUtil.Nodes.Index[ k ].Set( node, value )
+	local key = indexArray[ n ]
+	local nodeType = ModUtil.Nodes.Index[ key ]
+	if nodeType then
+		return ModUtil.Nodes.Table[ nodeType ].Set( node, value )
 	end
-	if ( node[ k ] == nil ) ~= ( value == nil ) then
+	if ( node[ key ] == nil ) ~= ( value == nil ) then
 		if autoIsUnKeyed( baseTable ) then
 			ModUtil.MarkForCollapse( node )
 		end
 	end
-	node[ k ] = value
+	node[ key ] = value
 	return true
 end
 
@@ -716,7 +723,7 @@ end
 	Create an index array from the provided Path.
 
 	The returned array can be used as an argument to the safe table
-	manipulation functions, such as ModUtil.ArraySet and ModUtil.ArrayGet.
+	manipulation functions, such as ModUtil.SafeSet and ModUtil.SafeGet.
 
 	path - a dot-separated string that represents a path into a table
 ]]
@@ -748,7 +755,7 @@ end
 				 If not provided, retreive a global.
 ]]
 function ModUtil.PathGet( path, base )
-	return ModUtil.ArrayGet( base or _G, ModUtil.PathToIndexArray( path ) )
+	return ModUtil.SafeGet( base or _G, ModUtil.PathToIndexArray( path ) )
 end
 
 --[[
@@ -762,7 +769,7 @@ end
 				 If not provided, retreive a global.
 ]]
 function ModUtil.PathSet( path, value, base )
-	return ModUtil.ArraySet( base or _G, ModUtil.PathToIndexArray( path ), value )
+	return ModUtil.SafeSet( base or _G, ModUtil.PathToIndexArray( path ), value )
 end
 
 -- Metaprogramming Shenanigans
@@ -1134,30 +1141,30 @@ function ModUtil.GetDirectUpValues( func )
 end
 
 function ModUtil.GetBottomUpValues( baseTable, indexArray )
-	local baseValue = ModUtil.ArrayGet( ModUtil.Internal.Overrides[ baseTable ], indexArray )
+	local baseValue = ModUtil.SafeGet( ModUtil.Internal.Overrides[ baseTable ], indexArray )
 	if baseValue then
 		baseValue = baseValue[ #baseValue ].Base
 	else
-		baseValue = ModUtil.ArrayGet( ModUtil.Internal.WrapCallbacks[ baseTable ], indexArray )
+		baseValue = ModUtil.SafeGet( ModUtil.Internal.WrapCallbacks[ baseTable ], indexArray )
 		if baseValue then
 			baseValue = baseValue[ 1 ].Func
 		else
-			baseValue = ModUtil.ArrayGet( baseTable, indexArray )
+			baseValue = ModUtil.SafeGet( baseTable, indexArray )
 		end
 	end
 	return ModUtil.GetUpValues( baseValue )
 end
 
 function ModUtil.GetBottomDirectUpValues( baseTable, indexArray )
-	local baseValue = ModUtil.ArrayGet( ModUtil.Internal.Overrides[ baseTable ], indexArray )
+	local baseValue = ModUtil.SafeGet( ModUtil.Internal.Overrides[ baseTable ], indexArray )
 	if baseValue then
 		baseValue = baseValue[ #baseValue ].Base
 	else
-		baseValue = ModUtil.ArrayGet( ModUtil.Internal.WrapCallbacks[ baseTable ], indexArray )
+		baseValue = ModUtil.SafeGet( ModUtil.Internal.WrapCallbacks[ baseTable ], indexArray )
 		if baseValue then
 			baseValue = baseValue[ 1 ].Func
 		else
-			baseValue = ModUtil.ArrayGet( baseTable, indexArray )
+			baseValue = ModUtil.SafeGet( baseTable, indexArray )
 		end
 	end
 	return ModUtil.GetDirectUpValues( baseValue )
@@ -1182,7 +1189,7 @@ end
 
 ModUtil.Metatables.GlobalisedFunc = {
 	__call = function( self, ... )
-		return ModUtil.ArrayGet( rawget( self, "table" ), rawget( self, "array" ) )( ... )
+		return ModUtil.SafeGet( rawget( self, "table" ), rawget( self, "array" ) )( ... )
 	end
 }
 
@@ -1320,18 +1327,18 @@ end
 function ModUtil.WrapFunction( funcTable, indexArray, wrapFunc, mod )
 	if type( wrapFunc ) ~= "function" then return end
 	if not funcTable then return end
-	local func = ModUtil.ArrayGet( funcTable, indexArray )
+	local func = ModUtil.SafeGet( funcTable, indexArray )
 	if type( func ) ~= "function" then return end
 
 	ModUtil.NewTable( ModUtil.Internal.WrapCallbacks, funcTable )
-	local tempTable = ModUtil.ArrayGet( ModUtil.Internal.WrapCallbacks[ funcTable ], indexArray )
+	local tempTable = ModUtil.SafeGet( ModUtil.Internal.WrapCallbacks[ funcTable ], indexArray )
 	if tempTable == nil then
 		tempTable = {}
-		ModUtil.ArraySet( ModUtil.Internal.WrapCallbacks[ funcTable ], indexArray, tempTable )
+		ModUtil.SafeSet( ModUtil.Internal.WrapCallbacks[ funcTable ], indexArray, tempTable )
 	end
 	table.insert( tempTable, { Id = #tempTable + 1, Mod = mod, Wrap = wrapFunc, Func = func } )
 
-	ModUtil.ArraySet( skipenv( funcTable ), indexArray, function( ... )
+	ModUtil.SafeSet( skipenv( funcTable ), indexArray, function( ... )
 		return wrapFunc( func, ... )
 	end )
 end
@@ -1367,7 +1374,7 @@ end
 	indexArray	- the array of path elements to the function in the table
 ]]
 function ModUtil.RewrapFunction( funcTable, indexArray )
-	local wrapCallbacks = ModUtil.ArrayGet( ModUtil.Internal.WrapCallbacks[ funcTable ], indexArray )
+	local wrapCallbacks = ModUtil.SafeGet( ModUtil.Internal.WrapCallbacks[ funcTable ], indexArray )
 	local preFunc = nil
 
 	for _, tempTable in ipairs( wrapCallbacks ) do
@@ -1377,7 +1384,7 @@ function ModUtil.RewrapFunction( funcTable, indexArray )
 		preFunc = function( ... )
 			return tempTable.Wrap( tempTable.Func, ... )
 		end
-		ModUtil.ArraySet( skipenv( funcTable ), indexArray, preFunc )
+		ModUtil.SafeSet( skipenv( funcTable ), indexArray, preFunc )
 	end
 
 end
@@ -1394,15 +1401,15 @@ end
 ]]
 function ModUtil.UnwrapFunction( funcTable, indexArray )
 	if not funcTable then return end
-	local func = ModUtil.ArrayGet( skipenv( funcTable ), indexArray )
+	local func = ModUtil.SafeGet( skipenv( funcTable ), indexArray )
 	if type( func ) ~= "function" then return end
 
-	local tempTable = ModUtil.ArrayGet( ModUtil.Internal.WrapCallbacks[ funcTable ], indexArray )
+	local tempTable = ModUtil.SafeGet( ModUtil.Internal.WrapCallbacks[ funcTable ], indexArray )
 	if not tempTable then return end
 	local funcData = table.remove( tempTable ) -- removes the last value
 	if not funcData then return end
 
-	ModUtil.ArraySet( skipenv( funcTable ), indexArray, funcData.Func )
+	ModUtil.SafeSet( skipenv( funcTable ), indexArray, funcData.Func )
 	return funcData
 end
 
@@ -1466,9 +1473,9 @@ end
 -- Override Management
 
 local function getBaseValueForWraps( baseTable, indexArray )
-	local baseValue = ModUtil.ArrayGet( skipenv( baseTable ), indexArray )
+	local baseValue = ModUtil.SafeGet( skipenv( baseTable ), indexArray )
 	local wrapCallbacks = nil
-	wrapCallbacks = ModUtil.ArrayGet( ModUtil.Internal.WrapCallbacks[ baseTable ], indexArray )
+	wrapCallbacks = ModUtil.SafeGet( ModUtil.Internal.WrapCallbacks[ baseTable ], indexArray )
 	if wrapCallbacks then
 		if wrapCallbacks[ 1 ] then
 			baseValue = wrapCallbacks[ 1 ].Func
@@ -1479,12 +1486,12 @@ local function getBaseValueForWraps( baseTable, indexArray )
 end
 
 local function setBaseValueForWraps( baseTable, indexArray, value )
-	local baseValue = ModUtil.ArrayGet( skipenv( baseTable ), indexArray )
+	local baseValue = ModUtil.SafeGet( skipenv( baseTable ), indexArray )
 
 	if type(baseValue) ~= "function" or type(value) ~= "function" then return false end
 
 	local wrapCallbacks = nil
-	wrapCallbacks = ModUtil.ArrayGet( ModUtil.Internal.WrapCallbacks[ baseTable ], indexArray )
+	wrapCallbacks = ModUtil.SafeGet( ModUtil.Internal.WrapCallbacks[ baseTable ], indexArray )
 	if wrapCallbacks then if wrapCallbacks[ 1 ] then
 		baseValue = wrapCallbacks[ 1 ].Func
 		wrapCallbacks[ 1 ].Func = value
@@ -1525,15 +1532,15 @@ function ModUtil.Override( baseTable, indexArray, value, mod )
 	local baseValue = getBaseValueForWraps( baseTable, indexArray )
 
 	ModUtil.NewTable( ModUtil.Internal.Overrides, baseTable )
-	local tempTable = ModUtil.ArrayGet( ModUtil.Internal.Overrides[ baseTable ], indexArray )
+	local tempTable = ModUtil.SafeGet( ModUtil.Internal.Overrides[ baseTable ], indexArray )
 	if tempTable == nil then
 		tempTable = {}
-		ModUtil.ArraySet( ModUtil.Internal.Overrides[ baseTable ], indexArray, tempTable )
+		ModUtil.SafeSet( ModUtil.Internal.Overrides[ baseTable ], indexArray, tempTable )
 	end
 	table.insert( tempTable, { Id = #tempTable + 1, Mod = mod, Value = value, Base = baseValue } )
 
 	if not setBaseValueForWraps( baseTable, indexArray, value ) then
-		ModUtil.ArraySet( skipenv( baseTable ), indexArray, value )
+		ModUtil.SafeSet( skipenv( baseTable ), indexArray, value )
 	end
 end
 
@@ -1552,13 +1559,13 @@ end
 ]]
 function ModUtil.Restore( baseTable, indexArray )
 	if not baseTable then return end
-	local tempTable = ModUtil.ArrayGet( ModUtil.Internal.Overrides[ baseTable ], indexArray )
+	local tempTable = ModUtil.SafeGet( ModUtil.Internal.Overrides[ baseTable ], indexArray )
 	if not tempTable then return end
 	local baseData = table.remove( tempTable ) -- remove the last entry
 	if not baseData then return end
 
 	if not setBaseValueForWraps( baseTable, indexArray, baseData.Base ) then
-		ModUtil.ArraySet( skipenv( baseTable ), indexArray, baseData.Base )
+		ModUtil.SafeSet( skipenv( baseTable ), indexArray, baseData.Base )
 	end
 	return baseData
 end
@@ -1852,9 +1859,8 @@ end
 
 -- Context Managers (WIP)
 
-ModUtil.Metatables.ContextEnvironment = {
+ModUtil.Metatables.Environment = {
 	__index = function( self, key )
-
 		if key == "_G" then
 			return rawget( self, "global" )
 		end
@@ -1905,7 +1911,6 @@ ModUtil.Metatables.ContextEnvironment = {
 
 ModUtil.Metatables.Context = {
 	__call = function( self, targetPath_or_targetIndexArray, callContext, ... )
-
 		local oldContextInfo = ModUtil.Locals._ContextInfo
 		local contextInfo = {
 			call = callContext,
@@ -1938,7 +1943,6 @@ ModUtil.Metatables.Context = {
 
 		local _ENV = contextData
 		callContext( table.unpack( contextArgs ) )
-
 	end
 }
 
@@ -1950,19 +1954,20 @@ end
 
 ModUtil.Context.Call = ModUtil.New.Context( function( info )
 	info.indexArray = ModUtil.JoinIndexArrays( info.indexArray, info.targetIndexArray )
-	local obj = ModUtil.ArrayGet( info.baseTable, info.indexArray )
-	while type( obj ) ~= "function" do
-		if type( obj ) ~= "table" then return end
-		local meta = getmetatable(obj)
-		if meta.__call then
-			table.insert( info.indexArray, ModUtil.Nodes.Table.Metatable )
-			table.insert( info.indexArray, "__call" )
-			obj = meta.__call
+	local obj = ModUtil.SafeGet( info.baseTable, info.indexArray )
+	while type( obj ) == "table" do
+		local meta = getmetatable( obj )
+		if meta then
+			if meta.__call then
+				table.insert( info.indexArray, ModUtil.Nodes.Table.Metatable )
+				table.insert( info.indexArray, "__call" )
+				obj = meta.__call
+			end
 		end
 	end
 	local env = { data = ModUtil.NewTable( obj, ModUtil.Nodes.Table.Environment ), fallback = _G }
 	env.global = env
-	setmetatable( env, ModUtil.Metatables.ContextEnvironment )
+	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )
 
@@ -1975,7 +1980,7 @@ ModUtil.Context.Meta = ModUtil.New.Context( function( info )
 	end
 	local env = { data = ModUtil.NewTable( parent, ModUtil.Nodes.Table.Metatable ), fallback = _G }
 	env.global = env
-	setmetatable( env, ModUtil.Metatables.ContextEnvironment )
+	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )
 
@@ -1990,7 +1995,7 @@ ModUtil.Context.Data = ModUtil.New.Context( function( info )
 	end
 	local env = { data = ModUtil.NewTable( parent, key ), fallback = _G }
 	env.global = env
-	setmetatable( env, ModUtil.Metatables.ContextEnvironment )
+	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )
 
@@ -2036,7 +2041,7 @@ ModUtil.Nodes.Table.Environment = {
 			env.data = env.data or {}
 			env.fallback = _G
 			env.global = env
-			setmetatable( env, ModUtil.Metatables.ContextEnvironment )
+			setmetatable( env, ModUtil.Metatables.Environment )
 			setfenv( obj, env )
 		end
 		return env
