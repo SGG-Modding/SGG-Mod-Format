@@ -83,13 +83,51 @@ function qrawipairs( t )
     return inext, t, nil
 end
 
+function getfenv( fn )
+	local i = 1
+	while true do
+		local name, val = debug.getupvalue( fn, i )
+		if name == "_ENV" then
+			return val
+		elseif not name then
+			break
+		end
+		i = i + 1
+	end
+end
+
+--[[
+	Replace a function's _ENV with a new environment table.
+	Global variable lookups (including function calls) in that function
+	will use the new environment table rather than the normal one.
+	This is useful for function-specific overrides. The new environment
+	table should generally have _G as its __index, so that any globals
+	other than those being overridden can still be read.
+]]
+function setfenv( fn, env )
+	local i = 1
+	while true do
+		local name = debug.getupvalue( fn, i )
+		if name == "_ENV" then
+			debug.upvaluejoin( fn, i, ( function()
+				return env
+			end ), 1 )
+			break
+		elseif not name then
+			break
+		end
+		i = i + 1
+	end
+	return fn
+end
+
 -- Environment Context
 
 -- bind to locals to minimise environment recursion and increase speed
 local
-rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, inext, qrawpairs, qrawipairs
+rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, inext, qrawpairs, qrawipairs, getfenv, setfenv
 =
-rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, inext, qrawpairs, qrawipairs
+rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, inext, qrawpairs, qrawipairs, getfenv, setfenv
 
 function ModUtil.RawInterface( obj )
 
@@ -485,6 +523,9 @@ end
 	key	 - the key at which to store the new empty table
 ]]
 function ModUtil.NewTable( tableArg, key )
+	if ModUtil.Nodes.Index[ key ] then
+		return ModUtil.Nodes.Index[ key ].New( tableArg )
+	end
 	local tbl = tableArg[ key ]
 	if type(tbl) ~= "table" then
 		tbl = {}
@@ -505,48 +546,17 @@ end
 	Table			 - the table to retrieve from
 	indexArray	- the list of indices
 ]]
-function ModUtil.ArrayGet( baseTable, indexArray )
-	local tempArray = {}
+function ModUtil.SafeGet( baseTable, indexArray )
 	local node = baseTable
 	for i, k in ipairs( indexArray ) do
 		if type( node ) ~= "table" then
 			return nil
 		end
 		if ModUtil.Nodes.Index[ k ] then
-			node = ModUtil.Nodes.Index[ k ].Get( baseTable, tempArray, node )
+			node = ModUtil.Nodes.Index[ k ].Get( node )
 		else
 			node = node[ k ]
 		end
-		tempArray[ i ] = k
-	end
-	return node
-end
-
-
---[[
-	Safely create a new empty table deep inside a table, given an array of
-	indices into the table, and creating any necessary tables
-	along the way.
-
-	For example, if indexArray is { "a", 1, "c" }, then
-	Table[ "a" ][ 1 ][ "c" ] is created once this function returns if it didn't already exist.
-	If any of Table[ "a" ] or Table[ "a" ][ 1 ] does not exist, they
-	are created.
-
-	baseTable	 - the table to create a new table in
-	indexArray	- the list of indices
-]]
-function ModUtil.ArrayNewTable( baseTable, indexArray )
-	local tempArray = {}
-	local node = baseTable
-	for i, k in ipairs(indexArray) do
-		if ModUtil.Nodes.Index[ k ] then
-			node = ModUtil.Nodes.Index[ k ].New( baseTable, tempArray, node )
-		else
-			node = ModUtil.NewTable( node, k )
-		end
-		if type(node) ~= "table" then return node end
-		tempArray[ i ] = k
 	end
 	return node
 end
@@ -565,16 +575,24 @@ end
 	indexArray	- the list of indices
 	value	- the value to add
 ]]
-function ModUtil.ArraySet( baseTable, indexArray, value )
+function ModUtil.SafeSet( baseTable, indexArray, value )
 	if next( indexArray ) == nil then
 		return false -- can't set the input argument
 	end
-
-	local node = ModUtil.ArrayNewTable( baseTable, ModUtil.Slice( indexArray, nil, -1 ) )
-	local k = indexArray[ #indexArray ]
-
+	local n = #indexArray
+	local node = baseTable
+	for i = 1, n - 1 do
+		local k = indexArray[ i ]
+		if not ModUtil.NewTable( node, k ) then return false end
+		if ModUtil.Nodes.Index[ k ] then
+			node = ModUtil.Nodes.Index[ k ].Get( node )
+		else
+			node = node[ k ]
+		end
+	end
+	local k = indexArray[ n ]
 	if ModUtil.Nodes.Index[ k ] then
-		return ModUtil.Nodes.Index[ k ].Set( baseTable, indexArray, node, value )
+		return ModUtil.Nodes.Index[ k ].Set( node, value )
 	end
 	if ( node[ k ] == nil ) ~= ( value == nil ) then
 		if autoIsUnKeyed( baseTable ) then
@@ -1968,15 +1986,18 @@ end )
 ModUtil.Nodes = ModUtil.New.EntangledInvertiblePair()
 
 ModUtil.Nodes.Table.Metatable = {
-	New = function( _, _, obj )
-		if getmetatable( obj ) == nil then
-			setmetatable( obj, {} )
+	New = function( obj )
+		local meta = getmetatable( obj )
+		if meta == nil then
+			meta = {}
+			setmetatable( obj, meta )
 		end
+		return meta
 	end,
-	Get = function( _, _, obj )
+	Get = function( obj )
 		return getmetatable( obj )
 	end,
-	Set = function( _, _, obj, value )
+	Set = function( obj, value )
 		setmetatable( obj, value )
 		return true
 	end
@@ -1986,7 +2007,7 @@ ModUtil.Nodes.Table.UpValues = {
 	New = function()
 		return false
 	end,
-	Get = function( _, _, obj )
+	Get = function( obj )
 		return ModUtil.GetUpValues( obj )
 	end,
 	Set = function()
@@ -1995,29 +2016,24 @@ ModUtil.Nodes.Table.UpValues = {
 }
 
 ModUtil.Nodes.Table.Environment = {
-	New = function( baseTable, indexArray )
-		ModUtil.NewTable( ModUtil.Internal.PerFunctionEnv, baseTable )
-		local env = ModUtil.ArrayNewTable( ModUtil.Internal.PerFunctionEnv[ baseTable ], indexArray )
-		env.data = env.data or {}
-		env.fallback = _G
-		env.global = env
-		setmetatable( env, ModUtil.Metatables.ContextEnvironment )
-		ModUtil.WrapFunction( baseTable, indexArray, function( baseFunc, ... )
-			local _ENV = env
-			baseFunc( ... )
-		end )
+	New = function( obj )
+		local env = getfenv( obj )
+		if env == __G._G then
+			env = {}
+			env.data = env.data or {}
+			env.fallback = _G
+			env.global = env
+			setmetatable( env, ModUtil.Metatables.ContextEnvironment )
+			setfenv( obj, env )
+		end
 		return env
 	end,
-	Get = function( baseTable, indexArray )
-		return ModUtil.ArrayGet( ModUtil.Internal.PerFunctionEnv[ baseTable ], indexArray )
+	Get = function( obj )
+		return getfenv( obj )
 	end,
-	Set = function( baseTable, indexArray, _, value )
-		local env = ModUtil.ArraySet( ModUtil.Internal.PerFunctionEnv[ baseTable ], indexArray, value )
-		ModUtil.UnwrapFunction( baseTable, indexArray )
-		ModUtil.WrapFunction( baseTable, indexArray, function( baseFunc, ... )
-			local _ENV = env
-			baseFunc( ... )
-		end )
+	Set = function( obj, value )
+		setfenv( obj, value )
+		return true
 	end
 }
 
