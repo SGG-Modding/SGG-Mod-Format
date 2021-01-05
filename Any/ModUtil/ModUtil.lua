@@ -8,22 +8,13 @@ Author: MagicGonads
 ]]
 
 ModUtil = {
+	Internal = {},
+	Metatables = {},
+	New = {},
 	Anchors = {
 		Menu = {},
 		CloseFuncs = {}
 	},
-	Internal = {
-		Overrides = {},
-		WrapCallbacks = {},
-		PerFunctionEnv = {}
-	},
-	Context = {},
-	Metatables = {},
-	New = {},
-	Nodes = {
-		Inverse = {
-		}
-	}
 }
 SaveIgnores[ "ModUtil" ] = true
 
@@ -121,13 +112,15 @@ function setfenv( fn, env )
 	return fn
 end
 
--- Environment Context
+-- Environment Context (EXPERIMENTAL) (WIP) (INCOMPLETE)
 
--- bind to locals to minimise environment recursion and increase speed
+-- bind to locals to minimise environment recursion
 local
-rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, inext, qrawpairs, qrawipairs, getfenv, setfenv, tostring
-=
-rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs, rawpairs, rawipairs, inext, qrawpairs, qrawipairs, getfenv, setfenv, tostring
+	rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs,
+		rawpairs, rawipairs, inext, qrawpairs, qrawipairs, getfenv, setfenv, tostring, xpcall
+	=
+	rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, type, pairs, ipairs,
+		rawpairs, rawipairs, inext, qrawpairs, qrawipairs, getfenv, setfenv, tostring, xpcall
 
 function ModUtil.RawInterface( obj )
 
@@ -169,46 +162,48 @@ __G.__G = __G
 ]]
 function ModUtil.ReplaceGlobalEnvironment()
 
-	debug.setmetatable( __G._G, {})
+	debug.setmetatable( __G._G, {} )
 
-	local function env()
-		local level = 2
-		while debug.getinfo( level, "f" ) do
-			local idx, name, value = 1, true, nil
-			while name do
-				name, value = debug.getlocal( level, idx )
+	local function env( level )
+		local info = debug.getinfo( level, "f" )
+		while info do
+			if info.func then
+				local name, val = debug.getupvalue( info.func, 1 )
 				if name == "_ENV" then
-					return value
+					if val ~= __G._G then
+						return val
+					end
 				end
-
-				idx = idx + 1
+			else
+				break
 			end
 			level = level + 1
+			info = debug.getinfo( level, "f" )
 		end
 		return __G
 	end
 
 	local meta = {
 		__index = function( _, key )
-			return env()[key]
+			return env( 2 )[ key ]
 		end,
 		__newindex = function( _, key, value )
-			env()[key] = value
+			env( 2 )[ key ] = value
 		end,
 		__len = function()
-			return #env()
+			return #env( 2 )
 		end,
 		__next = function( _, key )
-			return next( env(), key )
+			return next( env( 2 ), key )
 		end,
 		__inext = function( _, key )
-			return inext( env(), key )
+			return inext( env( 2 ), key )
 		end,
 		__pairs = function()
-			return pairs( env() )
+			return pairs( env( 2 ) )
 		end,
 		__ipairs = function()
-			return ipairs( env() )
+			return ipairs( env( 2 ) )
 		end
 	}
 
@@ -216,7 +211,7 @@ function ModUtil.ReplaceGlobalEnvironment()
 end
 
 -- the performance overhead of this has not been rigorously measured, but seems insignificant
-ModUtil.ReplaceGlobalEnvironment()
+--ModUtil.ReplaceGlobalEnvironment() -- Comment out on public build until its purpose (call context) fully works
 
 local function skipenv( obj )
 	if obj ~= __G._G then return obj end
@@ -323,8 +318,7 @@ function ModUtil.TableKeysString( o )
 	end
 end
 
-function ModUtil.ToString( o, seen )
-	--https://stackoverflow.com/a/27028488
+function ModUtil.ToDeepString( o, seen )
 	seen = seen or {}
 	if type( o ) == 'table' and not seen[ o ] then
 		seen[ o ] = true
@@ -332,7 +326,7 @@ function ModUtil.ToString( o, seen )
 		local s = '<' .. tostring(o) .. ">{"
 		for k,v in pairs( o ) do
 			if not first then s = s .. ', ' else first = false end
-			s = s .. ModUtil.KeyString( k ) ..' = ' .. ModUtil.ToString( v, seen )
+			s = s .. ModUtil.KeyString( k ) ..' = ' .. ModUtil.ToDeepString( v, seen )
 		end
 		return s .. '}'
 	else
@@ -340,16 +334,21 @@ function ModUtil.ToString( o, seen )
 	end
 end
 
-function ModUtil.PrintToFile( file, ... )
-    local out = {}
-	for _, v in ipairs( { ... } ) do
-		table.insert( out, "\t" )
-		table.insert( out, ModUtil.ToString( v ) )
+function ModUtil.EachToString( ... )
+	local s = ""
+	for _, v in ipairs{ ... } do
+		s = s .. "\t" .. tostring( v )
 	end
-	table.insert( out, "\n" )
-	table.remove( out,1 )
-	
-	file:write( table.unpack( out ) )
+	return s:sub(2)
+end
+
+function ModUtil.EachToDeepString( ... )
+	local seen = {}
+	local s = ""
+	for _, v in ipairs{ ... } do
+		s = s .. "\t" .. ModUtil.ToDeepString( v, seen )
+	end
+	return s:sub(2)
 end
 
 function ModUtil.ChunkText( text, chunkSize, maxChunks )
@@ -404,6 +403,70 @@ function ModUtil.IsUnKeyed( tableArg )
 		lk = k
 	end
 	return true
+end
+
+-- Printing
+
+function ModUtil.PrintToFile( file, ... )
+	local close = false
+	if type(file) == "string" and io then
+		file = io.open( file, "a" )
+		close = true
+	end
+	file:write( ModUtil.EachToString( ... ) )
+	if close then
+		file:close()
+	end
+end
+
+function ModUtil.DebugPrint( ... )
+	local text = ModUtil.EachToString( ... ):gsub( "\t", "    " )
+	for line in text:gmatch( "([^\n]+)" ) do
+		DebugPrint{ Text = line }
+	end
+end
+
+function ModUtil.Print( ... )
+	print( ... )
+	if DebugPrint then ModUtil.DebugPrint( ... ) end
+end
+
+function ModUtil.PrintTraceback( level )
+	local level = level or 2
+	local cont = true
+	while cont do
+		local text = debug.traceback( "", level ):sub(2)
+		local first = true
+		local i = 1
+		cont = false
+		for line in text:gmatch( "([^\n]+)" ) do
+			if first then
+				first = false
+			else
+				if line == "\t" then
+					break
+				end
+				if i > 10 then
+					cont = true
+					break
+				end
+				ModUtil.Print( line:sub(2) )
+				i = i + 1
+			end
+		end
+		level = level + 10
+	end
+end
+
+--[[
+	Call a function with the provided arguments
+	instead of halting when an error occurs it prints the entire error traceback
+]]
+function ModUtil.DoCallPrintTraceback( f, ... )
+    xpcall( f, function( err )
+        ModUtil.Print( err )
+		ModUtil.PrintTraceback( 3 )
+    end, ... )
 end
 
 -- Data Manipulation
@@ -526,9 +589,6 @@ function ModUtil.NewTable( tableArg, key )
 	local nodeType = ModUtil.Nodes.Index[ key ]
 	if nodeType then
 		return ModUtil.Nodes.Table[ nodeType ].New( tableArg )
-	end
-	if type( tableArg ) == "function" then
-		tableArg = ModUtil.NewTable( tableArg, ModUtil.Nodes.Table.Environment )
 	end
 	local tbl = tableArg[ key ]
 	if type( tbl ) ~= "table" then
@@ -772,7 +832,7 @@ function ModUtil.PathSet( path, value, base )
 	return ModUtil.SafeSet( base or _G, ModUtil.PathToIndexArray( path ), value )
 end
 
--- Metaprogramming Shenanigans
+-- Metaprogramming Shenanigans (EXPERIMENTAL) (WIP)
 
 ModUtil.Metatables.DirectLocalLevel = {
 	__index = function( self, idx )
@@ -922,7 +982,7 @@ function ModUtil.LocalsInterface( names, level )
 	local localLevel
 	level, localLevel = next( ModUtil.DirectLocalLevels, level )
 	while level do
-		for i, name, value in pairs( localLevel ) do
+		for i, name in pairs( localLevel ) do
 			if (not names or lookup[ name ]) and index[ name ] == nil then
 				index[ name ] = { level = level - 1, index = i }
 				table.insert( order, name )
@@ -1284,6 +1344,8 @@ end
 
 -- Function Wrapping
 
+ModUtil.Internal.WrapCallbacks = {}
+
 --[[
 	Wrap a function, so that you can insert code that runs before/after that function
 	whenever it's called, and modify the return value if needed.
@@ -1472,6 +1534,8 @@ end
 
 -- Override Management
 
+ModUtil.Internal.Overrides = {}
+
 local function getBaseValueForWraps( baseTable, indexArray )
 	local baseValue = ModUtil.SafeGet( skipenv( baseTable ), indexArray )
 	local wrapCallbacks = nil
@@ -1600,7 +1664,7 @@ function ModUtil.BaseRestore( basePath )
 	ModUtil.Restore( _G, pathArray )
 end
 
--- Automatically updating data structures (WIP)
+-- Automatically updating data structures
 
 ModUtil.Metatables.EntangledIsomorphism = {
 	__index = function( self, key )
@@ -1857,7 +1921,9 @@ function ModUtil.New.EntangledPairFromPreImage( preImage )
 	return pair
 end
 
--- Context Managers (WIP)
+-- Context Managers (EXPERIMENTAL) (WIP) (BROKEN) (INCOMPLETE)
+
+ModUtil.Context = {}
 
 ModUtil.Metatables.Environment = {
 	__index = function( self, key )
@@ -1941,8 +2007,9 @@ ModUtil.Metatables.Context = {
 		_ContextInfo.data = contextData
 		_ContextInfo.args = contextArgs
 
-		local _ENV = contextData
-		callContext( table.unpack( contextArgs ) )
+		local callWrap = function( ... ) callContext( ... ) end
+		setfenv( callWrap, contextData )
+		callWrap( table.unpack( contextArgs ) )
 	end
 }
 
@@ -1999,7 +2066,7 @@ ModUtil.Context.Data = ModUtil.New.Context( function( info )
 	return env
 end )
 
--- Special traversal nodes (WIP)
+-- Special traversal nodes (EXPERIMENTAL) (WIP) (INCOMPLETE)
 
 ModUtil.Nodes = ModUtil.New.EntangledInvertiblePair()
 
@@ -2021,32 +2088,18 @@ ModUtil.Nodes.Table.Metatable = {
 	end
 }
 
-ModUtil.Nodes.Table.UpValues = {
-	New = function()
-		return false
-	end,
-	Get = function( obj )
-		return ModUtil.GetUpValues( obj )
-	end,
-	Set = function()
-		return false
-	end
-}
-
 ModUtil.Nodes.Table.Environment = {
 	New = function( obj )
-		if type( obj ) == "function" then
-			local env = getfenv( obj )
-			if env == __G._G or env == nil then
-				env = {}
-				env.data = env.data or {}
-				env.fallback = _G
-				env.global = env
-				setmetatable( env, ModUtil.Metatables.Environment )
-				setfenv( obj, env )
-			end
-			return env
+		local env = getfenv( obj )
+		if env == __G._G or env == nil then
+			env = {}
+			env.data = env.data or {}
+			env.fallback = _G
+			env.global = env
+			setmetatable( env, ModUtil.Metatables.Environment )
+			setfenv( obj, env )
 		end
+		return env
 	end,
 	Get = function( obj )
 		if type( obj ) == "function" then
@@ -2059,7 +2112,7 @@ ModUtil.Nodes.Table.Environment = {
 	end
 }
 
--- Mods tracking (WIP)
+-- Mods tracking (EXPERIMENTAL) (WIP) (UNTESTED) (INCOMPLETE)
 
 ModUtil.Mods = ModUtil.New.EntangledInvertiblePair()
 ModUtil.Mods.Table.ModUtil = ModUtil
@@ -2131,4 +2184,273 @@ function ModUtil.PopulateModHistory( options )
 		options.Path, options.Mod = path, mod
 		ModUtil.UpdateModHistoryEntry( options )
 	end
+end
+
+-- Wrap/Overrides within functions (EXPERIMENTAL) (LIKELY DEPRECATED)
+
+ModUtil.Internal.PerFunctionEnv = {}
+
+--[[
+	Create a new table whose getters and setters will default to the given
+	baseTable, except in cases where values are setOverride into the overrideTable.
+	This allows pinpoint overriding of values in the override table, while allowing
+	all other accesses to continue to operate as if they were operating on baseTable.
+	The overrides are stored in the _Overrides subtable. For example:
+	_Overrides = {
+		CurrentRun = {
+			CurrentRoom = {
+				_IsModUtilOverride = true,
+				_Value = {
+					Name = "RoomSimple01",
+					...
+				}
+			}
+		}
+	}
+	would be the result of overriding "CurrentRun.CurrentRoom" with a table represnting a room.
+	Any accesses that happen above the override point (ie. reads/writes to CurrentRun) are
+	redirected to the base table. Any accesses that happen at or below the override point (ie.
+	reads / writes to CurrentRun.CurrentRoom or CurrentRun.CurrentRoom.Name) are intercepted
+	and apply to the overridden value instead.
+	baseTable	- the table to access for entries not specifically overridden
+]]
+local function makeOverrideTable( baseTable, overrides )
+	local overrideTable = {
+		_IsModUtilOverrideTable = true,
+		_Overrides = overrides or {},
+		_BaseTable = baseTable
+	}
+	setmetatable( overrideTable, ModUtil.Metatables.OverrideTable )
+	return overrideTable
+end
+
+ModUtil.Metatables.OverrideTable = {
+	__index = function( self, name )
+		local baseResult = self._BaseTable[ name ]
+		local overridesResult = self._Overrides[ name ]
+		if overridesResult == nil then
+			return baseResult
+		elseif overridesResult._IsModUtilOverride then
+			return overridesResult._Value
+		elseif type(baseResult) == "table" then
+			return makeOverrideTable( baseResult, overridesResult )
+		else
+			return makeOverrideTable( {}, overridesResult )
+		end
+	end,
+	 __newindex = function( self, name, value )
+		 local currentOverride = self._Overrides[ name ]
+		 if currentOverride == nil then
+			 self._BaseTable[ name ] = value
+		 elseif currentOverride._IsModUtilOverride then
+			 currentOverride._Value = value
+		 else
+			 -- There is an override that is a child of this name, but the parent is being
+			 -- overwritten with a new table. Assign directly to the baseTable.
+			 -- The previous override will still remain in place, so eg. with
+			 --	 Overides = { Parent = { Child = { _IsModUtilOverride = true, _Value = 6 } }
+			 -- Table.Parent = { Child = 5 }, Table.Parent.Child will still return 6.
+			 -- I'm not sure what alternate behavior would be more correct.
+			 self._BaseTable[ name ] = value
+		 end
+	 end
+}
+
+--[[
+	Override the entry at indexArray in table with value.
+	table	- the table whose entry should be overridden
+		must come from a previous call to makeOverrideTable()
+	indexArray	- the list of indexes
+	value	- the value to override
+]]
+local function setOverride( table, indexArray, value )
+	if type( table ) ~= "table" or not table._IsModUtilOverrideTable then return end
+	ModUtil.SafeSet( table._Overrides, indexArray, { _IsModUtilOverride = true, _Value = value } )
+end
+
+--[[
+	Remove the override entry at indexArray in table.
+	No effect if the indexArray does not identify an override point.
+	table	- the table whose override should be removed
+	indexArray	- the list of indexes
+]]
+local function removeOverride( table, indexArray )
+	if type( table ) ~= "table" or not table._IsModUtilOverrideTable then return end
+	local currentOverride = ModUtil.SafeGet( table._Overrides, indexArray )
+	if currentOverride ~= nil and currentOverride._IsModUtilOverride then
+		ModUtil.SafeSet( table._Overrides, indexArray, nil )
+	end
+end
+
+--[[
+	Check whether there is an override for indexArray in table.
+	Only returns true for exact matches. For example, if you override CurrentRun in table T,
+	hasOverride( T, { "CurrentRun", "CurrentRoom" } ) will return false.
+	table	- the table to check for an override
+	indexArray	- the list of indexes
+]]
+local function hasOverride( table, indexArray )
+	if type( table ) ~= "table" or not table._IsModUtilOverrideTable then return false end
+	local value = ModUtil.SafeGet( table._Overrides, indexArray )
+	return value ~= nil and value._IsModUtilOverride
+end
+
+--[[
+	Gets the function's local (partially-overriden) environment, or
+	create a new one and attach it to the function if not yet present.
+	baseTable	- the base table, on which to base the function's environment
+	indexArray	- the list of indexes
+]]
+local function getFunctionEnv( baseTable, indexArray )
+	local func = getBaseValueForWraps( baseTable, indexArray )
+	if type( func ) ~= "function" then return nil end
+
+	ModUtil.NewTable( ModUtil.Internal.PerFunctionEnv, baseTable )
+	local env = ModUtil.SafeGet( ModUtil.Internal.PerFunctionEnv[ baseTable ], indexArray )
+	if not env then
+		env = makeOverrideTable( baseTable )
+		ModUtil.SafeSet( ModUtil.Internal.PerFunctionEnv[ baseTable ], indexArray, env )
+		setfenv( func, env )
+	end
+	return env
+end
+
+--[[
+	Overrides the value at envIndexArray within the function referred to by
+	indexArray in baseTable, by replacing it with value.
+	Accesses to the value at envIndexArray from within other functions are
+	unaffected.
+	Generally, you should use ModUtil.BaseOverrideWithinFunction for a more
+	modder-friendly interface.
+	For example, after you do
+		ModUtil.OverrideWithinFunction( _G, { "CreateRoom" }, { "CurrentRun.CurrentRoom" }, <room object> )
+	1. Any reads to CurrentRun.CurrentRoom from CreateRoom will return <room object>
+	2. Any writes to CurrentRun.CurrentRoom from CreateRoom will replace <room object>, which will
+		with the new value, which will be returned for subsequent accesses to CurrentRun.CurrentRoom.
+	3. Any writes to CurrentRun.CurrentRoom from CreateRoom will not be visible from other functions.
+	4. If CreateRoom performs writes within <room object> (eg. CurrentRun.CurrentRoom.Name = "foo")
+		 these will be visible to <room object> from any function that has access to it. If you want
+		 full isolation, make sure you pass in an object that nobody else has a reference to, eg. by
+		 creating one fresh or making a copy).
+	baseTable	- the base table for function and environment lookups (usually _G)
+	indexArray	- the list of indices identifying the function whose environment is to be overridden
+	envIndexArray	- the list of indices identifying the value to be overridden in the function's environment
+	value	- the value with which to override
+]]
+function ModUtil.OverrideWithinFunction( baseTable, indexArray, envIndexArray, value )
+	if not baseTable then return end
+	local env = getFunctionEnv( baseTable, indexArray )
+
+	if not env then return end
+	if hasOverride( env, envIndexArray ) then
+		-- we might have wraps to reapply
+		local overrideEnvIndexArray = DeepCopyTable( envIndexArray )
+		table.insert( overrideEnvIndexArray, "_Value" )
+		if not setBaseValueForWraps( env._Overrides, overrideEnvIndexArray, value ) then
+			setOverride( env, envIndexArray, value )
+		end
+	else
+		setOverride( env, envIndexArray, value )
+	end
+end
+
+--[[
+	Remove the override at envIndexArray for the function at indexArray in baseTable,
+	so that reads and writes to envIndexArray have their usual effects on the base environment.
+	baseTable	- the base table for function and environment lookups (usually _G)
+	indexArray	- the list of indices identifying the function whose environment is to be overridden
+	envIndexArray	- the list of indices identifying the value to be overridden in the function's environment
+]]
+function ModUtil.RestoreWithinFunction( baseTable, indexArray, envIndexArray )
+	if not baseTable then return end
+
+	local env = getFunctionEnv( baseTable, indexArray )
+	if not env then return end
+
+	removeOverride( env, envIndexArray )
+end
+
+
+--[[
+	Wrap a function, so that you can insert code that runs before/after that function whenever
+	it's called from within a particular other function, and modify the return value if needed.
+	Generally, you should use ModUtil.WrapBaseWithinFunction for a more modder-friendly interface.
+	baseTable	- the base table for function and environment lookups (usually _G)
+	indexArray	- the list of indices identifying the function within with the wrap will apply
+	envIndexArray	- the list of indices identifying the function whose calls will be wrapped
+	wrapFunc	- the wrapping function
+	mod	- (optional) the mod performing the wrapping, for debug purposes
+]]
+function ModUtil.WrapWithinFunction( baseTable, indexArray, envIndexArray, wrapFunc, mod )
+	if type(wrapFunc) ~= "function" then return end
+	if not baseTable then return end
+	local env = getFunctionEnv( baseTable, indexArray )
+	if not env then return end
+
+	if not hasOverride( env, envIndexArray ) then
+		-- Resolve the entry in baseTable at call time (not now),
+		-- in case further wraps or overrides are applied to it.
+		setOverride(
+			env,
+			envIndexArray,
+			function( ... )
+				local resolvedFunc = ModUtil.SafeGet( ModUtil.Experimental.SkipEnvironment( baseTable ), envIndexArray )
+				return resolvedFunc( ... )
+			end
+		)
+	end
+
+	ModUtil.WrapFunction( env, envIndexArray, wrapFunc, mod )
+end
+
+--[[
+	Override the global value at the given path, when accessed from
+	within the global function at funcPath.
+	If the Value is a function, preserves the wraps
+	applied with ModUtil.WrapBaseWithinFunction et. al.
+	basePath	- the path to override, as a string
+	envPath	- the path to override, as a string
+	value	- the new value to store at the path
+]]
+function ModUtil.BaseOverrideWithinFunction( funcPath, basePath, value )
+	local indexArray = ModUtil.PathArray( funcPath )
+	local envIndexArray = ModUtil.PathArray( basePath )
+	ModUtil.OverrideWithinFunction( _G, indexArray, envIndexArray, value )
+end
+
+--[[
+	Wraps the function with the path given by baseFuncPath, when it is called from
+	the function given by funcPath.
+	This lets you insert code within a function, without affecting other functions
+	that might make similar calls.
+	For example, to insert code to display a "cancel" at the point in "CreateBoonLootButtons"
+	where it calls IsMetaUpgradeSelected( "RerollPanelMetaUpgrade" ), do:
+	ModUtil.WrapBaseWithinFunction( "CreateBoonLootButtons", "IsMetaUpgradeSelected", function(baseFunc, name)
+		if name == "RerollPanelMetaUpgrade" and CalcNumLootChoices() == 0 then
+			< code to display the cancel button >
+			return false
+		else
+			return baseFunc( name )
+		end
+	end, YourMod )
+	This provides better compatibility between mods that just wrapping IsMetaUpgradeSelected, because
+	you new code only executes when within CreateBoonLootButtons, so there are less chances for collisions
+	and side effects.
+	It also provides better compatibility than using BaseOverride on "CreateBoonLootButtons", since only one
+	override for a function can be active at a time, but multiple wraps can be active.
+	funcPath	- the (global) path to the function within which the wrap will apply, as a string
+		for most SGG-provided functions, this is just the function's name
+		eg. "CreateRoomReward" or "SetTraitsOnLoot"
+	baseFuncPath	- the (global) path to the function to wrap, as a string
+		for most SGG-provided functions, this is just the function's name
+		eg. "CreateRoomReward" or "SetTraitsOnLoot"
+	wrapFunc	- the function to wrap around the base function
+		this function receives the base function as its first parameter.
+		all subsequent parameters should be the same as the base function
+	mod	- (optional) the object for your mod, for debug purposes
+]]
+function ModUtil.WrapBaseWithinFunction( funcPath, baseFuncPath, wrapFunc, mod )
+	local indexArray = ModUtil.PathArray( funcPath )
+	local envIndexArray = ModUtil.PathArray( baseFuncPath )
+	ModUtil.WrapWithinFunction( _G, indexArray, envIndexArray, wrapFunc, mod )
 end
