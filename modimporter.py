@@ -17,7 +17,7 @@ try:
     can_sjson = True
 except ModuleNotFoundError:
     print("SJSON python module not found! SJSON changes will be skipped!")
-    print("Get the SJSON module at https://pypi.org/project/SJSON/\n")
+    print("SJSON module should be available in the same place as the importer\n")
 
 ## Global Settings
 
