@@ -513,15 +513,15 @@ end
 function ModUtil.DoCallPrintTraceback( f, ... )
 	xpcall( f, function( err )
 		ModUtil.Print( err )
-		ModUtil.PrintTraceback( 1 )
+		ModUtil.PrintTraceback( 3 )
     end, ... )
 end
 
 function ModUtil.DoCallPrintVarDumpTraceback( f, ... )
     xpcall( f, function( err )
 		ModUtil.Print( err )
-		ModUtil.PrintTraceback( 1 )
-		ModUtil.PrintVarDump( 1 )
+		ModUtil.PrintTraceback( 3 )
+		ModUtil.PrintVarDump( 3 )
     end, ... )
 end
 
@@ -885,25 +885,39 @@ end
 -- Metaprogramming Shenanigans (EXPERIMENTAL) (WIP)
 
 local function getStackCurrentLevel( stackLevel )
-	local thread = rawget( stackLevel, "thread" )
-	local level = rawget( stackLevel, "level" )
-	local cursize = level
-	while debug.getinfo( thread, cursize, "f" ) do
-		cursize = cursize + 1
-	end
-	return cursize - rawget( stackLevel, "size" ) + level - 1
+
 end
 
-local stackLevelProperties = {
-	level = getStackCurrentLevel,
-	size = function( self ) return rawget( self, "size" ) end,
-	thread = function( self ) return rawget( self, "thread" ) end,
+local stackLevelProperty
+stackLevelProperty = {
+	here = function( self )
+		local thread = rawget( self, "thread" )
+		local cursize = rawget( self, "level" ) + 1
+		while debug.getinfo( thread, cursize, "f" ) do
+			cursize = cursize + 1
+		end
+		return cursize - rawget( self, "size" ) - 1
+	end,
+	there = function( self )
+		return rawget( self, "level" )
+	end,
+	top = function( self )
+		local thread = rawget( self, "thread" )
+		local level = rawget( self, "level" )
+		local cursize = level + 1
+		while debug.getinfo( thread, cursize, "f" ) do
+			cursize = cursize + 1
+		end
+		return cursize - level - 1
+	end,
+	bottom = function( self ) return rawget( self, "size" ) end,
+	co = function( self ) return rawget( self, "thread" ) end,
 	func = function( self )
-		return debug.getinfo( rawget( self, "thread" ), getStackCurrentLevel( self ), "f" ).func
+		return debug.getinfo( rawget( self, "thread" ), self.here, "f" ).func
 	end
 }
 
-local stackLevelIndex = {
+local stackLevelFunction = {
 	gethook = function( self, ... )
 		return debug.gethook( rawget( self, "thread" ), ... )
 	end,
@@ -911,50 +925,62 @@ local stackLevelIndex = {
 		return debug.sethook( rawget( self, "thread" ), ... )
 	end,
 	getlocal = function( self, ... )
-		return debug.getlocal( rawget( self, "thread" ), getStackCurrentLevel( self ), ... )
+		return debug.getlocal( rawget( self, "thread" ), self.here, ... )
 	end,
 	setlocal = function( self, ... )
-		return debug.setlocal( rawget( self, "thread" ), getStackCurrentLevel( self ), ... )
+		return debug.setlocal( rawget( self, "thread" ), self.here, ... )
 	end,
 	getinfo = function( self, ... )
-		return debug.getinfo( rawget( self, "thread" ), getStackCurrentLevel( self ), ... )
+		return debug.getinfo( rawget( self, "thread" ), self.here, ... )
 	end,
 	traceback = function( self, message, ... )
-		return debug.traceback( rawget( self, "thread" ), message, getStackCurrentLevel( self ), ... )
+		return debug.traceback( rawget( self, "thread" ), message, self.here, ... )
 	end,
 	getupvalue = function( self, ... )
-		return debug.getupvalue( debug.getinfo( rawget( self, "thread" ), getStackCurrentLevel( self ), "f" ).func, ... )
+		return debug.getupvalue( self.func, ... )
 	end,
 	setupvalue = function( self, ... )
-		debug.setupvalue( debug.getinfo( rawget( self, "thread" ), getStackCurrentLevel( self ), "f" ).func, ... )
+		debug.setupvalue( self.func, ... )
+	end,
+	upvalueid = function( self, ... )
+		return debug.upvalueid( self.func, ... )
 	end,
 	upvaluejoin = function( self, ... )
-		debug.upvaluejoin( debug.getinfo( rawget( self, "thread" ), getStackCurrentLevel( self ), "f" ).func, ... )
+		debug.upvaluejoin( self.func, ... )
 	end,
 	getfenv = function( self, ... )
-		return getfenv( debug.getinfo( rawget( self, "thread" ), getStackCurrentLevel( self ), "f" ).func, ... )
+		return getfenv( self.func, ... )
 	end,
 	setfenv = function( self, ... )
-		setfenv( debug.getinfo( rawget( self, "thread" ), getStackCurrentLevel( self ), "f" ).func, ... )
+		setfenv( self.func, ... )
 	end,
 	getmetatable = function( self, ... )
-		return debug.getmetatable( debug.getinfo( rawget( self, "thread" ), getStackCurrentLevel( self ), "f" ).func, ... )
+		return debug.getmetatable( self.func, ... )
 	end,
 	setmetatable = function( self, ... )
-		debug.setmetatable( debug.getinfo( rawget( self, "thread" ), getStackCurrentLevel( self ), "f" ).func, ... )
+		debug.setmetatable( self.func, ... )
 	end
 }
 
+local stackLevelInterface = {}
+for k, v in pairs( stackLevelProperty ) do
+	stackLevelInterface[ k ] = v
+	stackLevelProperty[ k ] = true
+end
+for k, v in pairs( stackLevelFunction ) do 
+	stackLevelInterface[ k ] = v
+	stackLevelFunction[ k ] = true
+end
+
 ModUtil.Metatables.StackLevel = {
 	__index = function( self, key )
-		local value = stackLevelIndex[ key ]
-		if value then return function( ... )
-				return value( self, ... )
+		if stackLevelProperty[ key ] then
+			return stackLevelInterface[ key ]( self )
+		elseif stackLevelFunction[ key ] then
+			local func = stackLevelInterface[ key ]
+			return function( ... )
+				return func( self, ... )
 			end
-		end
-		value = stackLevelProperties[ key ]
-		if value then
-			return value( self )
 		end
 	end,
 	__newindex = function( ) end,
@@ -962,16 +988,10 @@ ModUtil.Metatables.StackLevel = {
 		return 0
 	end,
 	__next = function( self, key )
-		local value
-		value = next( stackLevelIndex, key )
-		if value then return key, function( ... )
-				value( self, ... )
-			end
-		end
-		value = stackLevelProperties[ key ]
-		if value then
-			return value( self )
-		end
+		repeat
+			key = next( stackLevelInterface, key )
+		until stackLevelFunction[ key ] == nil
+		return key, self[ key ]
 	end,
 	__inext = function( ) end,
 	__pairs = function( self )
@@ -979,33 +999,37 @@ ModUtil.Metatables.StackLevel = {
 	end,
 	__ipairs = function( self )
 		return function( ) end, self
+	end,
+	__eq = function( self, other )
+		return rawget( self, "thread" ) == rawget( other, "thread" )
+		and rawget( self, "size" ) == rawget( other, "size")
+		and rawget( self, "level" ) == rawget( other, "level")
 	end
 }
 
 function ModUtil.StackLevel( level )
+	level = ( level or 1 )
 	local thread = coroutine.running( )
-	local level = ( level or 1 ) + 1
 	local size = level
 	if not debug.getinfo( thread, level, "f" ) then return end
 	while debug.getinfo( thread, size, "f" ) do
 		size = size + 1
 	end
-	local stackLevel = { level = level, size = size - 1, thread = thread }
+	local stackLevel = { level = level, size = size - level - 1, thread = thread }
 	setmetatable( stackLevel, ModUtil.Metatables.StackLevel )
 	return stackLevel
 end
 
 ModUtil.Metatables.StackLevels = {
 	__index = function( self, level )
-		return ModUtil.StackLevel( level + rawget( self, "level" )( ) )
+		return ModUtil.StackLevel( ( level or 0 ) + rawget( self, "level" ).here )
 	end,
 	__newindex = function() end,
 	__len = function( self )
 		return #rawget( self, "level" )
 	end,
 	__next = function( self, level )
-		level = ( level or 0 ) + 1
-		local stackLevel = ModUtil.StackLevel( level + rawget( self, "level" )( ) )
+		local stackLevel = self[ ( level or 0 ) + 1 ]
 		if stackLevel then
 			return level, stackLevel
 		end
@@ -1018,12 +1042,88 @@ ModUtil.Metatables.StackLevels.__ipairs = ModUtil.Metatables.StackLevels.__pairs
 ModUtil.Metatables.StackLevels.__inext = ModUtil.Metatables.StackLevels.__next
 
 function ModUtil.StackLevels( level )
-	local levels = { level = ModUtil.StackLevel( ( level or 1 ) + 1 ) }
+	local levels = { level = ModUtil.StackLevel( level or 0 ) }
 	setmetatable( levels, ModUtil.Metatables.StackLevels )
 	return levels
 end
 
 local excludedUpValueNames = ToLookup{ "_ENV" }
+
+local idData = { }
+setmetatable( idData, { __mode = "k" } )
+
+local function getUpValueIdData( id )
+	local tbl = idData[ id ]
+	return tbl.func, tbl.idx
+end
+
+local function setUpValueIdData( id, func, idx )
+	local tbl = idData[ id ]
+	if not tbl then
+		tbl = {}
+		idData[ id ] = tbl
+	end
+	tbl.func, tbl.idx = func, idx
+end
+
+local upvaluejoin = debug.upvaluejoin
+
+function debug.upvaluejoin( f1, n1, f2, n2 )
+	upvaluejoin( f1, n1, f2, n2 )
+	setUpValueIdData( debug.upvalueid( f1, n1 ), f2, n2 )
+end
+
+ModUtil.Metatables.UpValueIds = {
+	__index = function( self, idx )
+		local func =  rawget( self, "func" )
+		local name = debug.getupvalue( func, idx )
+		if name and not excludedUpValueNames[ name ] then
+			local id = debug.upvalueid( func, idx )
+			setUpValueIdData( id, func, idx )
+			return id
+		end
+	end,
+	__newindex = function( self, idx, value )
+		local func = rawget( self, "func" )
+		local name = debug.getupvalue( func, idx )
+		if name and not excludedUpValueNames[ name ] then
+			local func2, idx2 = getUpValueIdData( value )
+			debug.upvaluejoin( func, idx, func2, idx2 )
+			return
+		end
+	end,
+	__len = function( self )
+		return debug.getinfo( rawget( self, "func" ), 'u' ).nups
+	end,
+	__next = function ( self, idx )
+		local func = rawget( self, "func" )
+		idx = idx or 0
+		local name
+		while true do
+			idx = idx + 1
+			name = debug.getupvalue( func, idx )
+			if not name then return end
+			if not excludedUpValueNames[ name ] then
+				return idx, self[ idx ]
+			end
+		end
+	end,
+	__pairs = function( self )
+		return qrawpairs( self )
+	end
+}
+ModUtil.Metatables.UpValueIds.__inext = ModUtil.Metatables.UpValueIds.__next
+ModUtil.Metatables.UpValueIds.__ipairs = ModUtil.Metatables.UpValueIds.__pairs
+
+function ModUtil.UpValueIds( func )
+	if type(func) ~= "function" then
+		if func == nil then func = 1 end
+		func = debug.getinfo( func + 1, "f" ).func
+	end
+	local ups = { func = func }
+	setmetatable( ups, ModUtil.Metatables.UpValueIds )
+	return ups
+end
 
 ModUtil.Metatables.UpValueValues = {
 	__index = function( self, idx )
@@ -1056,12 +1156,8 @@ ModUtil.Metatables.UpValueValues = {
 			end
 		end
 	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
-	end
+	__pairs = ModUtil.Metatables.UpValueIds.__pairs,
+	__ipairs = ModUtil.Metatables.UpValueIds.__ipairs
 }
 ModUtil.Metatables.UpValueValues.__inext = ModUtil.Metatables.UpValueValues.__next
 
@@ -1097,8 +1193,8 @@ ModUtil.Metatables.UpValueNames = {
 			end
 		end
 	end,
-	__pairs = ModUtil.Metatables.UpValueValues.__pairs,
-	__ipairs = ModUtil.Metatables.UpValueValues.__ipairs
+	__pairs = ModUtil.Metatables.UpValueIds.__pairs,
+	__ipairs = ModUtil.Metatables.UpValueIds.__ipairs
 }
 ModUtil.Metatables.UpValueNames.__inext = ModUtil.Metatables.UpValueNames.__next
 
