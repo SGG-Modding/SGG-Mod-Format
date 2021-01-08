@@ -78,19 +78,16 @@ local type = type
 
 function getfenv( fn )
 	if type( fn ) ~= "function" then
-		if fn == nil then fn = 1 end
-		fn = debug.getinfo( fn + 1, "f" ).func
+		fn = debug.getinfo( ( fn or 1 ) + 1, "f" ).func
 	end
-	local i = 1
-	while true do
+	local i = 0
+	repeat
+		i = i + 1
 		local name, val = debug.getupvalue( fn, i )
 		if name == "_ENV" then
 			return val
-		elseif not name then
-			break
 		end
-		i = i + 1
-	end
+	until not name
 end
 
 --[[
@@ -103,23 +100,19 @@ end
 ]]
 function setfenv( fn, env )
 	if type( fn ) ~= "function" then
-		if fn == nil then fn = 1 end
-		fn = debug.getinfo( fn + 1, "f" ).func
+		fn = debug.getinfo( ( fn or 1 ) + 1, "f" ).func
 	end
-	local i = 1
-	while true do
+	local i = 0
+	repeat
+		i = i + 1
 		local name = debug.getupvalue( fn, i )
 		if name == "_ENV" then
 			debug.upvaluejoin( fn, i, ( function( )
 				return env
 			end ), 1 )
-			break
-		elseif not name then
-			break
+			return
 		end
-		i = i + 1
-	end
-	return fn
+	until not name
 end
 
 -- Environment Context (EXPERIMENTAL) (WIP) (INCOMPLETE)
@@ -459,9 +452,8 @@ function ModUtil.Print( ... )
 end
 
 function ModUtil.PrintTraceback( level )
+	level = ( level or 1 )
 	ModUtil.Print("Traceback:")
-	if level == nil then level = 1 end
-	level = level + 1
 	local cont = true
 	while cont do
 		local text = debug.traceback( "", level ):sub( 2 )
@@ -488,14 +480,13 @@ function ModUtil.PrintTraceback( level )
 end
 
 function ModUtil.PrintVarDump( level )
-	if level == nil then level = 1 end
-	level = level + 1
+	level = ( level or 1 )
 	local text
 	ModUtil.Print("Variables:")
-	-- LevelLocalInterface and UpValueInterface need to be fixed to be used here instead
-	text = ModUtil.ToDeepString( ModUtil.LevelLocals( level ) )
+	-- LocalInterface and UpValueInterface need to be fixed to be used here instead
+	text = ModUtil.ToDeepString( ModUtil.Locals( level + 1 ) )
 	ModUtil.Print( "\t" .. "Locals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
-	text = ModUtil.ToDeepString( ModUtil.UpValues( level ) )
+	text = ModUtil.ToDeepString( ModUtil.UpValues( level + 1 ) )
 	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	local env = getfenv( level )
 	if env == __G._G then
@@ -513,15 +504,15 @@ end
 function ModUtil.DoCallPrintTraceback( f, ... )
 	xpcall( f, function( err )
 		ModUtil.Print( err )
-		ModUtil.PrintTraceback( 3 )
+		ModUtil.PrintTraceback( 2 )
     end, ... )
 end
 
 function ModUtil.DoCallPrintVarDumpTraceback( f, ... )
     xpcall( f, function( err )
 		ModUtil.Print( err )
-		ModUtil.PrintTraceback( 3 )
-		ModUtil.PrintVarDump( 3 )
+		ModUtil.PrintVarDump( 2 )
+		ModUtil.PrintTraceback( 2 )
     end, ... )
 end
 
@@ -884,10 +875,6 @@ end
 
 -- Metaprogramming Shenanigans (EXPERIMENTAL) (WIP)
 
-local function getStackCurrentLevel( stackLevel )
-
-end
-
 local stackLevelProperty
 stackLevelProperty = {
 	here = function( self )
@@ -898,9 +885,6 @@ stackLevelProperty = {
 		end
 		return cursize - rawget( self, "size" ) - 1
 	end,
-	there = function( self )
-		return rawget( self, "level" )
-	end,
 	top = function( self )
 		local thread = rawget( self, "thread" )
 		local level = rawget( self, "level" )
@@ -910,55 +894,47 @@ stackLevelProperty = {
 		end
 		return cursize - level - 1
 	end,
+	there = function( self ) return rawget( self, "level" ) end,
 	bottom = function( self ) return rawget( self, "size" ) end,
 	co = function( self ) return rawget( self, "thread" ) end,
 	func = function( self )
-		return debug.getinfo( rawget( self, "thread" ), self.here, "f" ).func
+		return debug.getinfo( self.co, self.here, "f" ).func
 	end
 }
 
 local stackLevelFunction = {
 	gethook = function( self, ... )
-		return debug.gethook( rawget( self, "thread" ), ... )
+		return debug.gethook( self.co, ... )
 	end,
 	sethook = function( self, ... )
-		return debug.sethook( rawget( self, "thread" ), ... )
+		return debug.sethook( self.co, ... )
 	end,
 	getlocal = function( self, ... )
-		return debug.getlocal( rawget( self, "thread" ), self.here, ... )
+		return debug.getlocal( self.co, self.here, ... )
 	end,
 	setlocal = function( self, ... )
-		return debug.setlocal( rawget( self, "thread" ), self.here, ... )
+		return debug.setlocal( self.co, self.here, ... )
 	end,
 	getinfo = function( self, ... )
-		return debug.getinfo( rawget( self, "thread" ), self.here, ... )
-	end,
-	traceback = function( self, message, ... )
-		return debug.traceback( rawget( self, "thread" ), message, self.here, ... )
+		return debug.getinfo( self.co, self.here, ... )
 	end,
 	getupvalue = function( self, ... )
 		return debug.getupvalue( self.func, ... )
 	end,
 	setupvalue = function( self, ... )
-		debug.setupvalue( self.func, ... )
+		return debug.setupvalue( self.func, ... )
 	end,
 	upvalueid = function( self, ... )
 		return debug.upvalueid( self.func, ... )
 	end,
 	upvaluejoin = function( self, ... )
-		debug.upvaluejoin( self.func, ... )
+		return debug.upvaluejoin( self.func, ... )
 	end,
 	getfenv = function( self, ... )
 		return getfenv( self.func, ... )
 	end,
 	setfenv = function( self, ... )
-		setfenv( self.func, ... )
-	end,
-	getmetatable = function( self, ... )
-		return debug.getmetatable( self.func, ... )
-	end,
-	setmetatable = function( self, ... )
-		debug.setmetatable( self.func, ... )
+		return setfenv( self.func, ... )
 	end
 }
 
@@ -1010,14 +986,17 @@ ModUtil.Metatables.StackLevel = {
 function ModUtil.StackLevel( level )
 	level = ( level or 1 )
 	local thread = coroutine.running( )
-	local size = level
+	local size = level + 1
 	if not debug.getinfo( thread, level, "f" ) then return end
 	while debug.getinfo( thread, size, "f" ) do
 		size = size + 1
 	end
-	local stackLevel = { level = level, size = size - level - 1, thread = thread }
-	setmetatable( stackLevel, ModUtil.Metatables.StackLevel )
-	return stackLevel
+	size = size - level - 1
+	if size > 0 then
+		local stackLevel = { level = level, size = size, thread = thread }
+		setmetatable( stackLevel, ModUtil.Metatables.StackLevel )
+		return stackLevel
+	end
 end
 
 ModUtil.Metatables.StackLevels = {
@@ -1026,10 +1005,11 @@ ModUtil.Metatables.StackLevels = {
 	end,
 	__newindex = function() end,
 	__len = function( self )
-		return #rawget( self, "level" )
+		return rawget( self, "level" ).bottom
 	end,
 	__next = function( self, level )
-		local stackLevel = self[ ( level or 0 ) + 1 ]
+		level = ( level or 0 ) + 1
+		local stackLevel = self[ level ]
 		if stackLevel then
 			return level, stackLevel
 		end
@@ -1117,8 +1097,7 @@ ModUtil.Metatables.UpValueIds.__ipairs = ModUtil.Metatables.UpValueIds.__pairs
 
 function ModUtil.UpValueIds( func )
 	if type(func) ~= "function" then
-		if func == nil then func = 1 end
-		func = debug.getinfo( func + 1, "f" ).func
+		func = debug.getinfo( ( func or 1 ) + 1, "f" ).func
 	end
 	local ups = { func = func }
 	setmetatable( ups, ModUtil.Metatables.UpValueIds )
@@ -1163,8 +1142,7 @@ ModUtil.Metatables.UpValueValues.__inext = ModUtil.Metatables.UpValueValues.__ne
 
 function ModUtil.UpValueValues( func )
 	if type(func) ~= "function" then
-		if func == nil then func = 1 end
-		func = debug.getinfo( func + 1, "f" ).func
+		func = debug.getinfo( ( func or 1 ) + 1, "f" ).func
 	end
 	local ups = { func = func }
 	setmetatable( ups, ModUtil.Metatables.UpValueValues )
@@ -1200,8 +1178,7 @@ ModUtil.Metatables.UpValueNames.__inext = ModUtil.Metatables.UpValueNames.__next
 
 function ModUtil.UpValueNames( func )
 	if type(func) ~= "function" then
-		if func == nil then func = 1 end
-		func = debug.getinfo( func + 1, "f" ).func
+		func = debug.getinfo( ( func or 1 ) + 1, "f" ).func
 	end
 	local ups = { func = func }
 	setmetatable( ups, ModUtil.Metatables.UpValueNames )
@@ -1212,55 +1189,48 @@ ModUtil.Metatables.UpValues = {
 	__index = function( self, name )
 		if excludedUpValueNames[ name ] then return end
 		local func = rawget( self, "func" )
-		local i = 1
-		while true do
-			local n, val = debug.getupvalue( func, i )
+		local idx = 0
+		repeat
+			idx = idx + 1
+			local n, value = debug.getupvalue( func, idx )
 			if n == name then
-				return val
-			elseif not n then
-				break
+				return n, value
 			end
-			i = i + 1
-		end
+		until not n
 	end,
 	__newindex = function( self, name, value )
 		if excludedUpValueNames[ name ] then return end
 		local func = rawget( self, "func" )
-		local i = 1
-		while true do
-			local n = debug.getupvalue( func, i )
+		local idx = name and 0 or -1
+		repeat
+			idx = idx + 1
+			local n = debug.getupvalue( func, idx )
 			if n == name then
-				debug.setupvalue( func, i, value )
+				debug.setupvalue( func, idx, value )
 				return
-			elseif not n then
-				break
 			end
-			i = i + 1
-		end
+		until not n
 	end,
 	__len = function ( self )
-		return debug.getinfo( rawget( self, "func" ), "u" ).nups
+		return 0
 	end,
 	__next = function ( self, name )
 		local func = rawget( self, "func" )
-		local i = 1
-		while true do
-			local n = debug.getupvalue( func, i )
+		local idx = name and 0 or -1
+		repeat
+			idx = idx + 1
+			local n = debug.getupvalue( func, idx )
 			if n == name then
 				local value
-				while true do
-					i = i + 1
-					n, value = debug.getupvalue( func, i )
-					if not n then return end
-					if not excludedUpValueNames[ n ] then
+				repeat
+					idx = idx + 1
+					n, value = debug.getupvalue( func, idx )
+					if n and not excludedUpValueNames[ n ] then
 						return n, value
 					end
-				end
-			elseif not n then
-				break
+				until not n
 			end
-			i = i + 1
-		end
+		until not n
 	end,
 	__inext = function() end,
 	__pairs = function( self )
@@ -1280,29 +1250,84 @@ ModUtil.Metatables.UpValues = {
 
 	func - the function to get upvalues from
 ]]
--- BROKEN
 function ModUtil.UpValues( func )
 	if type(func) ~= "function" then
-		if func == nil then func = 1 end
-		func = debug.getinfo( func + 1, "f" ).func
+		func = debug.getinfo( ( func or 1 ) + 1, "f" ).func
 	end
-	local ind = { }
-	local name
-	local i = 1
-	while true do
-		name = debug.getupvalue( func, i )
-		if name == nil then break end
-		ind[ name ] = i
-		i = i + 1
+	local upValues = { func = func }
+	setmetatable( upValues, ModUtil.Metatables.UpValues )
+	return upValues
+end
+
+ModUtil.Metatables.StackedUpValues = {
+	__index = function( self, name )
+		if excludedUpValueNames[ name ] then return end
+		for _, level in pairs( rawget( self, "levels" ) ) do
+			local idx = 0
+			repeat
+				idx = idx + 1
+				local n, v = level.getupvalue( idx )
+				if n == name then
+					return v
+				end
+			until not n
+		end
+	end,
+	__newindex = function( self, name, value )
+		if excludedUpValueNames[ name ] then return end
+		for _, level in pairs( rawget( self, "levels" ) ) do
+			local idx = 0
+			repeat
+				idx = idx + 1
+				local n = level.getupvalue( idx )
+				if n == name then
+					level.setupvalue( idx, value )
+					return
+				end
+			until not n
+		end
+	end,
+	__len = function( )
+		return 0
+	end,
+	__next = function( self, name )
+		local levels = rawget( self, "levels" )
+		for _, level in pairs( levels ) do
+			local idx = name and 0 or -1
+			repeat
+				idx = idx + 1
+				local n = level.getupvalue( idx )
+				if name and n == name or not name then
+					local value
+					repeat
+						idx = idx + 1
+						n, value = level.getupvalue( idx )
+						if n and not excludedUpValueNames[ n ] then
+							return n, value
+						end
+					until not n
+				end
+			until not n
+		end
+	end,
+	__inext = function( ) return end,
+	__pairs = function( self )
+		return qrawpairs( self ), self
+	end,
+	__ipairs = function( self )
+		return function() end, self
 	end
-	local ups = { func = func }
-	setmetatable( ups, ModUtil.Metatables.UpValues )
-	return ups, ind
+}
+
+function ModUtil.StackedUpValues( level )
+	local upValues = { levels = ModUtil.StackLevels( ( level or 1 ) ) }
+	setmetatable( upValues, ModUtil.Metatables.StackedUpValues )
+	return upValues
 end
 
 local excludedLocalNames = ToLookup{ "(*temporary)", "(for generator)", "(for state)", "(for control)" }
 
-ModUtil.Metatables.LevelLocalValues = {
+ModUtil.Metatables.LocalValues = {
 	__index = function( self, idx )
 		local name, value = rawget( self, "level" ).getlocal( idx )
 		if name then
@@ -1342,23 +1367,23 @@ ModUtil.Metatables.LevelLocalValues = {
 		return qrawpairs( self ), self
 	end,
 }
-ModUtil.Metatables.LevelLocalValues.__ipairs = ModUtil.Metatables.LevelLocalValues.__pairs
-ModUtil.Metatables.LevelLocalValues.__inext = ModUtil.Metatables.LevelLocalValues.__next
+ModUtil.Metatables.LocalValues.__ipairs = ModUtil.Metatables.LocalValues.__pairs
+ModUtil.Metatables.LocalValues.__inext = ModUtil.Metatables.LocalValues.__next
 
 --[[
 	Example Use:
-	for i, name, value in pairs( ModUtil.LevelLocalValues( level ) ) do
+	for i, name, value in pairs( ModUtil.LocalValues( level ) ) do
 		--
 	end
 ]]
-function ModUtil.LevelLocalValues( level )
+function ModUtil.LocalValues( level )
 	if level == nil then level = 1 end
-	local localLevel = { level = ModUtil.StackLevel( level + 1 ) }
-	setmetatable( localLevel, ModUtil.Metatables.LevelLocalValues )
-	return localLevel
+	local locals = { level = ModUtil.StackLevel( level + 1 ) }
+	setmetatable( locals, ModUtil.Metatables.LocalValues )
+	return locals
 end
 
-ModUtil.Metatables.LevelLocalNames = {
+ModUtil.Metatables.LocalNames = {
 	__index = function( self, idx )
 		local name = rawget( self, "level" ).getlocal( idx )
 		if name then
@@ -1368,7 +1393,7 @@ ModUtil.Metatables.LevelLocalNames = {
 		end
 	end,
 	__newindex = function( ) return end,
-	__len = ModUtil.Metatables.LevelLocalValues.__len,
+	__len = ModUtil.Metatables.LocalValues.__len,
 	__next = function( self, idx )
 		if idx == nil then idx = 0 end
 		idx = idx + 1
@@ -1383,78 +1408,69 @@ ModUtil.Metatables.LevelLocalNames = {
 		return qrawpairs( self ), self
 	end,
 }
-ModUtil.Metatables.LevelLocalNames.__ipairs = ModUtil.Metatables.LevelLocalNames.__pairs
-ModUtil.Metatables.LevelLocalNames.__inext = ModUtil.Metatables.LevelLocalNames.__next
+ModUtil.Metatables.LocalNames.__ipairs = ModUtil.Metatables.LocalNames.__pairs
+ModUtil.Metatables.LocalNames.__inext = ModUtil.Metatables.LocalNames.__next
 
 --[[
 	Example Use:
-	for i, name, value in pairs( ModUtil.LevelLocalNames( level ) ) do
+	for i, name, value in pairs( ModUtil.LocalNames( level ) ) do
 		--
 	end
 ]]
 -- WORKS
-function ModUtil.LevelLocalNames( level )
+function ModUtil.LocalNames( level )
 	if level == nil then level = 1 end
-	local localLevel = { level = ModUtil.StackLevel( level + 1 ) }
-	setmetatable( localLevel, ModUtil.Metatables.LevelLocalNames )
-	return localLevel
+	local locals = { level = ModUtil.StackLevel( level + 1 ) }
+	setmetatable( locals, ModUtil.Metatables.LocalNames )
+	return locals
 end
 
-ModUtil.Metatables.LevelLocals = {
+ModUtil.Metatables.Locals = {
 	__index = function( self, name )
 		if excludedLocalNames[ name ] then return end
 		local level = rawget( self, "level" )
-		local idx = 1
-		while true do
+		local idx = 0
+		repeat
+			idx = idx + 1
 			local n, v = level.getlocal( level, idx )
 			if n == name then
 				return v
-			elseif not n then
-				break
 			end
-			idx = idx + 1
-		end
+		until not n
 	end,
 	__newindex = function( self, name, value )
 		if excludedLocalNames[ name ] then return end
 		local level = rawget( self, "level" )
-		local idx = 1
-		while true do
+		local idx = 0
+		repeat
+			idx = idx + 1
 			local n = level.getlocal( idx )
 			if n == name then
 				level.setlocal( idx, value )
 				return
-			elseif not n then
-				break
 			end
-			idx = idx + 1
-		end
+		until not n
 	end,
 	__len = function( )
 		return 0
 	end,
 	__next = function( self, name )
 		local level = rawget( self, "level" )
-		if name == nil then
-			return level.getlocal( 1 )
-		end
-		if excludedLocalNames[ name ] then return end
-		local idx = 1
-		while true do
-			local n1 = level.getlocal( idx )
-			if n1 == name then
-				local n2, value = level.getlocal( idx + 1 )
-				if n2 then
-					if not excludedLocalNames[ n2 ] then
-						return n2, value
-					end
-				end
-				return
-			elseif not n1 then
-				break
-			end
+		local idx = name and 0 or -1
+		repeat
 			idx = idx + 1
-		end
+			local n = level.getlocal( idx )
+			if name and n == name or not name then
+				local value
+				repeat
+					idx = idx + 1
+					n, value = level.getlocal( idx )
+					if n and not excludedLocalNames[ n ] then
+						return n, value
+					end
+				until not n
+			end
+		until not n
 	end,
 	__inext = function( ) return end,
 	__pairs = function( self )
@@ -1465,43 +1481,38 @@ ModUtil.Metatables.LevelLocals = {
 	end
 }
 
-function ModUtil.LevelLocals( level )
-	if level == nil then level = 1 end
-	local localLevel = { level = ModUtil.StackLevel( level + 1 ) }
-	setmetatable( localLevel, ModUtil.Metatables.LevelLocals )
-	return localLevel
+function ModUtil.Locals( level )
+	local locals = { level = ModUtil.StackLevel( ( level or 1 ) + 1 ) }
+	setmetatable( locals, ModUtil.Metatables.Locals )
+	return locals
 end
 
-ModUtil.Metatables.Locals = {
+ModUtil.Metatables.StackedLocals = {
 	__index = function( self, name )
 		if excludedLocalNames[ name ] then return end
-		for level in pairs( rawget( self, "levels" ) ) do
-			local idx = 1
-			while true do
+		for _, level in pairs( rawget( self, "levels" ) ) do
+			local idx = 0
+			repeat
+				idx = idx + 1
 				local n, v = level.getlocal( idx )
 				if n == name then
 					return v
-				elseif not n then
-					break
 				end
-				idx = idx + 1
-			end
+			until not n
 		end
 	end,
 	__newindex = function( self, name, value )
 		if excludedLocalNames[ name ] then return end
-		for level in pairs( rawget( self, "levels" ) ) do
-			local idx = 1
-			while true do
+		for _, level in pairs( rawget( self, "levels" ) ) do
+			local idx = 0
+			repeat
+				idx = idx + 1
 				local n = level.getlocal( idx )
 				if n == name then
 					level.setlocal( idx, value )
 					return
-				elseif not n then
-					break
 				end
-				idx = idx + 1
-			end
+			until not n
 		end
 	end,
 	__len = function( )
@@ -1509,28 +1520,22 @@ ModUtil.Metatables.Locals = {
 	end,
 	__next = function( self, name )
 		local levels = rawget( self, "levels" )
-		if name == nil then
-			name = levels[ 1 ].getlocal( 1 )
-		end
-		for level in pairs( levels ) do
-			local idx = 1
-			while true do
+		for _, level in pairs( levels ) do
+			local idx = name and 0 or -1
+			repeat
+				idx = idx + 1
 				local n = level.getlocal( idx )
-				if n == name then
+				if name and n == name or not name then
 					local value
-					while true do
+					repeat
 						idx = idx + 1
 						n, value = level.getlocal( idx )
-						if not n then return end
-						if not excludedLocalNames[ n ] then
+						if n and not excludedLocalNames[ n ] then
 							return n, value
 						end
-					end
-				elseif not n then
-					break
+					until not n
 				end
-				idx = idx + 1
-			end
+			until not n
 		end
 	end,
 	__inext = function( ) return end,
@@ -1548,14 +1553,12 @@ ModUtil.Metatables.Locals = {
 	be used.
 
 	For example, if your function is called from CreateTraitRequirements,
-	you could access its 'local screen' as ModUtil.Locals().screen
-	and its 'local hasRequirement' as ModUtil.Locals().hasRequirement.
+	you could access its 'local screen' as ModUtil.StackedLocals().screen
+	and its 'local hasRequirement' as ModUtil.StackedLocals().hasRequirement.
 ]]
--- BROKEN
-function ModUtil.Locals( level )
-	if level == nil then level = 1 end
-	local locals = { levels = ModUtil.StackLevels( level + 1 ) }
-	setmetatable( locals, ModUtil.Metatables.Locals )
+function ModUtil.StackedLocals( level )
+	local locals = { levels = ModUtil.StackLevels( ( level or 1 ) ) }
+	setmetatable( locals, ModUtil.Metatables.StackedLocals )
 	return locals
 end
 
@@ -2308,7 +2311,7 @@ ModUtil.Metatables.Environment = {
 
 ModUtil.Metatables.Context = {
 	__call = function( self, targetPath_or_targetIndexArray, callContext, ... )
-		local oldContextInfo = ModUtil.Locals( 2 )._ContextInfo
+		local oldContextInfo = ModUtil.StackedLocals( 2 )._ContextInfo
 		local contextInfo = {
 			call = callContext,
 			parent = oldContextInfo
