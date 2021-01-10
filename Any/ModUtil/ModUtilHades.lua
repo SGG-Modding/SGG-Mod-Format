@@ -1,9 +1,9 @@
 
 ModUtil.RegisterMod("Hades",ModUtil)
-ModUtil.Hades={
+ModUtil.MapSetTable( ModUtil.Hades, {
 	PrintStackHeight = 10,
 	PrintStackCapacity = 80
-}
+} )
 
 ModUtil.Anchors.PrintOverhead = {}
 
