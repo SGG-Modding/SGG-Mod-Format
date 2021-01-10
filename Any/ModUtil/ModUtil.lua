@@ -67,7 +67,7 @@ end
 -- truly raw ipairs, ignores __inext and __ipairs
 function rawipairs( t )
 	return function( self, key )
-		return rawinext( self, key, n )
+		return rawinext( self, key )
 	end, t, nil
 end
 
