@@ -35,6 +35,16 @@ end
 
 local next = next
 
+-- truly raw pairs, ignores __next and __pairs
+function rawpairs( t )
+	return rawnext, t, nil
+end
+
+-- quasi-raw pairs, invokes __next but ignores __pairs
+function qrawpairs( t )
+    return next, t, nil
+end
+
 -- doesn't invoke __index just like rawnext
 function rawinext( t, i )
 	if i == nil then i = 0 end
@@ -50,28 +60,22 @@ local rawinext = rawinext
 -- invokes __inext
 function inext( t, i )
 	local m = debug.getmetatable( t )
-	local n = m and m.__inext or rawinext
-	return n( t, i )
-end
-
--- truly raw pairs, ignores __next and __pairs
-function rawpairs( t )
-	return rawnext, t, nil
+	local f = m and m.__inext or rawinext
+	return f( t, i )
 end
 
 -- truly raw ipairs, ignores __inext and __ipairs
 function rawipairs( t )
-	return rawinext, t, nil
-end
-
--- quasi-raw pairs, invokes __next but ignores __pairs
-function qrawpairs( t )
-    return next, t, nil
+	return function( self, key )
+		return rawinext( self, key, n )
+	end, t, nil
 end
 
 -- quasi-raw ipairs, invokes __inext but ignores __ipairs
 function qrawipairs( t )
-    return inext, t, nil
+	return function( self, key )
+		return inext( self, key )
+	end, t, nil
 end
 
 local type = type
@@ -161,21 +165,22 @@ local __G = ModUtil.RawInterface( _G )
 __G.__G = __G
 
 local function getenv( level )
-	local info = debug.getinfo( level, "f" )
-	while info do
-		if info.func then
-			local name, val = debug.getupvalue( info.func, 1 )
-			if name == "_ENV" then
-				if val ~= __G._G then
-					return val
-				end
-			end
-		else
-			break
-		end
+	repeat
 		level = level + 1
-		info = debug.getinfo( level, "f" )
-	end
+		local info = debug.getinfo( level, "f" )
+		if info and info.func then
+			local i = 0
+			repeat
+				i = i + 1
+				local name, val = debug.getupvalue( info.func, i )
+				if name == "_ENV" then
+					if val ~= __G._G then
+						return val
+					end
+				end
+			until not name
+		end
+	until not info
 	return __G
 end
 
@@ -314,13 +319,29 @@ end
 
 function ModUtil.TableKeysString( o )
 	if type( o ) == 'table' then
-		local first = true
-		local s = ''
+		local out = { }
 		for k in pairs( o ) do
-			if not first then s = s .. ', ' else first = false end
-			s = s .. ModUtil.KeyString( k )
+			table.insert( out , ModUtil.KeyString( k ) )
+			table.insert( out , ', ' )
 		end
-		return s
+		table.remove( out )
+		return table.concat( out )
+	end
+end
+
+function ModUtil.ToShallowString( o )
+	if type( o ) == "table" then
+		local out = { '<', tostring( o ), ">{ " }
+		for k, v in pairs( o ) do
+			table.insert( out, ModUtil.KeyString( k ) )
+			table.insert( out, ' = ' )
+			table.insert( out, ModUtil.ValueString( v ) )
+			table.insert( out , ", " )
+		end
+		table.remove( out )
+		return table.concat( out ) .. " }"
+	else
+		return ModUtil.ValueString( o )
 	end
 end
 
@@ -328,55 +349,86 @@ function ModUtil.ToDeepString( o, seen )
 	seen = seen or { }
 	if type( o ) == "table" and not seen[ o ] then
 		seen[ o ] = true
-		local first = true
-		local s = '<' .. tostring( o ) .. ">{ "
+		local out = { '<', tostring( o ), ">{ " }
 		for k, v in pairs( o ) do
-			if not first then s = s .. ', ' else first = false end
-			s = s .. ModUtil.KeyString( k ) ..' = ' .. ModUtil.ToDeepString( v, seen )
+			table.insert( out, ModUtil.KeyString( k ) )
+			table.insert( out, ' = ' )
+			table.insert( out, ModUtil.ToDeepString( v, seen ) )
+			table.insert( out , ", " )
 		end
-		return s .. " }"
+		table.remove( out )
+		return table.concat( out ) .. " }"
 	else
 		return ModUtil.ValueString( o )
 	end
 end
 
-function ModUtil.ToShallowString( o )
-	if type( o ) == "table" then
-		local first = true
-		local s = '<' .. tostring( o ) .. ">{ "
+function ModUtil.ToDeepNoNamespacesString( o, seen )
+	local first = false
+	if not seen then
+		first = true
+		seen = { }
+	end
+	if type( o ) == "table" and not seen[ o ] and o ~= __G._G and ( first or not ModUtil.Mods.Index[ o ] ) then
+		seen[ o ] = true
+		local out = { '<', tostring( o ), ">{ " }
 		for k, v in pairs( o ) do
-			if not first then s = s .. ', ' else first = false end
-			s = s .. ModUtil.KeyString( k ) ..' = ' .. ModUtil.ValueString( v )
+			if v ~= __G._G and not ModUtil.Mods.Index[ v ] then
+				table.insert( out, ModUtil.KeyString( k ) )
+				table.insert( out, ' = ' )
+				table.insert( out, ModUtil.ToDeepNoNamespacesString( v, seen ) )
+				table.insert( out , ", " )
+			end
 		end
-		return s .. " }"
+		if #out > 3 then table.remove( out ) end
+		return table.concat( out ) .. " }"
 	else
 		return ModUtil.ValueString( o )
 	end
 end
 
-function ModUtil.EachToString( ... )
-	local s = ""
-	for _, v in ipairs{ ... } do
-		s = s .. '\t' .. tostring( v )
+function ModUtil.ToDeepNamespacesString( o, seen )
+	local first = false
+	if not seen then
+		first = true
+		seen = { }
 	end
-	return s:sub( 2 )
+	if type( o ) == "table" and not seen[ o ] and ( first or o == __G._G or ModUtil.Mods.Index[ o ] ) then
+		seen[ o ] = true
+		local out = { '<', tostring( o ), ">{ " }
+		for k, v in pairs( o ) do
+			if v == __G._G or ModUtil.Mods.Index[ v ] then
+				table.insert( out, ModUtil.KeyString( k ) )
+				table.insert( out, ' = ' )
+				table.insert( out, ModUtil.ToDeepNamespacesString( v, seen ) )
+				table.insert( out , ", " )
+			end
+		end
+		if #out > 3 then table.remove( out ) end
+		return table.concat( out ) .. " }"
+	else
+		return ModUtil.ValueString( o )
+	end
 end
 
-function ModUtil.EachToDeepString( ... )
-	local seen = { }
-	local s = ""
+function ModUtil.MapVars( mapFunc, ... )
+	local out = {}
 	for _, v in ipairs{ ... } do
-		s = s .. '\t' .. ModUtil.ToDeepString( v, seen )
+		table.insert( out, mapFunc( v ) )
 	end
-	return s:sub( 2 )
+	return table.unpack( out )
 end
 
-function ModUtil.EachToShallowString( ... )
-	local s = ""
-	for _, v in ipairs{ ... } do
-		s = s .. '\t' .. ModUtil.ToShallowString( v )
+function ModUtil.JoinStrings( sep, ... )
+	local out = {}
+	local args = { ... }
+	local i
+	i, out[ 1 ] = inext( args )
+	for _, v in inext, args, i do
+		table.insert( out, sep )
+		table.insert( out, v )
 	end
-	return s:sub( 2 )
+	return table.concat( out )
 end
 
 function ModUtil.ChunkText( text, chunkSize, maxChunks )
@@ -387,10 +439,8 @@ function ModUtil.ChunkText( text, chunkSize, maxChunks )
 		cs = cs + 1
 		if cs > chunkSize or chr == "\n" then
 			ncs = ncs + 1
-			if maxChunks then
-				if ncs > maxChunks then
-					return chunks
-				end
+			if maxChunks and ncs > maxChunks then
+				return chunks
 			end
 			chunks[ ncs ] = ""
 			cs = 0
@@ -433,14 +483,14 @@ function ModUtil.PrintToFile( file, ... )
 		file = io.open( file, "a" )
 		close = true
 	end
-	file:write( ModUtil.EachToString( ... ) )
+	file:write( ModUtil.MapVars( tostring, ... ) )
 	if close then
 		file:close( )
 	end
 end
 
 function ModUtil.DebugPrint( ... )
-	local text = ModUtil.EachToString( ... ):gsub( "\t", "    " )
+	local text = ModUtil.JoinStrings( "\t", ModUtil.MapVars( tostring, ... ) ):gsub( "\t", "    " )
 	for line in text:gmatch( "([^\n]+)" ) do
 		DebugPrint{ Text = line }
 	end
@@ -479,21 +529,29 @@ function ModUtil.PrintTraceback( level )
 	end
 end
 
-function ModUtil.PrintVarDump( level )
+function ModUtil.PrintNamespaces( level )
+	level = ( level or 1 )
+	local text
+	ModUtil.Print("Namespaces:")
+	-- LocalInterface and UpValueInterface need to be fixed to be used here instead
+	text = ModUtil.ToDeepNamespacesString( ModUtil.Locals( level + 1 ) )
+	ModUtil.Print( "\t" .. "Locals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
+	text = ModUtil.ToDeepNamespacesString( ModUtil.UpValues( level + 1 ) )
+	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
+	text = ModUtil.ToDeepNamespacesString( getfenv( level + 1 ) )
+	ModUtil.Print( "\t" .. "Globals:" .. "\t" .. text )
+end
+
+function ModUtil.PrintVariables( level )
 	level = ( level or 1 )
 	local text
 	ModUtil.Print("Variables:")
 	-- LocalInterface and UpValueInterface need to be fixed to be used here instead
-	text = ModUtil.ToDeepString( ModUtil.Locals( level + 1 ) )
+	text = ModUtil.ToDeepNoNamespacesString( ModUtil.Locals( level + 1 ) )
 	ModUtil.Print( "\t" .. "Locals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
-	text = ModUtil.ToDeepString( ModUtil.UpValues( level + 1 ) )
+	text = ModUtil.ToDeepNoNamespacesString( ModUtil.UpValues( level + 1 ) )
 	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
-	local env = getfenv( level )
-	if env == __G._G then
-		text = ModUtil.ValueString( env )
-	else
-		text = ModUtil.ToDeepString( env )
-	end
+	text = ModUtil.ToDeepNoNamespacesString( getfenv( level + 1 ) )
 	ModUtil.Print( "\t" .. "Globals:" .. "\t" .. text )
 end
 
@@ -501,17 +559,11 @@ end
 	Call a function with the provided arguments
 	instead of halting when an error occurs it prints the entire error traceback
 ]]
-function ModUtil.DoCallPrintTraceback( f, ... )
+function ModUtil.DebugCall( f, ... )
 	xpcall( f, function( err )
 		ModUtil.Print( err )
-		ModUtil.PrintTraceback( 2 )
-    end, ... )
-end
-
-function ModUtil.DoCallPrintVarDumpTraceback( f, ... )
-    xpcall( f, function( err )
-		ModUtil.Print( err )
-		ModUtil.PrintVarDump( 2 )
+		ModUtil.PrintNamespaces( 2 )
+		ModUtil.PrintVariables( 2 )
 		ModUtil.PrintTraceback( 2 )
     end, ... )
 end
@@ -829,6 +881,7 @@ end
 	path - a dot-separated string that represents a path into a table
 ]]
 function ModUtil.PathToIndexArray( path )
+	if type(path) ~= "string" then return path end
 	local s = ""
 	local i = { }
 	for c in path:gmatch( "." ) do
@@ -1564,19 +1617,18 @@ end
 
 -- Globalisation
 
-ModUtil.Metatables.GlobalisedFunc = {
-	__call = function( self, ... )
-		return ModUtil.SafeGet( rawget( self, "table" ), rawget( self, "array" ) )( ... )
+function ModUtil.ReferFunction( funcPath, baseTable )
+	if type( baseTable ) == "number" then -- locals
+		baseTable = ModUtil.Locals( baseTable + 1 )
 	end
-}
-
-function ModUtil.New.GlobalisedFunc( baseTable, indexArray )
-	local funcTable = { table = baseTable, array = indexArray }
-	setmetatable( funcTable, ModUtil.Metatables.GlobalisedFunc )
+	local indexArray = ModUtil.PathToIndexArray( funcPath )
+	return function( ... )
+		return ModUtil.SafeGet( baseTable, indexArray )( ... )
+	end
 end
 
 function ModUtil.GlobaliseFunc( baseTable, indexArray, key )
-	_G[ key ] = ModUtil.New.GlobalisedFunc( baseTable, indexArray )
+	_G[ key ] = ModUtil.ReferFunction( indexArray, baseTable )
 end
 
 --[[
@@ -1963,8 +2015,7 @@ end
 		for debug purposes
 ]]
 function ModUtil.BaseOverride( basePath, value, mod )
-	local pathArray = ModUtil.PathToIndexArray( basePath )
-	ModUtil.Override( _G, pathArray, value, mod )
+	ModUtil.Override( _G, ModUtil.PathToIndexArray( basePath ), value, mod )
 end
 
 --[[
@@ -1977,8 +2028,7 @@ end
 	basePath	- the path to restore, as a string
 ]]
 function ModUtil.BaseRestore( basePath )
-	local pathArray = ModUtil.PathToIndexArray( basePath )
-	ModUtil.Restore( _G, pathArray )
+	ModUtil.Restore( _G, ModUtil.PathToIndexArray( basePath ) )
 end
 
 -- Wrap/Override interaction
@@ -1998,6 +2048,10 @@ function ModUtil.GetOriginalValue( baseTable, indexArray )
 	return baseValue
 end
 
+function ModUtil.GetOriginalBaseValue( basePath )
+	return ModUtil.GetOriginalValue( _G, ModUtil.PathToIndexArray( basePath ) )
+end
+
 -- Automatically updating data structures
 
 ModUtil.Metatables.EntangledIsomorphism = {
@@ -2008,17 +2062,21 @@ ModUtil.Metatables.EntangledIsomorphism = {
 		local data, inverse = rawget( self, "data" ), rawget( self, "inverse" )
 		if value ~= nil then
 			local k = inverse[ value ]
-			if k ~= nil and k ~= key then
-				data[ k ] = nil
+			if k ~= key  then
+				if k ~= nil then
+					data[ k ] = nil
+				end
+				inverse[ value ] = key
 			end
-			inverse[ value ] = key
 		end
 		if key ~= nil then
 			local v = data[ key ]
-			if v ~= nil and v ~= value then
-				inverse[ v ] = nil
+			if v ~= value then
+				if v ~= nil then
+					inverse[ v ] = nil
+				end
+				data[ key ] = value
 			end
-			data[ key ] = value
 		end
 	end,
 	__len = function( self )
@@ -2046,17 +2104,21 @@ ModUtil.Metatables.EntangledIsomorphismInverse = {
 		local data, inverse = rawget( self, "data" ), rawget( self, "inverse" )
 		if value ~= nil then
 			local k = inverse[ value ]
-			if k ~= nil and k ~= key then
-				data[ k ] = nil
+			if k ~= key then
+				if k ~= nil then
+					data[ k ] = nil
+				end
+				inverse[ value ] = key
 			end
-			inverse[ value ] = key
 		end
 		if key ~= nil then
 			local v = data[ key ]
-			if v ~= nil and v ~= value then
-				inverse[ v ] = nil
+			if v ~= value then
+				if v ~= nil then
+					inverse[ v ] = nil
+				end
+				data[ key ] = value
 			end
-			data[ key ] = value
 		end
 	end,
 	__len = function( self )
@@ -2317,11 +2379,7 @@ ModUtil.Metatables.Context = {
 			parent = oldContextInfo
 		}
 
-		if type( targetPath_or_targetIndexArray ) == "string" then
-			targetPath_or_targetIndexArray = ModUtil.PathToIndexArray( targetPath_or_targetIndexArray )
-		end
-
-		contextInfo.targetIndexArray = targetPath_or_targetIndexArray or { }
+		contextInfo.targetIndexArray = ModUtil.PathToIndexArray( targetPath_or_targetIndexArray ) or { }
 		if oldContextInfo ~= nil then
 			contextInfo.indexArray = ShallowCopyTable( oldContextInfo.indexArray )
 			contextInfo.baseTable = oldContextInfo.baseTable
