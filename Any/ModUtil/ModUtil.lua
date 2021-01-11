@@ -502,6 +502,12 @@ end
 function ModUtil.Print( ... )
 	print( ... )
 	if DebugPrint then ModUtil.DebugPrint( ... ) end
+	if io then
+		if io.stdout ~= io.output( ) then
+			ModUtil.PrintToFile( io.output( ), ... )
+		end
+		io.flush( )
+	end
 end
 
 function ModUtil.PrintTraceback( level )
