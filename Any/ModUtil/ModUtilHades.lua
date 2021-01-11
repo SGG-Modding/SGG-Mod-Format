@@ -1,5 +1,6 @@
 
-ModUtil.RegisterMod("Hades",ModUtil)
+ModUtil.RegisterMod( "Hades", ModUtil )
+
 ModUtil.MapSetTable( ModUtil.Hades, {
 	PrintStackHeight = 10,
 	PrintStackCapacity = 80

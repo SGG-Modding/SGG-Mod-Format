@@ -235,7 +235,7 @@ end
 	modName - the name of the mod
 	parent	- the parent mod, or nil if this mod stands alone
 ]]
-function ModUtil.RegisterMod( modName, parent )
+function ModUtil.RegisterMod( modName, parent, content )
 	if not parent then
 		parent = _G
 		SaveIgnores[ modName ] = true
@@ -249,6 +249,9 @@ function ModUtil.RegisterMod( modName, parent )
 			prefix = ''
 		end
 		ModUtil.Mods.Table[ prefix .. modName ] = parent[ modName ]
+	end
+	if content then
+		ModUtil.MapSetTable( parent[ modName ], content )
 	end
 	return parent[ modName ]
 end
@@ -641,13 +644,6 @@ end
 
 ModUtil.Internal.MarkedForCollapse = { }
 
-local function autoIsUnKeyed( tableArg )
-	if not ModUtil.Internal.MarkedForCollapse[ tableArg ] then
-		return ModUtil.IsUnKeyed( tableArg )
-	end
-	return false
-end
-
 function ModUtil.CollapseMarked( )
 	for tbl, state in pairs( ModUtil.Internal.MarkedForCollapse ) do
 		if state then
@@ -754,11 +750,6 @@ function ModUtil.SafeSet( baseTable, indexArray, value )
 	if nodeType then
 		return ModUtil.Nodes.Table[ nodeType ].Set( node, value )
 	end
-	if ( node[ key ] == nil ) ~= ( value == nil ) then
-		if autoIsUnKeyed( baseTable ) then
-			ModUtil.MarkForCollapse( node )
-		end
-	end
 	node[ key ] = value
 	return true
 end
@@ -796,16 +787,12 @@ end
 	}
 ]]
 function ModUtil.MapNilTable( inTable, nilTable )
-	local unkeyed = autoIsUnKeyed( inTable )
 	for nilKey, nilVal in pairs( nilTable ) do
 		local inVal = inTable[ nilKey ]
 		if type( nilVal ) == "table" and type( inVal ) == "table" then
 			ModUtil.MapNilTable( inVal, nilVal )
 		else
 			inTable[ nilKey ] = nil
-			if unkeyed then
-				ModUtil.MarkForCollapse( inTable )
-			end
 		end
 	end
 end
@@ -838,16 +825,12 @@ end
 	}
 ]]
 function ModUtil.MapSetTable( inTable, setTable )
-	local unkeyed = autoIsUnKeyed( inTable )
 	for setKey, setVal in pairs( setTable ) do
 		local inVal = inTable[ setKey ]
 		if type( setVal ) == "table" and type( inVal ) == "table" then
 			ModUtil.MapSetTable( inVal, setVal )
 		else
 			inTable[ setKey ] = setVal
-			if type( setKey ) ~= "number" and unkeyed then
-				ModUtil.MarkForCollapse( inTable )
-			end
 		end
 	end
 end
