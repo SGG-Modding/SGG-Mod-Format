@@ -45,6 +45,8 @@ function qrawpairs( t )
     return next, t, nil
 end
 
+local rawget = rawget
+
 -- doesn't invoke __index just like rawnext
 function rawinext( t, i )
 	if i == nil then i = 0 end
@@ -63,6 +65,8 @@ function inext( t, i )
 	local f = m and m.__inext or rawinext
 	return f( t, i )
 end
+
+local inext = inext
 
 -- truly raw ipairs, ignores __inext and __ipairs
 function rawipairs( t )
@@ -119,15 +123,66 @@ function setfenv( fn, env )
 	until not name
 end
 
+local table = table
+
+table.rawinsert = table.insert
+-- table.insert that respects metamethods
+function table.insert( list, pos, value )
+	local last = #list
+	if value == nil then
+		value = pos
+		pos = last + 1
+	end
+	if pos < 1 or pos > last + 1 then
+		error( "bad argument #2 to '" .. debug.getinfo( 1, "n" ).name .. "' (position out of bounds)", 2 )
+	end
+	if pos <= last then
+		local i = last
+		repeat
+			list[ i + 1 ] = list[ i ]
+			i = i - 1
+		until i <= pos
+	end
+	list[ pos ] = value
+end
+
+table.rawremove = table.remove
+-- table.remove that respects metamethods
+function table.remove( list, pos )
+	local last = #list
+	if pos == nil then
+		pos = last
+	end
+	if pos < 1 or pos > last then
+		error( "bad argument #2 to '" .. debug.getinfo( 1, "n" ).name .. "' (position out of bounds)", 2 )
+	end
+	local value = list[ pos ]
+	if pos <= last then
+		local i = pos
+		repeat
+			list[ i ] = list[ i + 1 ]
+			i = i + 1
+		until i > last
+	end
+	return value
+end
+
+--[[
+	NOTE: Other table functions that need to get updated to respect metamethods
+	- table.unpack
+	- table.concat
+	- table.sort
+]]
+
 -- Environment Context (EXPERIMENTAL) (WIP) (INCOMPLETE)
 
 -- bind to locals to minimise environment recursion
 local
-	rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, pairs, ipairs, coroutine,
-		rawpairs, rawipairs, inext, qrawpairs, qrawipairs, getfenv, setfenv, tostring, xpcall
+	rawset, rawlen, ModUtil, getmetatable, setmetatable, pairs, ipairs, coroutine,
+		rawpairs, rawipairs, qrawpairs, qrawipairs, getfenv, setfenv, tostring, xpcall
 	=
-	rawget, rawset, rawlen, ModUtil, table, getmetatable, setmetatable, pairs, ipairs, coroutine,
-		rawpairs, rawipairs, inext, qrawpairs, qrawipairs, getfenv, setfenv, tostring, xpcall
+	rawset, rawlen, ModUtil, getmetatable, setmetatable, pairs, ipairs, coroutine,
+		rawpairs, rawipairs, qrawpairs, qrawipairs, getfenv, setfenv, tostring, xpcall
 
 function ModUtil.RawInterface( obj )
 
@@ -303,6 +358,7 @@ end
 -- Data Misc
 
 local passByValueTypes = ToLookup{ "number", "boolean", "nil" }
+local excludedFieldNames = ToLookup{ "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while" }
 
 function ModUtil.ValueString( o )
 	local t = type( o )
@@ -316,8 +372,22 @@ function ModUtil.ValueString( o )
 end
 
 function ModUtil.KeyString( o )
-	if type( o ) == 'number' then o = o .. '.' end
-	return tostring( o )
+	local t = type( o )
+	o = tostring( o )
+	if t == 'string' and not excludedFieldNames[ o ] then
+		local pattern = "^[a-zA-Z_][a-zA-Z0-9_]*$"
+		if o:gmatch( pattern ) then
+			return o
+		end
+		return '"' .. o .. '"'
+	end
+	if t == 'number' then
+	    o = "#" .. o
+	end
+	if not passByValueTypes[ t ] then
+        return '<' .. o .. '>'
+	end
+	return o
 end
 
 function ModUtil.TableKeysString( o )
@@ -341,7 +411,7 @@ function ModUtil.ToShallowString( o )
 			table.insert( out, ModUtil.ValueString( v ) )
 			table.insert( out , ", " )
 		end
-		table.remove( out )
+		if #out > 3 then table.remove( out ) end
 		return table.concat( out ) .. " }"
 	else
 		return ModUtil.ValueString( o )
@@ -359,7 +429,7 @@ function ModUtil.ToDeepString( o, seen )
 			table.insert( out, ModUtil.ToDeepString( v, seen ) )
 			table.insert( out , ", " )
 		end
-		table.remove( out )
+		if #out > 3 then table.remove( out ) end
 		return table.concat( out ) .. " }"
 	else
 		return ModUtil.ValueString( o )
@@ -569,7 +639,7 @@ end
 	instead of halting when an error occurs it prints the entire error traceback
 ]]
 function ModUtil.DebugCall( f, ... )
-	xpcall( f, function( err )
+	return xpcall( f, function( err )
 		ModUtil.Print( err )
 		ModUtil.PrintNamespaces( 2 )
 		ModUtil.PrintVariables( 2 )
@@ -604,21 +674,6 @@ function ModUtil.Slice( state, start, stop, step )
 	return slice
 end
 
-local function CollapseTable( tableArg )
-	-- from UtilityScripts.lua
-	if tableArg == nil then
-		return
-	end
-
-	local collapsedTable = { }
-	local index = 1
-	for _, v in pairs( tableArg ) do
-		collapsedTable[ index ] = v
-		index = index + 1
-	end
-	return collapsedTable
-end
-
 local function ShallowCopyTable( orig )
 	-- from UtilityScripts.lua
 	if orig == nil then
@@ -650,16 +705,38 @@ end
 
 ModUtil.Internal.MarkedForCollapse = { }
 
+function ModUtil.CollapseTable( tableArg )
+	local collapsedTable = { }
+	local usedIndices = {}
+	local i = 1
+	repeat
+		collapsedTable[ i ] = tableArg[ i ]
+		usedIndices[ i ] = true
+		i = i + 1
+	until i > #tableArg
+	for k, v in pairs( tableArg ) do
+		if not usedIndices[ k ] then
+			collapsedTable[ i ] = v
+			i = i + 1
+		end
+	end
+	return collapsedTable
+end
+
+function ModUtil.CollapseTableInPlace( tableArg )
+	local collapsedTable = ModUtil.CollapseTable( tableArg )
+	for k in pairs( tableArg ) do
+		tableArg[ k ] = nil
+	end
+	for i, v in pairs( collapsedTable ) do
+		tableArg[ i ] = v
+	end
+end
+
 function ModUtil.CollapseMarked( )
 	for tbl, state in pairs( ModUtil.Internal.MarkedForCollapse ) do
 		if state then
-			local ctbl = CollapseTable( tbl )
-			for k in pairs( tbl ) do
-				tbl[ k ] = nil
-			end
-			for k, v in pairs( ctbl ) do
-				tbl[ k ] = v
-			end
+			ModUtil.CollapseTableInPlace( tbl )
 		end
 	end
 	ModUtil.Internal.MarkedForCollapse = { }
@@ -2043,39 +2120,39 @@ end
 
 -- Automatically updating data structures
 
-ModUtil.Metatables.EntangledIsomorphism = {
+ModUtil.Metatables.EntangledInvertibleTable = {
 	__index = function( self, key )
-		return rawget( self, "data" )[ key ]
+		return rawget( self, "Table" )[ key ]
 	end,
 	__newindex = function( self, key, value )
-		local data, inverse = rawget( self, "data" ), rawget( self, "inverse" )
+		local Table, Index = rawget( self, "Table" ), rawget( self, "Index" )
 		if value ~= nil then
-			local k = inverse[ value ]
+			local k = Index[ value ]
 			if k ~= key  then
 				if k ~= nil then
-					data[ k ] = nil
+					Table[ k ] = nil
 				end
-				inverse[ value ] = key
+				Index[ value ] = key
 			end
 		end
 		if key ~= nil then
-			local v = data[ key ]
+			local v = Table[ key ]
 			if v ~= value then
 				if v ~= nil then
-					inverse[ v ] = nil
+					Index[ v ] = nil
 				end
-				data[ key ] = value
+				Table[ key ] = value
 			end
 		end
 	end,
 	__len = function( self )
-		return #rawget( self, "data" )
+		return #rawget( self, "Table" )
 	end,
 	__next = function( self, key )
-		return next( rawget( self, "data" ), key )
+		return next( rawget( self, "Table" ), key )
 	end,
 	__inext = function( self, idx )
-		return inext( rawget( self, "data" ), idx )
+		return inext( rawget( self, "Table" ), idx )
 	end,
 	__pairs = function( self )
 		return qrawpairs( self )
@@ -2085,39 +2162,39 @@ ModUtil.Metatables.EntangledIsomorphism = {
 	end
 }
 
-ModUtil.Metatables.EntangledIsomorphismInverse = {
+ModUtil.Metatables.EntangledInvertibleIndex = {
 	__index = function( self, value )
-		return rawget( self, "inverse" )[ value ]
+		return rawget( self, "Index" )[ value ]
 	end,
 	__newindex = function( self, value, key )
-		local data, inverse = rawget( self, "data" ), rawget( self, "inverse" )
+		local Table, Index = rawget( self, "Table" ), rawget( self, "Index" )
 		if value ~= nil then
-			local k = inverse[ value ]
+			local k = Index[ value ]
 			if k ~= key then
 				if k ~= nil then
-					data[ k ] = nil
+					Table[ k ] = nil
 				end
-				inverse[ value ] = key
+				Index[ value ] = key
 			end
 		end
 		if key ~= nil then
-			local v = data[ key ]
+			local v = Table[ key ]
 			if v ~= value then
 				if v ~= nil then
-					inverse[ v ] = nil
+					Index[ v ] = nil
 				end
-				data[ key ] = value
+				Table[ key ] = value
 			end
 		end
 	end,
 	__len = function( self )
-		return #rawget( self, "inverse" )
+		return #rawget( self, "Index" )
 	end,
 	__next = function( self, value )
-		return next( rawget( self, "inverse" ), value )
+		return next( rawget( self, "Index" ), value )
 	end,
 	__inext = function( self, idx )
-		return inext( rawget( self, "inverse" ), idx )
+		return inext( rawget( self, "Index" ), idx )
 	end,
 	__pairs = function( self )
 		return qrawpairs( self )
@@ -2128,11 +2205,11 @@ ModUtil.Metatables.EntangledIsomorphismInverse = {
 }
 
 function ModUtil.New.EntangledInvertiblePair( )
-	local data, inverse = { }, { }
-	data, inverse = { data = data, inverse = inverse }, { data = data, inverse = inverse }
-	setmetatable( data, ModUtil.Metatables.EntangledIsomorphism )
-	setmetatable( inverse, ModUtil.Metatables.EntangledIsomorphismInverse )
-	return { Table = data, Index = inverse }
+	local Table, Index = { }, { }
+	Table, Index = { Table = Table, Index = Index }, { Table = Table, Index = Index }
+	setmetatable( Table, ModUtil.Metatables.EntangledInvertibleTable )
+	setmetatable( Index, ModUtil.Metatables.EntangledInvertibleIndex )
+	return { Table = Table, Index = Index }
 end
 
 function ModUtil.New.EntangledInvertiblePairFromTable( tableArg )
@@ -2143,110 +2220,50 @@ function ModUtil.New.EntangledInvertiblePairFromTable( tableArg )
 	return pair
 end
 
-function ModUtil.New.EntangledInvertiblePairFromIndex( indexArg )
+function ModUtil.New.EntangledInvertiblePairFromIndex( index )
 	local pair = ModUtil.New.EntangledInvertiblePair( )
-	for value, key in pairs( indexArg ) do
+	for value, key in pairs( index ) do
 		pair.Index[ value ] = key
 	end
 	return pair
 end
 
-ModUtil.Metatables.PreImageNode = {
-	__index = function( self, idx )
-		local data = rawget( self, "data" )
-		if idx == nil then
-			idx = #data
-		end
-		return data[ idx ]
-	end,
-	__newindex = function( self, idx, key )
-		local data = rawget( self, "data" )
-		local n = #data
-		if idx == nil then
-			idx = n
-		end
-
-		data[ idx ] = key
-		if key == nil and idx < n then
-			local inverse = rawget( data, "inverse" )
-			data = rawget( data, "data" )
-			for i = idx, n-1 do
-				data[ i ] = data[ i + 1 ]
-				inverse[ data[ i ] ] = i
-			end
-		end
-	end,
-	__len = function( self )
-		return #rawget( self, "data" )
-	end,
-	__next = function( self, value )
-		return next( rawget( self, "inverse" ), value )
-	end,
-	__inext = function( self, value )
-		return inext( rawget( self, "inverse" ), value )
-	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
-	end
-}
-
-ModUtil.Metatables.EntangledPreImageNode = {
-	__index = ModUtil.Metatables.PreImageNode.__index,
-	__newindex = function( self, idx, key )
-		local data = rawget( self, "data" )
-		local n = #data
-		if idx == nil then
-			idx = n
-		end
-
-		local value = rawget( data, "value" )
-		if value ~= nil then
-			rawget( rawget( data, "parent" ), "data" )[ idx ] = value
-		end
-		data[ idx ] = value
-		if key == nil and idx < n then
-			local inverse = rawget( data, "inverse" )
-			data = rawget( data, "data" )
-			for i = idx, n - 1 do
-				data[ i ] = data[ i + 1 ]
-				inverse[ data[ i ] ] = i
-			end
-		end
-	end,
-	__len = ModUtil.Metatables.PreImageNode.__len,
-	__next = ModUtil.Metatables.PreImageNode.__next,
-	__inext = ModUtil.Metatables.PreImageNode.__inext,
-	__pairs = ModUtil.Metatables.PreImageNode.__pairs,
-	__ipairs = ModUtil.Metatables.PreImageNode.__ipairs
-}
-
-function ModUtil.New.EntangledPreImageNode( self, value )
-	local data, inverse = { }, { }
-	data, inverse = { parent = self, value = value, data = data, inverse = inverse }, { parent = self, value = value, data = data, inverse = inverse }
-	local pair = { data, inverse }
-	setmetatable( pair, ModUtil.Metatables.EntangledPreImageNode )
-	return pair
-end
-
-ModUtil.Metatables.EntangledMorphism = {
+ModUtil.Metatables.EntangledMap = {
 	__index = function( self, key )
-		return rawget( self, "data" )[ key ]
+		return rawget( self, "Map" )[ key ]
 	end,
 	__newindex = function( self, key, value )
-		rawget( self, "data" )[ key ] = value
-		rawget( self, "preImage" )[ value ][ nil ] = key
+		local prevOrder = nil
+		local prevValue = rawget( self, "Map" )[ key ]
+		rawget( self, "Map" )[ key ] = value
+		local preImage = rawget( self, "PreImage" )
+		local prevPreImageNode
+		if prevValue ~= nil then
+			prevPreImageNode = preImage[ prevValue ]
+			if not prevPreImageNode then
+				prevPreImageNode = ModUtil.New.EntangledInvertiblePair( )
+				preImage[ prevValue ] = prevPreImageNode
+			end
+			prevOrder = prevPreImageNode.Index[ key ]
+		end
+		local preImageNode = preImage[ value ]
+		if not preImageNode then
+			preImageNode = ModUtil.New.EntangledInvertiblePair( )
+			preImage[ value ] = preImageNode
+		end
+		if prevOrder then
+			table.remove( prevPreImageNode.Table, prevOrder )
+		end
+		table.insert( preImageNode.Table, key )
 	end,
 	__len = function( self )
-		return #rawget( self, "data" )
+		return #rawget( self, "Map" )
 	end,
 	__next = function( self, key )
-		return next( rawget( self, "data" ), key )
+		return next( rawget( self, "Map" ), key )
 	end,
 	__inext = function( self, idx )
-		return inext( rawget( self, "data" ), idx )
+		return inext( rawget( self, "Map" ), idx )
 	end,
 	__pairs = function( self )
 		return qrawpairs( self )
@@ -2256,38 +2273,43 @@ ModUtil.Metatables.EntangledMorphism = {
 	end
 }
 
-ModUtil.Metatables.EntangledMorphismPreImage = {
+ModUtil.Metatables.EntangledPreImage = {
 	__index = function( self, value )
-		return rawget( self, "preImage" )[ value ]
+		return rawget( self, "PreImage" )[ value ]
 	end,
-	__newindex = function( self, value, keys )
-		local preImage = rawget( self, "preImage" )
-		local preImagePair = preImage[ value ]
-		local newPreImagePair = ModUtil.New.EntangledPreImageNode( self, value )
-
-		local data = rawget( self, "data" )
-		for _, key in pairs( preImagePair ) do
-			data[ key ] = nil
+	__newindex = function( self, value, pair )
+		rawget( self, "PreImage" )[ value ] = pair
+		local map = rawget( self, "Map" )
+		for _, key in pairs( map ) do
+			map[ key ] = nil
 		end
-		preImage[ value ] = newPreImagePair
-		for _, key in pairs( keys ) do
-			data[ key ] = nil
+		for _, key in ipairs( pair.Table ) do
+			map[ key ] = value
 		end
 	end,
 	__len = function( self )
-		return #rawget( self, "preImage" )
+		return #rawget( self, "PreImage" )
 	end,
-	__next = function( self, value )
-		return next( rawget( self, "preImage" ), value )
+	__next = function( self, key )
+		return next( rawget( self, "PreImage" ), key )
+	end,
+	__inext = function( self, idx )
+		return inext( rawget( self, "PreImage" ), idx )
+	end,
+	__pairs = function( self )
+		return qrawpairs( self )
+	end,
+	__ipairs = function( self )
+		return qrawipairs( self )
 	end
 }
 
 function ModUtil.New.EntangledPair( )
-	local data, preImage = { }, { }
-	data, preImage = { data = data, preImage = preImage }, { data = data, preImage = preImage }
-	setmetatable( data, ModUtil.Metatables.EntangledMorphism )
-	setmetatable( preImage, ModUtil.Metatables.EntangledMorphismPreImage )
-	return { Map = data, PreImage = preImage }
+	local Map, PreImage = { }, { }
+	Map, PreImage = { Map = Map, PreImage = PreImage }, { Map = Map, PreImage = PreImage }
+	setmetatable( Map, ModUtil.Metatables.EntangledMap )
+	setmetatable( PreImage, ModUtil.Metatables.EntangledPreImage )
+	return { Map = Map, PreImage = PreImage }
 end
 
 function ModUtil.New.EntangledPairFromTable( tableArg )
