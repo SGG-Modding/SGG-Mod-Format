@@ -33,9 +33,9 @@ function ModUtil.Hades.CloseMenu( screen, button )
 	ModUtil.Anchors.Menu[screen.Name] = nil
 	screen.KeepOpen = false
 	OnScreenClosed({ Flag = screen.Name })
-	SetConfigOption({ Name = "FreeFormSelectWrapY", Value = false })
-	SetConfigOption({ Name = "UseOcclusion", Value = true })
 	if TableLength(ModUtil.Anchors.Menu) == 0 then
+		SetConfigOption({ Name = "FreeFormSelectWrapY", Value = false })
+		SetConfigOption({ Name = "UseOcclusion", Value = true })
 		UnfreezePlayerUnit()
 		DisableShopGamepadCursor()
 	end
@@ -56,7 +56,6 @@ function ModUtil.Hades.OpenMenu( group, closeFunc, openFunc )
 	ModUtil.Anchors.Menu[group] = screen
 	
 	OnScreenOpened({ Flag = screen.Name, PersistCombatUI = true })
-	SetConfigOption({ Name = "UseOcclusion", Value = false })
 	
 	components.Background = CreateScreenComponent({ Name = "BlankObstacle", Group = group })
 	
@@ -81,8 +80,12 @@ function ModUtil.Hades.UndimMenu( screen )
 end
 
 function ModUtil.Hades.PostOpenMenu( screen )
-	FreezePlayerUnit()
-	EnableShopGamepadCursor()
+	if TableLength(ModUtil.Anchors.Menu) == 1 then
+		SetConfigOption({ Name = "FreeFormSelectWrapY", Value = true })
+		SetConfigOption({ Name = "UseOcclusion", Value = false })
+		FreezePlayerUnit()
+		EnableShopGamepadCursor()
+	end
 	thread(HandleWASDInput, screen)
 	HandleScreenInput(screen)
 	return screen
@@ -302,8 +305,8 @@ end
 
 function ModUtil.Hades.PrintStackChunks( text, linespan, ... )
 	if not linespan then linespan = 90 end
-	for _,s in ipairs(ModUtil.ChunkText(text,linespan,ModUtil.Hades.PrintStackCapacity)) do
-		ModUtil.Hades.PrintStack(s,...)
+	for _,s in ipairs( ModUtil.ChunkText( text, linespan,ModUtil.Hades.PrintStackCapacity ) ) do
+		ModUtil.Hades.PrintStack( s, ... )
 	end
 end
 
@@ -312,7 +315,8 @@ end
 function ModUtil.Hades.NewMenuYesNo( group, closeFunc, openFunc, yesFunc, noFunc, title, body, yesText, noText, icon, iconScale)
 	
 	if not group or group == "" then group = "MenuYesNo" end
-	if not yesFunc or not noFunc then return end
+	if not yesFunc then yesFunc = function( ) end end
+	if not noFunc then noFunc = function( ) end end
 	if not icon then icon = "AmmoPack" end
 	if not iconScale then iconScale = 1 end
 	if not yesText then yesText = "Yes" end
@@ -358,7 +362,6 @@ function ModUtil.Hades.NewMenuYesNo( group, closeFunc, openFunc, yesFunc, noFunc
 				return ret
 			end,
 	}
-	ModUtil.GlobaliseFuncs( ModUtil.Anchors.Menu[group].Funcs, "ModUtil.Anchors.Menu."..group..".Funcs" )
 
 	components.CloseButton = CreateScreenComponent({ Name = "ButtonClose", Scale = 0.7, Group = group })
 	Attach({ Id = components.CloseButton.Id, DestinationId = components.Background.Id, OffsetX = 0, OffsetY = ScreenCenterY - 315 })
@@ -390,8 +393,6 @@ end
 
 function ModUtil.Hades.CloseMenuYesNo( screen, button )
 	PlaySound({ Name = "/SFX/Menu Sounds/GeneralWhooshMENU" })
-	_G["ModUtil.Anchors.Menu."..screen.Name..".Funcs.Yes"]=nil
-	_G["ModUtil.Anchors.Menu."..screen.Name..".Funcs.No"]=nil
 	ModUtil.Hades.CloseMenu( screen, button )
 end
 
