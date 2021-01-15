@@ -118,7 +118,7 @@ function setfenv( fn, env )
 			debug.upvaluejoin( fn, i, ( function( )
 				return env
 			end ), 1 )
-			return
+			return env
 		end
 	until not name
 end
@@ -219,21 +219,29 @@ end
 local __G = ModUtil.RawInterface( _G )
 __G.__G = __G
 
-local function getenv( level )
+local surrogateEnvironments = { }
+
+local function getenv( )
+	local level = 2
 	repeat
 		level = level + 1
 		local info = debug.getinfo( level, "f" )
-		if info and info.func then
+		if info then
+			local func = rawget( info, "func" )
 			local i = 0
 			repeat
 				i = i + 1
-				local name, val = debug.getupvalue( info.func, i )
+				local name, val = debug.getupvalue( func, i )
 				if name == "_ENV" then
 					if val ~= __G._G then
 						return val
 					end
 				end
 			until not name
+			local env = rawget( surrogateEnvironments, func )
+			if env then
+				return env
+			end
 		end
 	until not info
 	return __G
@@ -250,7 +258,6 @@ function ModUtil.ReplaceGlobalEnvironment( )
 		and not path:find("[.][.]+")
 		and not path:find("^[.]")
 		and not path:find("[.]$") then
-			ModUtil.Print( path )
 			return ModUtil.PathToIndexArray( path )
 		end
 		return { path }
@@ -260,28 +267,28 @@ function ModUtil.ReplaceGlobalEnvironment( )
 
 	local meta = {
 		__index = function( _, key )
-			local env = getenv( 2 )
+			local env = getenv( )
 			local value = env[ key ]
 			if value ~= nil then return value end
-			return get( getenv( 2 ), split( key ) )
+			return get( env, split( key ) )
 		end,
 		__newindex = function( _, key, value )
-			getenv( 2 )[ key ] = value
+			getenv( )[ key ] = value
 		end,
 		__len = function( )
-			return #getenv( 2 )
+			return #getenv( )
 		end,
 		__next = function( _, key )
-			return next( getenv( 2 ), key )
+			return next( getenv( ), key )
 		end,
 		__inext = function( _, key )
-			return inext( getenv( 2 ), key )
+			return inext( getenv( ), key )
 		end,
 		__pairs = function( )
-			return pairs( getenv( 2 ) )
+			return pairs( getenv( ) )
 		end,
 		__ipairs = function( )
-			return ipairs( getenv( 2 ) )
+			return ipairs( getenv( ) )
 		end
 	}
 
@@ -307,15 +314,19 @@ function ModUtil.RegisterMod( modName, parent, content )
 		parent = _G
 		SaveIgnores[ modName ] = true
 	end
-	if not parent[ modName ] then
-		parent[ modName ] = { }
-		local prefix = ModUtil.Mods.Index[ parent ]
-		if prefix ~= nil then
-			prefix = prefix .. '.'
+	local mod = parent[ modName ]
+	if not mod then
+		mod = { }
+		parent[ modName ] = mod
+		local path = ModUtil.Mods.Index[ parent ]
+		if path ~= nil then
+			path = path .. '.'
 		else
-			prefix = ''
+			path = ''
 		end
-		ModUtil.Mods.Table[ prefix .. modName ] = parent[ modName ]
+		path = path .. modName
+		ModUtil.Mods.Table[ path ] = mod
+		ModUtil.Identifiers.Table[ mod ] = path
 	end
 	if content then
 		ModUtil.MapSetTable( parent[ modName ], content )
@@ -391,7 +402,13 @@ function ModUtil.ValueString( o )
 	if passByValueTypes[ t ] then
 		return tostring( o )
 	end
-	return '<' .. tostring( o ) .. '>'
+	local identifier = ModUtil.Identifiers.Table[ o ]
+	if identifier then
+		identifier = "(" .. identifier .. ")"
+	else
+		identifier = ""
+	end
+	return identifier .. '<' .. tostring( o ) .. '>'
 end
 
 function ModUtil.KeyString( o )
@@ -408,9 +425,15 @@ function ModUtil.KeyString( o )
 	    o = "#" .. o
 	end
 	if not passByValueTypes[ t ] then
-        return '<' .. o .. '>'
+        o = '<' .. o .. '>'
 	end
-	return o
+	local identifier = ModUtil.Identifiers.Table[ o ]
+	if identifier then
+		identifier = "(" .. identifier .. ")"
+	else
+		identifier = ""
+	end
+	return identifier .. o
 end
 
 function ModUtil.TableKeysString( o )
@@ -427,14 +450,14 @@ end
 
 function ModUtil.ToShallowString( o )
 	if type( o ) == "table" then
-		local out = { '<', tostring( o ), ">{ " }
+		local out = { ModUtil.ValueString( o ), "{ " }
 		for k, v in pairs( o ) do
 			table.insert( out, ModUtil.KeyString( k ) )
 			table.insert( out, ' = ' )
 			table.insert( out, ModUtil.ValueString( v ) )
 			table.insert( out , ", " )
 		end
-		if #out > 3 then table.remove( out ) end
+		if #out > 2 then table.remove( out ) end
 		return table.concat( out ) .. " }"
 	else
 		return ModUtil.ValueString( o )
@@ -445,14 +468,14 @@ function ModUtil.ToDeepString( o, seen )
 	seen = seen or { }
 	if type( o ) == "table" and not seen[ o ] then
 		seen[ o ] = true
-		local out = { '<', tostring( o ), ">{ " }
+		local out = { ModUtil.ValueString( o ), "{ " }
 		for k, v in pairs( o ) do
 			table.insert( out, ModUtil.KeyString( k ) )
 			table.insert( out, ' = ' )
 			table.insert( out, ModUtil.ToDeepString( v, seen ) )
 			table.insert( out , ", " )
 		end
-		if #out > 3 then table.remove( out ) end
+		if #out > 2 then table.remove( out ) end
 		return table.concat( out ) .. " }"
 	else
 		return ModUtil.ValueString( o )
@@ -467,7 +490,7 @@ function ModUtil.ToDeepNoNamespacesString( o, seen )
 	end
 	if type( o ) == "table" and not seen[ o ] and o ~= __G._G and ( first or not ModUtil.Mods.Index[ o ] ) then
 		seen[ o ] = true
-		local out = { '<', tostring( o ), ">{ " }
+		local out = { ModUtil.ValueString( o ), "{ " }
 		for k, v in pairs( o ) do
 			if v ~= __G._G and not ModUtil.Mods.Index[ v ] then
 				table.insert( out, ModUtil.KeyString( k ) )
@@ -476,7 +499,7 @@ function ModUtil.ToDeepNoNamespacesString( o, seen )
 				table.insert( out , ", " )
 			end
 		end
-		if #out > 3 then table.remove( out ) end
+		if #out > 2 then table.remove( out ) end
 		return table.concat( out ) .. " }"
 	else
 		return ModUtil.ValueString( o )
@@ -491,7 +514,7 @@ function ModUtil.ToDeepNamespacesString( o, seen )
 	end
 	if type( o ) == "table" and not seen[ o ] and ( first or o == __G._G or ModUtil.Mods.Index[ o ] ) then
 		seen[ o ] = true
-		local out = { '<', tostring( o ), ">{ " }
+		local out = { ModUtil.ValueString( o ), "{ " }
 		for k, v in pairs( o ) do
 			if v == __G._G or ModUtil.Mods.Index[ v ] then
 				table.insert( out, ModUtil.KeyString( k ) )
@@ -500,7 +523,7 @@ function ModUtil.ToDeepNamespacesString( o, seen )
 				table.insert( out , ", " )
 			end
 		end
-		if #out > 3 then table.remove( out ) end
+		if #out > 2 then table.remove( out ) end
 		return table.concat( out ) .. " }"
 	else
 		return ModUtil.ValueString( o )
@@ -2434,7 +2457,7 @@ ModUtil.Metatables.Context = {
 		_ContextInfo.args = contextArgs
 
 		local callWrap = function( ... ) callContext( ... ) end
-		setfenv( callWrap, contextData )
+		surrogateEnvironments[ callWrap ] = contextData
 		callWrap( table.unpack( contextArgs ) )
 	end
 }
@@ -2516,32 +2539,40 @@ ModUtil.Nodes.Table.Metatable = {
 
 ModUtil.Nodes.Table.Environment = {
 	New = function( obj )
-		local env = getfenv( obj )
+		local env = getfenv( obj ) or surrogateEnvironments[ obj ]
 		if env == __G._G or env == nil then
 			env = { }
 			env.data = env.data or { }
 			env.fallback = _G
 			env.global = env
 			setmetatable( env, ModUtil.Metatables.Environment )
-			setfenv( obj, env )
+			if not setfenv( obj, env ) then
+				surrogateEnvironments[ obj ] = env
+			end
 		end
 		return env
 	end,
 	Get = function( obj )
-		if type( obj ) == "function" then
-			return getfenv( obj )
-		end
+		return getfenv( obj ) or surrogateEnvironments[ obj ]
 	end,
 	Set = function( obj, value )
-		setfenv( obj, value )
+		if not setfenv( obj, value ) then
+			surrogateEnvironments[ obj ] = value
+		end
 		return true
 	end
 }
 
--- Mods tracking (EXPERIMENTAL) (WIP) (UNTESTED) (INCOMPLETE)
+-- Identifier system (EXPERIMENTAL)
+
+ModUtil.Identifiers = ModUtil.New.EntangledInvertiblePair( )
+ModUtil.Identifiers.Index._G = _G
+ModUtil.Identifiers.Index.ModUtil = ModUtil
 
 ModUtil.Mods = ModUtil.New.EntangledInvertiblePair( )
 ModUtil.Mods.Table.ModUtil = ModUtil
+
+-- Mods tracking (EXPERIMENTAL) (WIP) (UNTESTED) (INCOMPLETE)
 
 --[[
 	Users should only ever opt-in to running this function

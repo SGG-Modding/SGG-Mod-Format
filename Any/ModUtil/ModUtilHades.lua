@@ -352,14 +352,14 @@ function ModUtil.Hades.NewMenuYesNo( group, closeFunc, openFunc, yesFunc, noFunc
 	ModUtil.NewTable(ModUtil.Anchors.Menu[group], "Funcs")
 	ModUtil.Anchors.Menu[group].Funcs={
 		Yes = function(screen, button)
-				local ret = yesFunc(screen,button)
-				ModUtil.Hades.CloseMenuYesNo(screen,button)
-				return ret
+				if not yesFunc(screen,button) then
+					ModUtil.Hades.CloseMenuYesNo(screen,button)
+				end
 			end, 
 		No = function(screen, button)
-				local ret = noFunc(screen,button)
-				ModUtil.Hades.CloseMenuYesNo(screen,button)
-				return ret
+				if not noFunc(screen,button) then
+					ModUtil.Hades.CloseMenuYesNo(screen,button)
+				end
 			end,
 	}
 
