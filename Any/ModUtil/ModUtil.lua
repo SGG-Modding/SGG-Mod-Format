@@ -220,25 +220,15 @@ local __G = ModUtil.RawInterface( _G )
 __G.__G = __G
 
 local surrogateEnvironments = { }
+setmetatable( surrogateEnvironments, { __mode = "k" } )
 
 local function getenv( )
-	local level = 2
+	local level = 3
 	repeat
 		level = level + 1
 		local info = debug.getinfo( level, "f" )
 		if info then
-			local func = rawget( info, "func" )
-			local i = 0
-			repeat
-				i = i + 1
-				local name, val = debug.getupvalue( func, i )
-				if name == "_ENV" then
-					if val ~= __G._G then
-						return val
-					end
-				end
-			until not name
-			local env = rawget( surrogateEnvironments, func )
+			local env = surrogateEnvironments[ info.func ]
 			if env then
 				return env
 			end
@@ -538,6 +528,14 @@ function ModUtil.MapVars( mapFunc, ... )
 	return table.unpack( out )
 end
 
+function ModUtil.MapTable( mapFunc, tableArg )
+	local out = {}
+	for k, v in pairs( tableArg ) do
+		out[ k ] = mapFunc( v )
+	end
+	return out
+end
+
 function ModUtil.JoinStrings( sep, ... )
 	local out = {}
 	local args = { ... }
@@ -654,16 +652,23 @@ function ModUtil.PrintTraceback( level )
 	end
 end
 
+function ModUtil.PrintDebugInfo( level )
+	level = ( level or 1 )
+	local text
+	text = ModUtil.ToDeepString( debug.getinfo( level + 1 ) )
+	ModUtil.Print( "Debug Info:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
+end
+
 function ModUtil.PrintNamespaces( level )
 	level = ( level or 1 )
 	local text
 	ModUtil.Print("Namespaces:")
-	-- LocalInterface and UpValueInterface need to be fixed to be used here instead
 	text = ModUtil.ToDeepNamespacesString( ModUtil.Locals( level + 1 ) )
 	ModUtil.Print( "\t" .. "Locals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	text = ModUtil.ToDeepNamespacesString( ModUtil.UpValues( level + 1 ) )
 	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
-	text = ModUtil.ToDeepNamespacesString( getfenv( level + 1 ) )
+	local func = debug.getinfo( level + 1, "f" ).func
+	text = ModUtil.ToDeepNamespacesString( surrogateEnvironments[ func ] or getfenv( func ) )
 	ModUtil.Print( "\t" .. "Globals:" .. "\t" .. text )
 end
 
@@ -671,12 +676,12 @@ function ModUtil.PrintVariables( level )
 	level = ( level or 1 )
 	local text
 	ModUtil.Print("Variables:")
-	-- LocalInterface and UpValueInterface need to be fixed to be used here instead
 	text = ModUtil.ToDeepNoNamespacesString( ModUtil.Locals( level + 1 ) )
 	ModUtil.Print( "\t" .. "Locals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	text = ModUtil.ToDeepNoNamespacesString( ModUtil.UpValues( level + 1 ) )
 	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
-	text = ModUtil.ToDeepNoNamespacesString( getfenv( level + 1 ) )
+	local func = debug.getinfo( level + 1, "f" ).func
+	text = ModUtil.ToDeepNoNamespacesString( surrogateEnvironments[ func ] or getfenv( func ) )
 	ModUtil.Print( "\t" .. "Globals:" .. "\t" .. text )
 end
 
@@ -687,6 +692,7 @@ end
 function ModUtil.DebugCall( f, ... )
 	return xpcall( f, function( err )
 		ModUtil.Print( err )
+		ModUtil.PrintDebugInfo( 2 )
 		ModUtil.PrintNamespaces( 2 )
 		ModUtil.PrintVariables( 2 )
 		ModUtil.PrintTraceback( 2 )
@@ -2539,26 +2545,22 @@ ModUtil.Nodes.Table.Metatable = {
 
 ModUtil.Nodes.Table.Environment = {
 	New = function( obj )
-		local env = getfenv( obj ) or surrogateEnvironments[ obj ]
-		if env == __G._G or env == nil then
+		local env = surrogateEnvironments[ obj ]
+		if env == nil or getmetatable( env ) ~= ModUtil.Metatables.Environment then
 			env = { }
 			env.data = env.data or { }
 			env.fallback = _G
 			env.global = env
 			setmetatable( env, ModUtil.Metatables.Environment )
-			if not setfenv( obj, env ) then
-				surrogateEnvironments[ obj ] = env
-			end
+			surrogateEnvironments[ obj ] = env
 		end
 		return env
 	end,
 	Get = function( obj )
-		return getfenv( obj ) or surrogateEnvironments[ obj ]
+		return surrogateEnvironments[ obj ]
 	end,
 	Set = function( obj, value )
-		if not setfenv( obj, value ) then
-			surrogateEnvironments[ obj ] = value
-		end
+		surrogateEnvironments[ obj ] = value
 		return true
 	end
 }
