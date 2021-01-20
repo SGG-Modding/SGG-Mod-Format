@@ -2215,161 +2215,55 @@ end
 -- Function Wrapping
 
 ModUtil.Internal.WrapCallbacks = { }
+setmetatable( ModUtil.Internal.WrapCallbacks, { __mode = "k" } )
 
-function ModUtil.WrapFunction( funcTable, indexArray, wrapFunc, mod )
-	if type( wrapFunc ) ~= "function" then return end
-	if not funcTable then return end
-	local func = ModUtil.IndexArray.Get( funcTable, indexArray )
-	if type( func ) ~= "function" then return end
-
-	ModUtil.Table.New( ModUtil.Internal.WrapCallbacks, funcTable )
-	local tempTable = ModUtil.IndexArray.Get( ModUtil.Internal.WrapCallbacks[ funcTable ], indexArray )
-	if tempTable == nil then
-		tempTable = { }
-		ModUtil.IndexArray.Set( ModUtil.Internal.WrapCallbacks[ funcTable ], indexArray, tempTable )
-	end
-	table.insert( tempTable, { Id = #tempTable + 1, Mod = mod, Wrap = wrapFunc, Func = func } )
-
-	ModUtil.IndexArray.Set( skipenv( funcTable ), indexArray, function( ... )
-		return wrapFunc( func, ... )
-	end )
+function ModUtil.Wrap( base, wrap, mod )
+	local obj = { Base = base, Wrap = wrap, Mod = mod }
+	local func = function( ... ) return wrap( base, ... ) end
+	ModUtil.Internal.WrapCallbacks[ func ] = obj
+	return func
 end
 
-function ModUtil.RewrapFunction( funcTable, indexArray )
-	local wrapCallbacks = ModUtil.IndexArray.Get( ModUtil.Internal.WrapCallbacks[ funcTable ], indexArray )
-	local preFunc = nil
-
-	for _, tempTable in ipairs( wrapCallbacks ) do
-		if preFunc then
-			tempTable.Func = preFunc
-		end
-		preFunc = function( ... )
-			return tempTable.Wrap( tempTable.Func, ... )
-		end
-		ModUtil.IndexArray.Set( skipenv( funcTable ), indexArray, preFunc )
-	end
-
+function ModUtil.Unwrap( obj )
+	local callback = ModUtil.Internal.WrapCallbacks[ obj ]
+	return callback and callback.Base or obj
 end
 
-function ModUtil.UnwrapFunction( funcTable, indexArray )
-	if not funcTable then return end
-	local func = ModUtil.IndexArray.Get( skipenv( funcTable ), indexArray )
-	if type( func ) ~= "function" then return end
-
-	local tempTable = ModUtil.IndexArray.Get( ModUtil.Internal.WrapCallbacks[ funcTable ], indexArray )
-	if not tempTable then return end
-	local funcData = table.remove( tempTable ) -- removes the last value
-	if not funcData then return end
-
-	ModUtil.IndexArray.Set( skipenv( funcTable ), indexArray, funcData.Func )
-	return funcData
+function ModUtil.Rewrap( obj )
+	local callback = ModUtil.Internal.WrapCallbacks[ obj ]
+	if not callback then return obj end
+	return ModUtil.Wrap( ModUtil.Rewrap( callback.Base ), callback.Wrap, callback.Mod )
 end
 
-function ModUtil.WrapBaseFunction( baseFuncPath, wrapFunc, mod )
-	local pathArray = ModUtil.Path.IndexArray( baseFuncPath )
-	ModUtil.WrapFunction( _G, pathArray, wrapFunc, mod )
-end
+--[[
+	TODO:
+	Add modder-friendly interface to reflect easy conversion from older interface
+]]
 
-function ModUtil.RewrapBaseFunction( baseFuncPath )
-	local pathArray = ModUtil.Path.IndexArray( baseFuncPath )
-	ModUtil.RewrapFunction( _G, pathArray )
-end
-
-function ModUtil.UnwrapBaseFunction( baseFuncPath )
-	local pathArray = ModUtil.Path.IndexArray( baseFuncPath )
-	ModUtil.UnwrapFunction( _G, pathArray )
-end
-
--- Override Management
+-- Overriding
 
 ModUtil.Internal.Overrides = { }
 
-local function getBaseValueForWraps( baseTable, indexArray )
-	local baseValue = ModUtil.IndexArray.Get( skipenv( baseTable ), indexArray )
-	local wrapCallbacks = nil
-	wrapCallbacks = ModUtil.IndexArray.Get( ModUtil.Internal.WrapCallbacks[ baseTable ], indexArray )
-	if wrapCallbacks then
-		if wrapCallbacks[ 1 ] then
-			baseValue = wrapCallbacks[ 1 ].Func
-		end
-	end
-
-	return baseValue
+function ModUtil.Override( base, value, mod )
+	local obj = { Base = base, Mod = mod }
+	ModUtil.Internal.Overrides[ value ] = obj
+	return value
 end
 
-local function setBaseValueForWraps( baseTable, indexArray, value )
-	local baseValue = ModUtil.IndexArray.Get( skipenv( baseTable ), indexArray )
-
-	if type( baseValue ) ~= "function" or type( value ) ~= "function" then return false end
-
-	local wrapCallbacks = nil
-	wrapCallbacks = ModUtil.IndexArray.Get( ModUtil.Internal.WrapCallbacks[ baseTable ], indexArray )
-	if wrapCallbacks then if wrapCallbacks[ 1 ] then
-		baseValue = wrapCallbacks[ 1 ].Func
-		wrapCallbacks[ 1 ].Func = value
-		ModUtil.RewrapFunction( baseTable, indexArray )
-		return true
-	end end
-
-	return false
+function ModUtil.Restore( obj )
+	local override = ModUtil.Internal.Overrides[ obj ]
+	return override and override.Base or obj
 end
 
-function ModUtil.Override( baseTable, indexArray, value, mod )
-	if not baseTable then return end
+--[[
+	TODO:
+	Add modder-friendly interface to reflect easy conversion from older interface
+]]
 
-	local baseValue = getBaseValueForWraps( baseTable, indexArray )
+-- Override and Wrap interaction
 
-	ModUtil.Table.New( ModUtil.Internal.Overrides, baseTable )
-	local tempTable = ModUtil.IndexArray.Get( ModUtil.Internal.Overrides[ baseTable ], indexArray )
-	if tempTable == nil then
-		tempTable = { }
-		ModUtil.IndexArray.Set( ModUtil.Internal.Overrides[ baseTable ], indexArray, tempTable )
-	end
-	table.insert( tempTable, { Id = #tempTable + 1, Mod = mod, Value = value, Base = baseValue } )
-
-	if not setBaseValueForWraps( baseTable, indexArray, value ) then
-		ModUtil.IndexArray.Set( skipenv( baseTable ), indexArray, value )
-	end
-end
-
-function ModUtil.Restore( baseTable, indexArray )
-	if not baseTable then return end
-	local tempTable = ModUtil.IndexArray.Get( ModUtil.Internal.Overrides[ baseTable ], indexArray )
-	if not tempTable then return end
-	local baseData = table.remove( tempTable ) -- remove the last entry
-	if not baseData then return end
-
-	if not setBaseValueForWraps( baseTable, indexArray, baseData.Base ) then
-		ModUtil.IndexArray.Set( skipenv( baseTable ), indexArray, baseData.Base )
-	end
-	return baseData
-end
-
-function ModUtil.BaseOverride( basePath, value, mod )
-	ModUtil.Override( _G, ModUtil.Path.IndexArray( basePath ), value, mod )
-end
-
-function ModUtil.BaseRestore( basePath )
-	ModUtil.Restore( _G, ModUtil.Path.IndexArray( basePath ) )
-end
-
--- Wrap interaction
-
-function ModUtil.GetOriginalValue( baseTable, indexArray )
-	local baseValue = ModUtil.IndexArray.Get( ModUtil.Internal.Overrides[ baseTable ], indexArray )
-	if baseValue then
-		baseValue = baseValue[ #baseValue ].Base
-	else
-		baseValue = ModUtil.IndexArray.Get( ModUtil.Internal.WrapCallbacks[ baseTable ], indexArray )
-		if baseValue then
-			baseValue = baseValue[ 1 ].Func
-		else
-			baseValue = ModUtil.IndexArray.Get( baseTable, indexArray )
-		end
-	end
-	return baseValue
-end
-
-function ModUtil.GetOriginalBaseValue( basePath )
-	return ModUtil.GetOriginalValue( _G, ModUtil.Path.IndexArray( basePath ) )
+function ModUtil.OriginalValue( obj )
+	local node = ModUtil.Internal.WrapCallbacks[ obj ] or ModUtil.Internal.Overrides[ obj ]
+	if not node then return obj end
+	return ModUtil.OriginalValue( node.Base )
 end
