@@ -2205,13 +2205,6 @@ function ModUtil.Mod.History.Populate( options )
 	end
 end
 
---- The BELOW will be REPLACED !!
-
-local function skipenv( obj )
-	if obj ~= __G._G then return obj end
-	return __G
-end
-
 -- Function Wrapping
 
 ModUtil.Internal.WrapCallbacks = { }
