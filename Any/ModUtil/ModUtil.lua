@@ -2262,6 +2262,12 @@ end
 
 -- Override and Wrap interaction
 
+function ModUtil.OverridenValue( obj )
+	local node = ModUtil.Internal.WrapCallbacks[ obj ]
+	if not node then return obj end
+	return ModUtil.OverridenValue( node.Base )
+end
+
 function ModUtil.OriginalValue( obj )
 	local node = ModUtil.Internal.WrapCallbacks[ obj ] or ModUtil.Internal.Overrides[ obj ]
 	if not node then return obj end
