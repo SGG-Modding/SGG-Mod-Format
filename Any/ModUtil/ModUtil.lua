@@ -849,7 +849,9 @@ function ModUtil.Table.SetMap( inTable, setTable )
 	end
 end
 
--- Path Manipulation
+function ModUtil.IndexArray.Map( baseTable, indexArray, map, ... )
+	ModUtil.IndexAray.Set( baseTable, indexArray, map( ModUtil.IndexArray.Get( baseTable, indexArray ), ... ) )
+end
 
 --[[
 	Concatenates two index arrays, in order.
@@ -867,6 +869,19 @@ function ModUtil.IndexArray.Join( a, b )
 		c[ i + j ] = v
 	end
 	return c
+end
+
+-- Path Manipulation
+
+function ModUtil.Path.Map( path, map, ... )
+	local indexArray = ModUtil.Path.IndexArray( path )
+	ModUtil.IndexAray.Set( _G, indexArray, map( ModUtil.IndexArray.Get( _G, indexArray ), ... ) )
+end
+
+function ModUtil.Path.Join( a, b )
+	if a == '' then return b end
+	if b == '' then return a end
+	return a .. '.' .. b
 end
 
 --[[
@@ -2221,11 +2236,6 @@ function ModUtil.Rewrap( obj )
 	if not node then return ModUtil.OverridenValue( obj ) end
 	return ModUtil.Wrap( ModUtil.Rewrap( node.Base ), node.Wrap, node.Mod )
 end
-
---[[
-	TODO:
-	Add modder-friendly interface to reflect easy conversion from older interface
-]]
 
 -- Overrides
 
