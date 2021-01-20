@@ -15,6 +15,7 @@ ModUtil = {
 	String = { },
 	Table = { },
 	Path = { },
+	Array = { },
 	IndexArray = { },
 	UpValues = { },
 	Locals = { },
@@ -665,7 +666,7 @@ end
 		meaning 0 corresponds to the start of the array
 		and -1 corresponds to the end
 ]]
-function ModUtil.Slice( state, start, stop, step )
+function ModUtil.Array.Slice( state, start, stop, step )
 	local slice = { }
 	local n = #state
 	start = start or 0
