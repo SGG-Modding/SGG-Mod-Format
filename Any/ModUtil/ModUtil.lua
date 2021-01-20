@@ -9,9 +9,9 @@ Author: MagicGonads
 
 ModUtil = {
 
-	New = { },
 	Mod = { },
 	Print = { },
+	ToString = { },
 	String = { },
 	Table = { },
 	Path = { },
@@ -336,7 +336,7 @@ end
 local passByValueTypes = ToLookup{ "number", "boolean", "nil" }
 local excludedFieldNames = ToLookup{ "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while" }
 
-function ModUtil.ValueString( o )
+function ModUtil.ToString.Value( o )
 	local t = type( o )
 	if t == 'string' then
 		return '"' .. o .. '"'
@@ -353,7 +353,7 @@ function ModUtil.ValueString( o )
 	return identifier .. '<' .. tostring( o ) .. '>'
 end
 
-function ModUtil.KeyString( o )
+function ModUtil.ToString.Key( o )
 	local t = type( o )
 	o = tostring( o )
 	if t == 'string' and not excludedFieldNames[ o ] then
@@ -378,11 +378,11 @@ function ModUtil.KeyString( o )
 	return identifier .. o
 end
 
-function ModUtil.TableKeysString( o )
+function ModUtil.ToString.TableKeys( o )
 	if type( o ) == 'table' then
 		local out = { }
 		for k in pairs( o ) do
-			table.insert( out , ModUtil.KeyString( k ) )
+			table.insert( out , ModUtil.ToString.Key( k ) )
 			table.insert( out , ', ' )
 		end
 		table.remove( out )
@@ -390,41 +390,41 @@ function ModUtil.TableKeysString( o )
 	end
 end
 
-function ModUtil.ToShallowString( o )
+function ModUtil.ToString.Shallow( o )
 	if type( o ) == "table" then
-		local out = { ModUtil.ValueString( o ), "{ " }
+		local out = { ModUtil.ToString.Value( o ), "{ " }
 		for k, v in pairs( o ) do
-			table.insert( out, ModUtil.KeyString( k ) )
+			table.insert( out, ModUtil.ToString.Key( k ) )
 			table.insert( out, ' = ' )
-			table.insert( out, ModUtil.ValueString( v ) )
+			table.insert( out, ModUtil.ToString.Value( v ) )
 			table.insert( out , ", " )
 		end
 		if #out > 2 then table.remove( out ) end
 		return table.concat( out ) .. " }"
 	else
-		return ModUtil.ValueString( o )
+		return ModUtil.ToString.Value( o )
 	end
 end
 
-function ModUtil.ToDeepString( o, seen )
+function ModUtil.ToString.Deep( o, seen )
 	seen = seen or { }
 	if type( o ) == "table" and not seen[ o ] then
 		seen[ o ] = true
-		local out = { ModUtil.ValueString( o ), "{ " }
+		local out = { ModUtil.ToString.Value( o ), "{ " }
 		for k, v in pairs( o ) do
-			table.insert( out, ModUtil.KeyString( k ) )
+			table.insert( out, ModUtil.ToString.Key( k ) )
 			table.insert( out, ' = ' )
-			table.insert( out, ModUtil.ToDeepString( v, seen ) )
+			table.insert( out, ModUtil.ToString.Deep( v, seen ) )
 			table.insert( out , ", " )
 		end
 		if #out > 2 then table.remove( out ) end
 		return table.concat( out ) .. " }"
 	else
-		return ModUtil.ValueString( o )
+		return ModUtil.ToString.Value( o )
 	end
 end
 
-function ModUtil.ToDeepNoNamespacesString( o, seen )
+function ModUtil.ToString.DeepNoNamespaces( o, seen )
 	local first = false
 	if not seen then
 		first = true
@@ -432,23 +432,23 @@ function ModUtil.ToDeepNoNamespacesString( o, seen )
 	end
 	if type( o ) == "table" and not seen[ o ] and o ~= __G._G and ( first or not ModUtil.Mods.Index[ o ] ) then
 		seen[ o ] = true
-		local out = { ModUtil.ValueString( o ), "{ " }
+		local out = { ModUtil.ToString.Value( o ), "{ " }
 		for k, v in pairs( o ) do
 			if v ~= __G._G and not ModUtil.Mods.Index[ v ] then
-				table.insert( out, ModUtil.KeyString( k ) )
+				table.insert( out, ModUtil.ToString.Key( k ) )
 				table.insert( out, ' = ' )
-				table.insert( out, ModUtil.ToDeepNoNamespacesString( v, seen ) )
+				table.insert( out, ModUtil.ToString.DeepNoNamespaces( v, seen ) )
 				table.insert( out , ", " )
 			end
 		end
 		if #out > 2 then table.remove( out ) end
 		return table.concat( out ) .. " }"
 	else
-		return ModUtil.ValueString( o )
+		return ModUtil.ToString.Value( o )
 	end
 end
 
-function ModUtil.ToDeepNamespacesString( o, seen )
+function ModUtil.ToString.DeepNamespaces( o, seen )
 	local first = false
 	if not seen then
 		first = true
@@ -456,19 +456,19 @@ function ModUtil.ToDeepNamespacesString( o, seen )
 	end
 	if type( o ) == "table" and not seen[ o ] and ( first or o == __G._G or ModUtil.Mods.Index[ o ] ) then
 		seen[ o ] = true
-		local out = { ModUtil.ValueString( o ), "{ " }
+		local out = { ModUtil.ToString.Value( o ), "{ " }
 		for k, v in pairs( o ) do
 			if v == __G._G or ModUtil.Mods.Index[ v ] then
-				table.insert( out, ModUtil.KeyString( k ) )
+				table.insert( out, ModUtil.ToString.Key( k ) )
 				table.insert( out, ' = ' )
-				table.insert( out, ModUtil.ToDeepNamespacesString( v, seen ) )
+				table.insert( out, ModUtil.ToString.DeepNamespaces( v, seen ) )
 				table.insert( out , ", " )
 			end
 		end
 		if #out > 2 then table.remove( out ) end
 		return table.concat( out ) .. " }"
 	else
-		return ModUtil.ValueString( o )
+		return ModUtil.ToString.Value( o )
 	end
 end
 
@@ -609,7 +609,7 @@ end
 function ModUtil.Print.DebugInfo( level )
 	level = ( level or 1 )
 	local text
-	text = ModUtil.ToDeepString( debug.getinfo( level + 1 ) )
+	text = ModUtil.ToString.Deep( debug.getinfo( level + 1 ) )
 	ModUtil.Print( "Debug Info:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 end
 
@@ -617,12 +617,12 @@ function ModUtil.Print.Namespaces( level )
 	level = ( level or 1 )
 	local text
 	ModUtil.Print("Namespaces:")
-	text = ModUtil.ToDeepNamespacesString( ModUtil.Local( level + 1 ) )
+	text = ModUtil.ToString.DeepNamespaces( ModUtil.Local( level + 1 ) )
 	ModUtil.Print( "\t" .. "Local:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
-	text = ModUtil.ToDeepNamespacesString( ModUtil.UpValue( level + 1 ) )
+	text = ModUtil.ToString.DeepNamespaces( ModUtil.UpValue( level + 1 ) )
 	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	local func = debug.getinfo( level + 1, "f" ).func
-	text = ModUtil.ToDeepNamespacesString( surrogateEnvironments[ func ] )
+	text = ModUtil.ToString.DeepNamespaces( surrogateEnvironments[ func ] )
 	ModUtil.Print( "\t" .. "Globals:" .. "\t" .. text )
 end
 
@@ -630,12 +630,12 @@ function ModUtil.Print.Variables( level )
 	level = ( level or 1 )
 	local text
 	ModUtil.Print("Variables:")
-	text = ModUtil.ToDeepNoNamespacesString( ModUtil.Local( level + 1 ) )
+	text = ModUtil.ToString.DeepNoNamespaces( ModUtil.Local( level + 1 ) )
 	ModUtil.Print( "\t" .. "Local:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
-	text = ModUtil.ToDeepNoNamespacesString( ModUtil.UpValue( level + 1 ) )
+	text = ModUtil.ToString.DeepNoNamespaces( ModUtil.UpValue( level + 1 ) )
 	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	local func = debug.getinfo( level + 1, "f" ).func
-	text = ModUtil.ToDeepNoNamespacesString( surrogateEnvironments[ func ] )
+	text = ModUtil.ToString.DeepNoNamespaces( surrogateEnvironments[ func ] )
 	ModUtil.Print( "\t" .. "Globals:" .. "\t" .. text )
 end
 
@@ -1693,7 +1693,7 @@ ModUtil.Metatables.EntangledInvertibleIndex = {
 	end
 }
 
-function ModUtil.New.EntangledInvertiblePair( )
+function ModUtil.EntangledInvertiblePair( )
 	local table, index = { }, { }
 	table, index = { Table = table, Index = index }, { Table = table, Index = index }
 	setmetatable( table, ModUtil.Metatables.EntangledInvertibleTable )
@@ -1701,16 +1701,16 @@ function ModUtil.New.EntangledInvertiblePair( )
 	return { Table = table, Index = index }
 end
 
-function ModUtil.New.EntangledInvertiblePairFromTable( tableArg )
-	local pair = ModUtil.New.EntangledInvertiblePair( )
+function ModUtil.EntangledInvertiblePairFromTable( tableArg )
+	local pair = ModUtil.EntangledInvertiblePair( )
 	for key, value in pairs( tableArg ) do
 		pair.Table[ key ] = value
 	end
 	return pair
 end
 
-function ModUtil.New.EntangledInvertiblePairFromIndex( index )
-	local pair = ModUtil.New.EntangledInvertiblePair( )
+function ModUtil.EntangledInvertiblePairFromIndex( index )
+	local pair = ModUtil.EntangledInvertiblePair( )
 	for value, key in pairs( index ) do
 		pair.Index[ value ] = key
 	end
@@ -1788,7 +1788,7 @@ ModUtil.Metatables.EntangledPreImage = {
 	end
 }
 
-function ModUtil.New.EntangledPair( )
+function ModUtil.EntangledPair( )
 	local map, preImage = { }, { }
 	map, preImage = { Map = map, PreImage = preImage }, { Map = map, PreImage = preImage }
 	setmetatable( map, ModUtil.Metatables.EntangledMap )
@@ -1796,16 +1796,16 @@ function ModUtil.New.EntangledPair( )
 	return { Map = map, PreImage = preImage }
 end
 
-function ModUtil.New.EntangledPairFromTable( tableArg )
-	local pair = ModUtil.New.EntangledPair( )
+function ModUtil.EntangledPairFromTable( tableArg )
+	local pair = ModUtil.EntangledPair( )
 	for key, value in pairs( tableArg ) do
 		pair.Map[ key ] = value
 	end
 	return pair
 end
 
-function ModUtil.New.EntangledPairFromPreImage( preImage )
-	local pair = ModUtil.New.EntangledPair( )
+function ModUtil.EntangledPairFromPreImage( preImage )
+	local pair = ModUtil.EntangledPair( )
 	for value, keys in pairs( preImage ) do
 		pair.PreImage[ value ] = keys
 	end
@@ -1826,14 +1826,14 @@ ModUtil.Metatables.EntangledQueueData = {
 		if prevValue ~= nil then
 			prevOrderPair = order[ prevValue ]
 			if not prevOrderPair then
-				prevOrderPair = ModUtil.New.EntangledInvertiblePair( )
+				prevOrderPair = ModUtil.EntangledInvertiblePair( )
 				order[ prevValue ] = prevOrderPair
 			end
 			prevOrder = prevOrderPair.Index[ key ]
 		end
 		local orderPair = order[ value ]
 		if not orderPair then
-			orderPair = ModUtil.New.EntangledInvertiblePair( )
+			orderPair = ModUtil.EntangledInvertiblePair( )
 			order[ value ] = orderPair
 		end
 		if prevOrder then
@@ -1889,7 +1889,7 @@ ModUtil.Metatables.EntangledQueueOrder = {
 	end
 }
 
-function ModUtil.New.EntangledQueuePair( )
+function ModUtil.EntangledQueuePair( )
 	local data, order = { }, { }
 	data, order = { Data = data, Order = order }, { Data = data, Order = order }
 	setmetatable( data, ModUtil.Metatables.EntangledQueueData )
@@ -1897,16 +1897,16 @@ function ModUtil.New.EntangledQueuePair( )
 	return { Data = data, Order = order }
 end
 
-function ModUtil.New.EntangledQueuePairFromData( data )
-	local pair = ModUtil.New.EntangledQueuePair( )
+function ModUtil.EntangledQueuePairFromData( data )
+	local pair = ModUtil.EntangledQueuePair( )
 	for key, value in pairs( data ) do
 		pair.Data[ key ] = value
 	end
 	return pair
 end
 
-function ModUtil.New.EntangledQueuePairFromOrder( order )
-	local pair = ModUtil.New.EntangledQueuePair( )
+function ModUtil.EntangledQueuePairFromOrder( order )
+	local pair = ModUtil.EntangledQueuePair( )
 	for value, keys in pairs( order ) do
 		pair.Order[ value ] = keys
 	end
@@ -1968,21 +1968,12 @@ ModUtil.Metatables.Environment = {
 }
 
 ModUtil.Metatables.Context = {
-	__call = function( self, targetPath_or_targetIndexArray, callContext, ... )
+	__call = function( self, callContext, ... )
 		local oldContextInfo = ModUtil.Locals.Stacked( 2 )._ContextInfo
 		local contextInfo = {
 			call = callContext,
 			parent = oldContextInfo
 		}
-
-		contextInfo.targetIndexArray = ModUtil.Path.IndexArray( targetPath_or_targetIndexArray ) or { }
-		if oldContextInfo ~= nil then
-			contextInfo.indexArray = shallowCopyTable( oldContextInfo.indexArray )
-			contextInfo.baseTable = oldContextInfo.baseTable
-		else
-			contextInfo.indexArray = { }
-			contextInfo.baseTable = _G
-		end
 
 		local callContextProcessor = rawget( self, "callContextProcessor" )
 		contextInfo.callContextProcessor = callContextProcessor
@@ -2001,54 +1992,30 @@ ModUtil.Metatables.Context = {
 	end
 }
 
-function ModUtil.New.Context( callContextProcessor )
-	local context = { callContextProcessor = callContextProcessor }
-	setmetatable( context, ModUtil.Metatables.Context )
-	return context
-end
-
-ModUtil.Context.Call = ModUtil.New.Context( function( info )
-	info.indexArray = ModUtil.IndexArray.Join( info.indexArray, info.targetIndexArray )
-	local obj = ModUtil.IndexArray.Get( info.baseTable, info.indexArray )
-	while type( obj ) == "table" do
-		local meta = getmetatable( obj )
-		if meta then
-			if meta.__call then
-				table.insert( info.indexArray, ModUtil.Nodes.Table.Metatable )
-				table.insert( info.indexArray, "__call" )
-				obj = meta.__call
-			end
-		end
+setmetatable( ModUtil.Context, {
+	__call = function( callContextProcessor )
+		local context = { callContextProcessor = callContextProcessor }
+		setmetatable( context, ModUtil.Metatables.Context )
+		return context
 	end
-	local env = { data = ModUtil.Table.New( obj, ModUtil.Nodes.Table.Environment ), fallback = _G }
+} )
+
+ModUtil.Context.Data = ModUtil.Context( function( info )
+	local env = { data = info.args[ 1 ], fallback = _G }
 	env.global = env
 	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )
 
-ModUtil.Context.Meta = ModUtil.New.Context( function( info )
-	info.indexArray = ModUtil.IndexArray.Join( info.indexArray, info.targetIndexArray )
-	local parent = ModUtil.IndexArray.Get( info.baseTable, info.indexArray )
-	if parent == nil then
-		parent = { }
-		ModUtil.IndexArray.Set( info.baseTable, info.indexArray, parent )
-	end
-	local env = { data = ModUtil.Table.New( parent, ModUtil.Nodes.Table.Metatable ), fallback = _G }
+ModUtil.Context.Meta = ModUtil.Context( function( info )
+	local env = { data = ModUtil.Nodes.Table.Metatable.New( info.args[ 1 ] ), fallback = _G }
 	env.global = env
 	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )
 
-ModUtil.Context.Data = ModUtil.New.Context( function( info )
-	info.indexArray = ModUtil.IndexArray.Join( info.indexArray, info.targetIndexArray )
-	local tempArray = shallowCopyTable( info.indexArray )
-	local key = table.remove( tempArray )
-	local parent = ModUtil.IndexArray.Get( info.baseTable, tempArray )
-	if parent == nil then
-		parent = { }
-		ModUtil.IndexArray.Set( info.baseTable, tempArray, parent )
-	end
-	local env = { data = ModUtil.Table.New( parent, key ), fallback = _G }
+ModUtil.Context.Call = ModUtil.Context( function( info )
+	local env = { data = ModUtil.Nodes.Table.Environment.New( ModUtil.Nodes.Table.Call.Get( info.args[ 1 ] ) ), fallback = _G }
 	env.global = env
 	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
@@ -2056,7 +2023,7 @@ end )
 
 -- Special traversal nodes (EXPERIMENTAL) (WIP) (INCOMPLETE)
 
-ModUtil.Nodes = ModUtil.New.EntangledInvertiblePair( )
+ModUtil.Nodes = ModUtil.EntangledInvertiblePair( )
 
 ModUtil.Nodes.Table.Metatable = {
 	New = function( obj )
@@ -2079,9 +2046,9 @@ ModUtil.Nodes.Table.Metatable = {
 ModUtil.Nodes.Table.Environment = {
 	New = function( obj )
 		local env = surrogateEnvironments[ obj ]
-		if env == nil or getmetatable( env ) ~= ModUtil.Metatables.Environment then
+		if env == nil then
 			env = { }
-			env.data = env.data or { }
+			env.data = { }
 			env.fallback = _G
 			env.global = env
 			setmetatable( env, ModUtil.Metatables.Environment )
@@ -2098,13 +2065,66 @@ ModUtil.Nodes.Table.Environment = {
 	end
 }
 
+ModUtil.Nodes.Table.Call = {
+	New = function( obj )
+		local call
+		while type( obj ) == "table" do
+			local meta = getmetatable( obj )
+			if meta then
+				call = meta.__call
+				if call then
+					obj = call
+				end
+			end
+		end
+		return call or error( "node new rejected, new call nodes are not meaningfully mutable.", 2 )
+	end,
+	Get = function( obj )
+		while type( obj ) == "table" do
+			local meta = getmetatable( obj )
+			if meta then
+				if meta.__call then
+					obj = meta.__call
+				end
+			end
+		end
+		return obj
+	end,
+	Set = function( obj, value )
+		local meta
+		while type( obj ) == "table" do
+			meta = getmetatable( obj )
+			if meta then
+				if meta.__call then
+					obj = meta.__call
+				end
+			end
+		end
+		if not meta then return false end
+		meta.__call = value
+		return true
+	end
+}
+
+ModUtil.Nodes.Table.UpValues = {
+	New = function( obj )
+		return ModUtil.UpValues( obj )
+	end,
+	Get = function( obj )
+		return ModUtil.UpValues( obj )
+	end,
+	Set = function( )
+		error( "node set rejected, upvalues node cannot be set.", 2 )
+	end
+}
+
 -- Identifier system (EXPERIMENTAL)
 
-ModUtil.Identifiers = ModUtil.New.EntangledInvertiblePair( )
+ModUtil.Identifiers = ModUtil.EntangledInvertiblePair( )
 ModUtil.Identifiers.Index._G = _G
 ModUtil.Identifiers.Index.ModUtil = ModUtil
 
-ModUtil.Mods = ModUtil.New.EntangledInvertiblePair( )
+ModUtil.Mods = ModUtil.EntangledInvertiblePair( )
 ModUtil.Mods.Table.ModUtil = ModUtil
 
 -- Mods tracking (EXPERIMENTAL) (WIP) (UNTESTED) (INCOMPLETE)
@@ -2124,7 +2144,7 @@ end
 
 function ModUtil.Mod.History.Disable( )
 	if not ModHistory then
-		ModHistory = { }
+		ModHistory = nil
 		if PersistVariable then PersistVariable{ Name = "ModHistory" } end
 		SaveIgnores[ "ModHistory" ] = nil
 	end
