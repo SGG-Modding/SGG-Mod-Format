@@ -1313,7 +1313,7 @@ ModUtil.Metatables.UpValues = {
 			idx = idx + 1
 			local n, value = debug.getupvalue( func, idx )
 			if n == name then
-				return n, value
+				return value
 			end
 		until not n
 	end,
