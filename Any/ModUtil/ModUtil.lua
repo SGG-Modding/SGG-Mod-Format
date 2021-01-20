@@ -191,26 +191,25 @@ __G.__G = __G
 local surrogateEnvironments = { }
 setmetatable( surrogateEnvironments, { __mode = "k" } )
 
-local function getenv( )
-	local level = 3
-	repeat
-		level = level + 1
-		local info = debug.getinfo( level, "f" )
-		if info then
-			local env = surrogateEnvironments[ info.func ]
-			if env then
-				return env
+do
+	local function getenv( )
+		local level = 3
+		repeat
+			level = level + 1
+			local info = debug.getinfo( level, "f" )
+			if info then
+				local env = surrogateEnvironments[ info.func ]
+				if env then
+					return env
+				end
 			end
-		end
-	until not info
-	return __G
-end
+		until not info
+		return __G
+	end
 
---[[
-	Make lexical environments use locals instead of upvalues
-]]
-function ModUtil.ReplaceGlobalEnvironment( )
-
+	--[[
+		Make lexical environments use locals instead of upvalues
+	]]
 	local split = function( path )
 		if type( path ) == "string"
 		and path:find("[.]")
@@ -252,11 +251,6 @@ function ModUtil.ReplaceGlobalEnvironment( )
 	}
 
 	debug.setmetatable( __G._G, meta )
-end
-
-local function skipenv( obj )
-	if obj ~= __G._G then return obj end
-	return __G
 end
 
 -- Management
@@ -2188,6 +2182,11 @@ end
 
 --- The BELOW will be REPLACED !!
 
+local function skipenv( obj )
+	if obj ~= __G._G then return obj end
+	return __G
+end
+
 -- Function Wrapping
 
 ModUtil.Internal.WrapCallbacks = { }
@@ -2349,6 +2348,3 @@ end
 function ModUtil.GetOriginalBaseValue( basePath )
 	return ModUtil.GetOriginalValue( _G, ModUtil.Path.IndexArray( basePath ) )
 end
-
--- Final Processing
-ModUtil.ReplaceGlobalEnvironment( )
