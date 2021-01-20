@@ -586,7 +586,7 @@ end
 
 function ModUtil.Print.Traceback( level )
 	level = ( level or 1 )
-	ModUtil.Print.Print("Traceback:")
+	ModUtil.Print("Traceback:")
 	local cont = true
 	while cont do
 		local text = debug.traceback( "", level ):sub( 2 )
@@ -604,7 +604,7 @@ function ModUtil.Print.Traceback( level )
 					cont = true
 					break
 				end
-				ModUtil.Print.Print( line )
+				ModUtil.Print( line )
 				i = i + 1
 			end
 		end
@@ -616,33 +616,33 @@ function ModUtil.Print.DebugInfo( level )
 	level = ( level or 1 )
 	local text
 	text = ModUtil.ToDeepString( debug.getinfo( level + 1 ) )
-	ModUtil.Print.Print( "Debug Info:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
+	ModUtil.Print( "Debug Info:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 end
 
 function ModUtil.Print.Namespaces( level )
 	level = ( level or 1 )
 	local text
-	ModUtil.Print.Print("Namespaces:")
+	ModUtil.Print("Namespaces:")
 	text = ModUtil.ToDeepNamespacesString( ModUtil.Local( level + 1 ) )
-	ModUtil.Print.Print( "\t" .. "Local:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
+	ModUtil.Print( "\t" .. "Local:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	text = ModUtil.ToDeepNamespacesString( ModUtil.UpValue( level + 1 ) )
-	ModUtil.Print.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
+	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	local func = debug.getinfo( level + 1, "f" ).func
 	text = ModUtil.ToDeepNamespacesString( surrogateEnvironments[ func ] )
-	ModUtil.Print.Print( "\t" .. "Globals:" .. "\t" .. text )
+	ModUtil.Print( "\t" .. "Globals:" .. "\t" .. text )
 end
 
 function ModUtil.Print.Variables( level )
 	level = ( level or 1 )
 	local text
-	ModUtil.Print.Print("Variables:")
+	ModUtil.Print("Variables:")
 	text = ModUtil.ToDeepNoNamespacesString( ModUtil.Local( level + 1 ) )
-	ModUtil.Print.Print( "\t" .. "Local:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
+	ModUtil.Print( "\t" .. "Local:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	text = ModUtil.ToDeepNoNamespacesString( ModUtil.UpValue( level + 1 ) )
-	ModUtil.Print.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
+	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	local func = debug.getinfo( level + 1, "f" ).func
 	text = ModUtil.ToDeepNoNamespacesString( surrogateEnvironments[ func ] )
-	ModUtil.Print.Print( "\t" .. "Globals:" .. "\t" .. text )
+	ModUtil.Print( "\t" .. "Globals:" .. "\t" .. text )
 end
 
 --[[
@@ -651,7 +651,7 @@ end
 ]]
 function ModUtil.DebugCall( f, ... )
 	return xpcall( f, function( err )
-		ModUtil.Print.Print( err )
+		ModUtil.Print( err )
 		ModUtil.Print.DebugInfo( 2 )
 		ModUtil.Print.Namespaces( 2 )
 		ModUtil.Print.Variables( 2 )
