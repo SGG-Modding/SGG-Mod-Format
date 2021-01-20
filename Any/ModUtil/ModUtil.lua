@@ -2121,10 +2121,15 @@ ModUtil.Nodes.Table.UpValues = {
 -- Identifier system (EXPERIMENTAL)
 
 ModUtil.Identifiers = ModUtil.EntangledInvertiblePair( )
+setmetatable( rawget( ModUtil.Identifiers.Table, "Index" ), { __mode = "k" } )
+setmetatable( rawget( ModUtil.Identifiers.Index, "Table" ), { __mode = "v" } )
+
 ModUtil.Identifiers.Index._G = _G
 ModUtil.Identifiers.Index.ModUtil = ModUtil
 
 ModUtil.Mods = ModUtil.EntangledInvertiblePair( )
+setmetatable( rawget( ModUtil.Mods.Table, "Index" ), { __mode = "k" } )
+setmetatable( rawget( ModUtil.Mods.Index, "Table" ), { __mode = "v" } )
 ModUtil.Mods.Table.ModUtil = ModUtil
 
 -- Mods tracking (EXPERIMENTAL) (WIP) (UNTESTED) (INCOMPLETE)
