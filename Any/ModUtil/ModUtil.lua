@@ -192,13 +192,15 @@ local surrogateEnvironments = { }
 setmetatable( surrogateEnvironments, { __mode = "k" } )
 
 do
+	local getinfo = debug.getinfo
+
 	local function getenv( )
 		local level = 3
 		repeat
 			level = level + 1
-			local info = debug.getinfo( level, "f" )
+			local info = getinfo( level, "f" )
 			if info then
-				local env = surrogateEnvironments[ info.func ]
+				local env = rawget( surrogateEnvironments, rawget( info, "func" ) )
 				if env then
 					return env
 				end
@@ -678,14 +680,6 @@ function ModUtil.Slice( state, start, stop, step )
 		table.insert( slice, state[ i + 1 ] )
 	end
 	return slice
-end
-
-local function shallowCopyTable( orig )
-	local copy = { }
-	for k, v in pairs( orig ) do
-		copy[ k ] = v
-	end
-	return copy
 end
 
 --[[
@@ -2223,9 +2217,9 @@ function ModUtil.Unwrap( obj )
 end
 
 function ModUtil.Rewrap( obj )
-	local callback = ModUtil.Internal.WrapCallbacks[ obj ]
-	if not callback then return obj end
-	return ModUtil.Wrap( ModUtil.Rewrap( callback.Base ), callback.Wrap, callback.Mod )
+	local node = ModUtil.Internal.WrapCallbacks[ obj ]
+	if not node then return ModUtil.OverridenValue( obj ) end
+	return ModUtil.Wrap( ModUtil.Rewrap( node.Base ), node.Wrap, node.Mod )
 end
 
 --[[
@@ -2233,32 +2227,22 @@ end
 	Add modder-friendly interface to reflect easy conversion from older interface
 ]]
 
--- Overriding
+-- Overrides
 
 ModUtil.Internal.Overrides = { }
 
 function ModUtil.Override( base, value, mod )
-	local obj = { Base = base, Mod = mod }
-	ModUtil.Internal.Overrides[ value ] = obj
-	return value
+    local obj = { Base = ModUtil.OriginalValue( base ), Mod = mod }
+    ModUtil.Internal.Overrides[ value ] = obj
+    return ModUtil.Rewrap( value )
 end
-
-function ModUtil.Restore( obj )
-	local override = ModUtil.Internal.Overrides[ obj ]
-	return override and override.Base or obj
-end
-
---[[
-	TODO:
-	Add modder-friendly interface to reflect easy conversion from older interface
-]]
 
 -- Override and Wrap interaction
 
 function ModUtil.OverridenValue( obj )
 	local node = ModUtil.Internal.WrapCallbacks[ obj ]
 	if not node then return obj end
-	return ModUtil.OverridenValue( node.Base )
+	return ModUtil.OriginalValue( node.Base )
 end
 
 function ModUtil.OriginalValue( obj )
