@@ -2116,10 +2116,12 @@ ModUtil.Mods.Table.ModUtil = ModUtil
 
 -- Mods tracking (EXPERIMENTAL) (WIP) (UNTESTED) (INCOMPLETE)
 
+ModUtil.Mod.History = { }
+
 --[[
 	Users should only ever opt-in to running this function
 ]]
-function ModUtil.EnableModHistory( )
+function ModUtil.Mod.History.Enable( )
 	if not ModHistory then
 		ModHistory = { }
 		if PersistVariable then PersistVariable{ Name = "ModHistory" } end
@@ -2127,7 +2129,7 @@ function ModUtil.EnableModHistory( )
 	end
 end
 
-function ModUtil.DisableModHistory( )
+function ModUtil.Mod.History.Disable( )
 	if not ModHistory then
 		ModHistory = { }
 		if PersistVariable then PersistVariable{ Name = "ModHistory" } end
@@ -2135,9 +2137,9 @@ function ModUtil.DisableModHistory( )
 	end
 end
 
-function ModUtil.UpdateModHistoryEntry( options )
+function ModUtil.Mod.History.UpdateEntry( options )
 	if options.Override then
-		ModUtil.EnableModHistory( )
+		ModUtil.Mod.History.Enable( )
 	end
 	if ModHistory then
 		local mod = options.Mod
@@ -2175,15 +2177,17 @@ function ModUtil.UpdateModHistoryEntry( options )
 	end
 end
 
-function ModUtil.PopulateModHistory( options )
+function ModUtil.Mod.History.Populate( options )
 	if not options then
 		options = { }
 	end
 	for path, mod in pairs( ModUtil.Mods.Table ) do
 		options.Path, options.Mod = path, mod
-		ModUtil.UpdateModHistoryEntry( options )
+		ModUtil.Mod.History.UpdateEntry( options )
 	end
 end
+
+--- The BELOW will be REPLACED !!
 
 -- Function Wrapping
 
