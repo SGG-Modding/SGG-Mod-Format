@@ -684,25 +684,6 @@ function ModUtil.Array.Slice( state, start, stop, step )
 end
 
 --[[
-	Safely create a new empty table at Table.key and return it.
-
-	Table - the table to modify
-	key	 - the key at which to store the new empty table
-]]
-function ModUtil.Table.New( tableArg, key )
-	local nodeType = ModUtil.Nodes.Index[ key ]
-	if nodeType then
-		return ModUtil.Nodes.Table[ nodeType ].New( tableArg )
-	end
-	local tbl = tableArg[ key ]
-	if type( tbl ) ~= "table" then
-		tbl = { }
-		tableArg[ key ] = tbl
-	end
-	return tbl
-end
-
---[[
 	Safely retrieve the a value from deep inside a table, given
 	an array of indices into the table.
 
@@ -2034,6 +2015,19 @@ end )
 -- Special traversal nodes (EXPERIMENTAL) (WIP) (INCOMPLETE)
 
 ModUtil.Nodes = ModUtil.EntangledInvertiblePair( )
+
+function ModUtil.Nodes.New( parent, key )
+	local nodeType = ModUtil.Nodes.Index[ key ]
+	if nodeType then
+		return ModUtil.Nodes.Table[ nodeType ].New( parent )
+	end
+	local tbl = parent[ key ]
+	if type( tbl ) ~= "table" then
+		tbl = { }
+		parent[ key ] = tbl
+	end
+	return tbl
+end
 
 ModUtil.Nodes.Table.Metatable = {
 	New = function( obj )
