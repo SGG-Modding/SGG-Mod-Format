@@ -1,7 +1,7 @@
 
-ModUtil.RegisterMod( "Hades", ModUtil )
+ModUtil.Mod.Register( "Hades", ModUtil )
 
-ModUtil.MapSetTable( ModUtil.Hades, {
+ModUtil.Table.SetMap( ModUtil.Hades, {
 	PrintStackHeight = 10,
 	PrintStackCapacity = 80
 } )
@@ -16,7 +16,7 @@ OnAnyLoad{ function()
 	thread( function()
 		while ModUtil.Hades.UnfreezeLoop do
 			wait(15)
-			if ModUtil.SafeGet(CurrentRun,{'Hero','FreezeInputKeys'}) then
+			if ModUtil.IndexArray.Get(CurrentRun,{'Hero','FreezeInputKeys'}) then
 				if (not AreScreensActive()) and (not IsInputAllowed({})) then
 					UnfreezePlayerUnit()
 					DisableShopGamepadCursor()
@@ -355,7 +355,7 @@ function ModUtil.Hades.NewMenuYesNo( group, closeFunc, openFunc, yesFunc, noFunc
 				if not yesFunc(screen,button) then
 					ModUtil.Hades.CloseMenuYesNo(screen,button)
 				end
-			end, 
+			end,
 		No = function(screen, button)
 				if not noFunc(screen,button) then
 					ModUtil.Hades.CloseMenuYesNo(screen,button)
