@@ -31,7 +31,15 @@ SaveIgnores[ "ModUtil" ] = true
 
 -- Extended Global Utilities (assuming lua 5.2)
 
-local debug = debug
+local error, xpcall = error, xpcall
+local function pusherror( err )
+	error( err, 3 )
+end
+
+local debug, type = debug, type
+local function getname()
+	return debug.getinfo( 2, "n" ).name
+end
 
 -- doesn't invoke __index
 rawnext = next
@@ -41,7 +49,7 @@ local rawnext = rawnext
 function next( t, k )
 	local m = debug.getmetatable( t )
 	local f = m and m.__next or rawnext
-	return f( t, k )
+	return xpcall( f( t, k ), pusherror )
 end
 
 local next = next
@@ -60,7 +68,19 @@ local rawget = rawget
 
 -- doesn't invoke __index just like rawnext
 function rawinext( t, i )
-	if i == nil then i = 0 end
+
+	if type( t ) ~= "table" then
+		error( "bad argument #1 to '" .. getname() .. "'(table expected got " .. type( i ) ..")", 2 )
+	end
+
+	if i == nil then
+		i = 0
+	elseif type( i ) ~= "number" then
+		error( "bad argument #2 to '" .. getname() .. "'(number expected got " .. type( i ) ..")", 2 )
+	elseif i < 0 then
+		error( "bad argument #2 to '" .. getname() .. "'(index out of bounds, too low)", 2 )
+	end
+
 	i = i + 1
 	local v = rawget( t, i )
 	if v ~= nil then
@@ -74,7 +94,7 @@ local rawinext = rawinext
 function inext( t, i )
 	local m = debug.getmetatable( t )
 	local f = m and m.__inext or rawinext
-	return f( t, i )
+	return xpcall( f( t, i ), pusherror )
 end
 
 local inext = inext
@@ -104,7 +124,7 @@ function table.insert( list, pos, value )
 		pos = last + 1
 	end
 	if pos < 1 or pos > last + 1 then
-		error( "bad argument #2 to '" .. debug.getinfo( 1, "n" ).name .. "' (position out of bounds)", 2 )
+		error( "bad argument #2 to '" .. getname() .. "' (position out of bounds)", 2 )
 	end
 	if pos <= last then
 		local i = last
@@ -124,7 +144,7 @@ function table.remove( list, pos )
 		pos = last
 	end
 	if pos < 1 or pos > last then
-		error( "bad argument #2 to '" .. debug.getinfo( 1, "n" ).name .. "' (position out of bounds)", 2 )
+		error( "bad argument #2 to '" .. getname() .. "' (position out of bounds)", 2 )
 	end
 	local value = list[ pos ]
 	if pos <= last then
@@ -149,10 +169,10 @@ end
 -- bind to locals to minimise environment recursion
 local
 	rawset, rawlen, ModUtil, getmetatable, setmetatable, pairs, ipairs, coroutine,
-		rawpairs, rawipairs, qrawpairs, qrawipairs, type, tostring, xpcall
+		rawpairs, rawipairs, qrawpairs, qrawipairs, tostring
 	=
 	rawset, rawlen, ModUtil, getmetatable, setmetatable, pairs, ipairs, coroutine,
-		rawpairs, rawipairs, qrawpairs, qrawipairs, type, tostring, xpcall
+		rawpairs, rawipairs, qrawpairs, qrawipairs, tostring
 
 function ModUtil.RawInterface( obj )
 
