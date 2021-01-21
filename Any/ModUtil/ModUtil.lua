@@ -212,66 +212,65 @@ __G.__G = __G
 local surrogateEnvironments = { }
 setmetatable( surrogateEnvironments, { __mode = "k" } )
 
--- do
--- 	local getinfo = debug.getinfo
+local function replaceGlobalEnvironment()
+	local getinfo = debug.getinfo
 
--- 	local function getenv( )
--- 		local level = 3
--- 		repeat
--- 			level = level + 1
--- 			local info = getinfo( level, "f" )
--- 			if info then
--- 				local env = rawget( surrogateEnvironments, rawget( info, "func" ) )
--- 				if env then
--- 					return env
--- 				end
--- 			end
--- 		until not info
--- 		return __G
--- 	end
+	local function getenv( )
+		local level = 3
+		repeat
+			level = level + 1
+			local info = getinfo( level, "f" )
+			if info then
+				local env = rawget( surrogateEnvironments, rawget( info, "func" ) )
+				if env then
+					return env
+				end
+			end
+		until not info
+		return __G
+	end
 
--- 	local split = function( path )
--- 		if type( path ) == "string"
--- 		and path:find("[.]")
--- 		and not path:find("[.][.]+")
--- 		and not path:find("^[.]")
--- 		and not path:find("[.]$") then
--- 			return ModUtil.Path.IndexArray( path )
--- 		end
--- 		return { path }
--- 	end
--- 	local get = ModUtil.IndexArray.Get
--- 	debug.setmetatable( __G._G, { } )
+	local split = function( path )
+		if type( path ) == "string"
+		and path:find("[.]")
+		and not path:find("[.][.]+")
+		and not path:find("^[.]")
+		and not path:find("[.]$") then
+			return ModUtil.Path.IndexArray( path )
+		end
+		return { path }
+	end
+	local get = ModUtil.IndexArray.Get
 
--- 	local meta = {
--- 		__index = function( _, key )
--- 			local env = getenv( )
--- 			local value = env[ key ]
--- 			if value ~= nil then return value end
--- 			return get( env, split( key ) )
--- 		end,
--- 		__newindex = function( _, key, value )
--- 			getenv( )[ key ] = value
--- 		end,
--- 		__len = function( )
--- 			return #getenv( )
--- 		end,
--- 		__next = function( _, key )
--- 			return next( getenv( ), key )
--- 		end,
--- 		__inext = function( _, key )
--- 			return inext( getenv( ), key )
--- 		end,
--- 		__pairs = function( )
--- 			return pairs( getenv( ) )
--- 		end,
--- 		__ipairs = function( )
--- 			return ipairs( getenv( ) )
--- 		end
--- 	}
+	local meta = {
+		__index = function( _, key )
+			local env = getenv( )
+			local value = env[ key ]
+			if value ~= nil then return value end
+			return get( env, split( key ) )
+		end,
+		__newindex = function( _, key, value )
+			getenv( )[ key ] = value
+		end,
+		__len = function( )
+			return #getenv( )
+		end,
+		__next = function( _, key )
+			return next( getenv( ), key )
+		end,
+		__inext = function( _, key )
+			return inext( getenv( ), key )
+		end,
+		__pairs = function( )
+			return pairs( getenv( ) )
+		end,
+		__ipairs = function( )
+			return ipairs( getenv( ) )
+		end
+	}
 
--- 	debug.setmetatable( __G._G, meta )
--- end
+	debug.setmetatable( __G._G, meta )
+end
 
 -- Management
 
@@ -599,7 +598,7 @@ function ModUtil.Print.Debug( ... )
 end
 
 function ModUtil.Print.Traceback( level )
-	level = ( level or 1 )
+	level = level or 1
 	ModUtil.Print("Traceback:")
 	local cont = true
 	while cont do
@@ -627,19 +626,19 @@ function ModUtil.Print.Traceback( level )
 end
 
 function ModUtil.Print.DebugInfo( level )
-	level = ( level or 1 )
+	level = level or 1
 	local text
 	text = ModUtil.ToString.Deep( debug.getinfo( level + 1 ) )
 	ModUtil.Print( "Debug Info:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 end
 
 function ModUtil.Print.Namespaces( level )
-	level = ( level or 1 )
+	level = level or 1
 	local text
 	ModUtil.Print("Namespaces:")
-	text = ModUtil.ToString.DeepNamespaces( ModUtil.Local( level + 1 ) )
-	ModUtil.Print( "\t" .. "Local:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
-	text = ModUtil.ToString.DeepNamespaces( ModUtil.UpValue( level + 1 ) )
+	text = ModUtil.ToString.DeepNamespaces( ModUtil.Locals( level + 1 ) )
+	ModUtil.Print( "\t" .. "Locals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
+	text = ModUtil.ToString.DeepNamespaces( ModUtil.UpValues( level + 1 ) )
 	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	local func = debug.getinfo( level + 1, "f" ).func
 	text = ModUtil.ToString.DeepNamespaces( surrogateEnvironments[ func ] )
@@ -647,12 +646,12 @@ function ModUtil.Print.Namespaces( level )
 end
 
 function ModUtil.Print.Variables( level )
-	level = ( level or 1 )
+	level = level or 1
 	local text
 	ModUtil.Print("Variables:")
-	text = ModUtil.ToString.DeepNoNamespaces( ModUtil.Local( level + 1 ) )
-	ModUtil.Print( "\t" .. "Local:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
-	text = ModUtil.ToString.DeepNoNamespaces( ModUtil.UpValue( level + 1 ) )
+	text = ModUtil.ToString.DeepNoNamespaces( ModUtil.Locals( level + 1 ) )
+	ModUtil.Print( "\t" .. "Locals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
+	text = ModUtil.ToString.DeepNoNamespaces( ModUtil.UpValues( level + 1 ) )
 	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	local func = debug.getinfo( level + 1, "f" ).func
 	text = ModUtil.ToString.DeepNoNamespaces( surrogateEnvironments[ func ] )
@@ -1145,7 +1144,7 @@ ModUtil.Metatables.UpValues = {
 }
 
 setmetatable( ModUtil.UpValues, {
-	__call = function( func )
+	__call = function( _, func )
 		if type(func) ~= "function" then
 			func = debug.getinfo( ( func or 1 ) + 1, "f" ).func
 		end
@@ -1436,7 +1435,7 @@ ModUtil.Metatables.Locals = {
 }
 
 setmetatable( ModUtil.Locals, {
-	__call = function( level )
+	__call = function( _, level )
 		local locals = { level = ModUtil.StackLevel( ( level or 1 ) + 1 ) }
 		setmetatable( locals, ModUtil.Metatables.Locals )
 		return locals
@@ -2001,7 +2000,7 @@ ModUtil.Metatables.Context = {
 }
 
 setmetatable( ModUtil.Context, {
-	__call = function( callContextProcessor )
+	__call = function( _, callContextProcessor )
 		local context = { callContextProcessor = callContextProcessor }
 		setmetatable( context, ModUtil.Metatables.Context )
 		return context
@@ -2272,3 +2271,5 @@ function ModUtil.OriginalValue( obj )
 	if not node then return obj end
 	return ModUtil.OriginalValue( node.Base )
 end
+
+replaceGlobalEnvironment()
