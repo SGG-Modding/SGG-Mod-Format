@@ -6,7 +6,6 @@ Author: MagicGonads
 	Use the mod importer to import this mod to ensure it is loaded in the right position.
 
 ]]
-
 ModUtil = {
 
 	Mod = { },
@@ -31,12 +30,9 @@ SaveIgnores[ "ModUtil" ] = true
 
 -- Extended Global Utilities (assuming lua 5.2)
 
-local error, xpcall = error, xpcall
-local function pusherror( err )
-	error( err, 3 )
-end
+local error, pcall, xpcall = error, pcall, xpcall
 
-local debug, type = debug, type
+local debug, type, table = debug, type, table
 local function getname()
 	return debug.getinfo( 2, "n" ).name
 end
@@ -45,11 +41,17 @@ end
 rawnext = next
 local rawnext = rawnext
 
+local function pusherror( f, ... )
+	local ret = table.pack( pcall( f, ... ) )
+	if ret[ 1 ] then return table.unpack( ret, 2, ret.n ) end
+	error( ret[ 2 ], 3 )
+end
+
 -- invokes __next
 function next( t, k )
 	local m = debug.getmetatable( t )
 	local f = m and m.__next or rawnext
-	return xpcall( f( t, k ), pusherror )
+	return pusherror( f, t, k )
 end
 
 local next = next
@@ -94,7 +96,7 @@ local rawinext = rawinext
 function inext( t, i )
 	local m = debug.getmetatable( t )
 	local f = m and m.__inext or rawinext
-	return xpcall( f( t, i ), pusherror )
+	return pusherror( f, t, i )
 end
 
 local inext = inext
@@ -112,8 +114,6 @@ function qrawipairs( t )
 		return inext( self, key )
 	end, t, nil
 end
-
-local table = table
 
 table.rawinsert = table.insert
 -- table.insert that respects metamethods
@@ -212,69 +212,66 @@ __G.__G = __G
 local surrogateEnvironments = { }
 setmetatable( surrogateEnvironments, { __mode = "k" } )
 
-do
-	local getinfo = debug.getinfo
+-- do
+-- 	local getinfo = debug.getinfo
 
-	local function getenv( )
-		local level = 3
-		repeat
-			level = level + 1
-			local info = getinfo( level, "f" )
-			if info then
-				local env = rawget( surrogateEnvironments, rawget( info, "func" ) )
-				if env then
-					return env
-				end
-			end
-		until not info
-		return __G
-	end
+-- 	local function getenv( )
+-- 		local level = 3
+-- 		repeat
+-- 			level = level + 1
+-- 			local info = getinfo( level, "f" )
+-- 			if info then
+-- 				local env = rawget( surrogateEnvironments, rawget( info, "func" ) )
+-- 				if env then
+-- 					return env
+-- 				end
+-- 			end
+-- 		until not info
+-- 		return __G
+-- 	end
 
-	--[[
-		Make lexical environments use locals instead of upvalues
-	]]
-	local split = function( path )
-		if type( path ) == "string"
-		and path:find("[.]")
-		and not path:find("[.][.]+")
-		and not path:find("^[.]")
-		and not path:find("[.]$") then
-			return ModUtil.Path.IndexArray( path )
-		end
-		return { path }
-	end
-	local get = ModUtil.IndexArray.Get
-	debug.setmetatable( __G._G, { } )
+-- 	local split = function( path )
+-- 		if type( path ) == "string"
+-- 		and path:find("[.]")
+-- 		and not path:find("[.][.]+")
+-- 		and not path:find("^[.]")
+-- 		and not path:find("[.]$") then
+-- 			return ModUtil.Path.IndexArray( path )
+-- 		end
+-- 		return { path }
+-- 	end
+-- 	local get = ModUtil.IndexArray.Get
+-- 	debug.setmetatable( __G._G, { } )
 
-	local meta = {
-		__index = function( _, key )
-			local env = getenv( )
-			local value = env[ key ]
-			if value ~= nil then return value end
-			return get( env, split( key ) )
-		end,
-		__newindex = function( _, key, value )
-			getenv( )[ key ] = value
-		end,
-		__len = function( )
-			return #getenv( )
-		end,
-		__next = function( _, key )
-			return next( getenv( ), key )
-		end,
-		__inext = function( _, key )
-			return inext( getenv( ), key )
-		end,
-		__pairs = function( )
-			return pairs( getenv( ) )
-		end,
-		__ipairs = function( )
-			return ipairs( getenv( ) )
-		end
-	}
+-- 	local meta = {
+-- 		__index = function( _, key )
+-- 			local env = getenv( )
+-- 			local value = env[ key ]
+-- 			if value ~= nil then return value end
+-- 			return get( env, split( key ) )
+-- 		end,
+-- 		__newindex = function( _, key, value )
+-- 			getenv( )[ key ] = value
+-- 		end,
+-- 		__len = function( )
+-- 			return #getenv( )
+-- 		end,
+-- 		__next = function( _, key )
+-- 			return next( getenv( ), key )
+-- 		end,
+-- 		__inext = function( _, key )
+-- 			return inext( getenv( ), key )
+-- 		end,
+-- 		__pairs = function( )
+-- 			return pairs( getenv( ) )
+-- 		end,
+-- 		__ipairs = function( )
+-- 			return ipairs( getenv( ) )
+-- 		end
+-- 	}
 
-	debug.setmetatable( __G._G, meta )
-end
+-- 	debug.setmetatable( __G._G, meta )
+-- end
 
 -- Management
 
