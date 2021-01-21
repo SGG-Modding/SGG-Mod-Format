@@ -2410,9 +2410,8 @@ ModUtil.Metatables.Context = {
 		_ContextInfo.data = contextData
 		_ContextInfo.args = contextArgs
 
-		local callWrap = function( ... ) callContext( ... ) end
-		setfenv( callWrap, contextData )
-		callWrap( table.unpack( contextArgs ) )
+		setfenv( callContext, contextData )
+		callContext( table.unpack( contextArgs ) )
 	end
 }
 
