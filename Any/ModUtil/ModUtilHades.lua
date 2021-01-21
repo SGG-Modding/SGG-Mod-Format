@@ -305,7 +305,7 @@ end
 
 function ModUtil.Hades.PrintStackChunks( text, linespan, ... )
 	if not linespan then linespan = 90 end
-	for _,s in ipairs( ModUtil.ChunkText( text, linespan,ModUtil.Hades.PrintStackCapacity ) ) do
+	for _,s in ipairs( ModUtil.String.Chunk( text, linespan,ModUtil.Hades.PrintStackCapacity ) ) do
 		ModUtil.Hades.PrintStack( s, ... )
 	end
 end
@@ -349,7 +349,7 @@ function ModUtil.Hades.NewMenuYesNo( group, closeFunc, openFunc, yesFunc, noFunc
 	Attach({ Id = components.Icon.Id, DestinationId = components.Background.Id, OffsetX = 0, OffsetY = -50})
 	SetAnimation({ Name = icon, DestinationId = components.Icon.Id, Scale = iconScale })
 
-	ModUtil.NewTable(ModUtil.Anchors.Menu[group], "Funcs")
+	ModUtil.Nodes.New(ModUtil.Anchors.Menu[group], "Funcs")
 	ModUtil.Anchors.Menu[group].Funcs={
 		Yes = function(screen, button)
 				if not yesFunc(screen,button) then
