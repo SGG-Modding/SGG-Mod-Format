@@ -211,25 +211,39 @@ local __G = ModUtil.RawInterface( _G )
 __G.__G = __G
 
 local surrogateEnvironments = { }
-setmetatable( surrogateEnvironments, { __mode = "k" } )
+local envNodeData = { [surrogateEnvironments] = __G }
+local envNodeMeta = {
+	__mode = "k",
+	__index = ModUtil.RawInterface( surrogateEnvironments ),
+	__call = function( self )
+		return envNodeData[ self ]
+	end
+}
+setmetatable( surrogateEnvironments, envNodeMeta )
+setmetatable( envNodeData, { __mode = "k" } )
+
+local getinfo = debug.getinfo
+local function getenv( level )
+	level = ( level or 1 ) + 1
+	local stack = { }
+	local l = level
+	local info = getinfo( l, "f" )
+	while info do
+		stack[ l - level ] = info.func
+		l = l + 1
+		info = getinfo( l, "f" )
+	end
+	l = l - level - 1
+	local envNode = surrogateEnvironments
+	for i = l, 1, -1 do
+		local func = stack[ i ]
+		envNode = envNode[ func ]
+		if not envNode then return __G end
+	end
+	return envNode( )
+end
 
 local function replaceGlobalEnvironment()
-	local getinfo = debug.getinfo
-
-	local function getenv( )
-		local level = 3
-		repeat
-			level = level + 1
-			local info = getinfo( level, "f" )
-			if info then
-				local env = rawget( surrogateEnvironments, rawget( info, "func" ) )
-				if env then
-					return env
-				end
-			end
-		until not info
-		return __G
-	end
 
 	local split = function( path )
 		if type( path ) == "string"
@@ -245,28 +259,28 @@ local function replaceGlobalEnvironment()
 
 	local meta = {
 		__index = function( _, key )
-			local env = getenv( )
+			local env = getenv( 2 )
 			local value = env[ key ]
 			if value ~= nil then return value end
 			return get( env, split( key ) )
 		end,
 		__newindex = function( _, key, value )
-			getenv( )[ key ] = value
+			getenv( 2 )[ key ] = value
 		end,
 		__len = function( )
-			return #getenv( )
+			return #getenv( 2 )
 		end,
 		__next = function( _, key )
-			return next( getenv( ), key )
+			return next( getenv( 2 ), key )
 		end,
 		__inext = function( _, key )
-			return inext( getenv( ), key )
+			return inext( getenv( 2 ), key )
 		end,
 		__pairs = function( )
-			return pairs( getenv( ) )
+			return pairs( getenv( 2 ) )
 		end,
 		__ipairs = function( )
-			return ipairs( getenv( ) )
+			return ipairs( getenv( 2 ) )
 		end
 	}
 
@@ -450,11 +464,11 @@ function ModUtil.ToString.DeepNoNamespaces( o, seen )
 		first = true
 		seen = { }
 	end
-	if type( o ) == "table" and not seen[ o ] and o ~= __G._G and ( first or not ModUtil.Mods.Inverse[ o ] ) then
+	if type( o ) == "table" and not seen[ o ] and o ~= __G and o ~= __G._G and ( first or not ModUtil.Mods.Inverse[ o ] ) then
 		seen[ o ] = true
 		local out = { ModUtil.ToString.Value( o ), "{ " }
 		for k, v in pairs( o ) do
-			if v ~= __G._G and not ModUtil.Mods.Inverse[ v ] then
+			if v ~= __G and v ~= __G._G and not ModUtil.Mods.Inverse[ v ] then
 				table.insert( out, ModUtil.ToString.Key( k ) )
 				table.insert( out, ' = ' )
 				table.insert( out, ModUtil.ToString.DeepNoNamespaces( v, seen ) )
@@ -474,11 +488,11 @@ function ModUtil.ToString.DeepNamespaces( o, seen )
 		first = true
 		seen = { }
 	end
-	if type( o ) == "table" and not seen[ o ] and ( first or o == __G._G or ModUtil.Mods.Inverse[ o ] ) then
+	if type( o ) == "table" and not seen[ o ] and ( first or o == __G or o == __G._G or ModUtil.Mods.Inverse[ o ] ) then
 		seen[ o ] = true
 		local out = { ModUtil.ToString.Value( o ), "{ " }
 		for k, v in pairs( o ) do
-			if v == __G._G or ModUtil.Mods.Inverse[ v ] then
+			if v == __G or v == __G._G or ModUtil.Mods.Inverse[ v ] then
 				table.insert( out, ModUtil.ToString.Key( k ) )
 				table.insert( out, ' = ' )
 				table.insert( out, ModUtil.ToString.DeepNamespaces( v, seen ) )
@@ -641,9 +655,8 @@ function ModUtil.Print.Namespaces( level )
 	ModUtil.Print( "\t" .. "Locals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	text = ModUtil.ToString.DeepNamespaces( ModUtil.UpValues( level + 1 ) )
 	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
-	local func = debug.getinfo( level + 1, "f" ).func
-	text = ModUtil.ToString.DeepNamespaces( surrogateEnvironments[ func ] )
-	ModUtil.Print( "\t" .. "Globals:" .. "\t" .. text )
+	text = ModUtil.ToString.DeepNamespaces( getenv( level + 1 ) )
+	ModUtil.Print( "\t" .. "Globals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 end
 
 function ModUtil.Print.Variables( level )
@@ -654,9 +667,8 @@ function ModUtil.Print.Variables( level )
 	ModUtil.Print( "\t" .. "Locals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	text = ModUtil.ToString.DeepNoNamespaces( ModUtil.UpValues( level + 1 ) )
 	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
-	local func = debug.getinfo( level + 1, "f" ).func
-	text = ModUtil.ToString.DeepNoNamespaces( surrogateEnvironments[ func ] )
-	ModUtil.Print( "\t" .. "Globals:" .. "\t" .. text )
+	text = ModUtil.ToString.DeepNoNamespaces( getenv( level + 1 ) )
+	ModUtil.Print( "\t" .. "Globals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 end
 
 --[[
@@ -1692,7 +1704,7 @@ ModUtil.Metatables.Entangled.Map = {
 	},
 
 	Unique = {
-		
+
 		Data = {
 			__index = function( self, key )
 				return rawget( self, "Data" )[ key ]
@@ -1907,7 +1919,13 @@ ModUtil.Context.Meta = ModUtil.Context( function( info )
 end )
 
 ModUtil.Context.Call = ModUtil.Context( function( info )
-	local env = { data = ModUtil.Nodes.Data.Environment.New( ModUtil.Nodes.Data.Call.Get( info.args[ 1 ] ) ), fallback = _G }
+	local envNode = surrogateEnvironments
+	--[[ TODO:
+		use info.parent / info.args / info.parent.args etc with
+			ModUtil.Nodes.Data.Call.Get
+			to generate an index array of funcs and gen environment
+	]]
+	local env = { data = envNode( ), fallback = _G }
 	env.global = env
 	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
@@ -1944,28 +1962,6 @@ ModUtil.Nodes.Data.Metatable = {
 	end,
 	Set = function( obj, value )
 		setmetatable( obj, value )
-		return true
-	end
-}
-
-ModUtil.Nodes.Data.Environment = {
-	New = function( obj )
-		local env = surrogateEnvironments[ obj ]
-		if env == nil then
-			env = { }
-			env.data = { }
-			env.fallback = _G
-			env.global = env
-			setmetatable( env, ModUtil.Metatables.Environment )
-			surrogateEnvironments[ obj ] = env
-		end
-		return env
-	end,
-	Get = function( obj )
-		return surrogateEnvironments[ obj ]
-	end,
-	Set = function( obj, value )
-		surrogateEnvironments[ obj ] = value
 		return true
 	end
 }
