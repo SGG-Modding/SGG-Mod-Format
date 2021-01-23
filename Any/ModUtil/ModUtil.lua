@@ -18,6 +18,7 @@ ModUtil = {
 	IndexArray = { },
 	UpValues = { },
 	Locals = { },
+	Entangled = { },
 	Internal = { },
 	Metatables = { },
 	Anchors = {
@@ -164,9 +165,9 @@ end
 	- table.sort
 ]]
 
--- Environment Context (EXPERIMENTAL) (WIP) (INCOMPLETE)
+-- Environment Context (EXPERIMENTAL)
 
--- bind to locals to minimise environment recursion
+-- bind to locals to minimise environment recursion and improve speed
 local
 	rawset, rawlen, ModUtil, getmetatable, setmetatable, pairs, ipairs, coroutine,
 		rawpairs, rawipairs, qrawpairs, qrawipairs, tostring
@@ -290,15 +291,15 @@ function ModUtil.Mod.Register( modName, parent, content )
 	if not mod then
 		mod = { }
 		parent[ modName ] = mod
-		local path = ModUtil.Mods.Index[ parent ]
+		local path = ModUtil.Mods.Inverse[ parent ]
 		if path ~= nil then
 			path = path .. '.'
 		else
 			path = ''
 		end
 		path = path .. modName
-		ModUtil.Mods.Table[ path ] = mod
-		ModUtil.Identifiers.Table[ mod ] = path
+		ModUtil.Mods.Data[ path ] = mod
+		ModUtil.Identifiers.Inverse[ path ] = mod
 	end
 	if content then
 		ModUtil.Table.SetMap( parent[ modName ], content )
@@ -363,7 +364,7 @@ function ModUtil.ToString.Value( o )
 	if passByValueTypes[ t ] then
 		return tostring( o )
 	end
-	local identifier = ModUtil.Identifiers.Table[ o ]
+	local identifier = ModUtil.Identifiers.Data[ o ]
 	if identifier then
 		identifier = "(" .. identifier .. ")"
 	else
@@ -388,7 +389,7 @@ function ModUtil.ToString.Key( o )
 	if not passByValueTypes[ t ] then
         o = '<' .. o .. '>'
 	end
-	local identifier = ModUtil.Identifiers.Table[ o ]
+	local identifier = ModUtil.Identifiers.Data[ o ]
 	if identifier then
 		identifier = "(" .. identifier .. ")"
 	else
@@ -449,11 +450,11 @@ function ModUtil.ToString.DeepNoNamespaces( o, seen )
 		first = true
 		seen = { }
 	end
-	if type( o ) == "table" and not seen[ o ] and o ~= __G._G and ( first or not ModUtil.Mods.Index[ o ] ) then
+	if type( o ) == "table" and not seen[ o ] and o ~= __G._G and ( first or not ModUtil.Mods.Inverse[ o ] ) then
 		seen[ o ] = true
 		local out = { ModUtil.ToString.Value( o ), "{ " }
 		for k, v in pairs( o ) do
-			if v ~= __G._G and not ModUtil.Mods.Index[ v ] then
+			if v ~= __G._G and not ModUtil.Mods.Inverse[ v ] then
 				table.insert( out, ModUtil.ToString.Key( k ) )
 				table.insert( out, ' = ' )
 				table.insert( out, ModUtil.ToString.DeepNoNamespaces( v, seen ) )
@@ -473,11 +474,11 @@ function ModUtil.ToString.DeepNamespaces( o, seen )
 		first = true
 		seen = { }
 	end
-	if type( o ) == "table" and not seen[ o ] and ( first or o == __G._G or ModUtil.Mods.Index[ o ] ) then
+	if type( o ) == "table" and not seen[ o ] and ( first or o == __G._G or ModUtil.Mods.Inverse[ o ] ) then
 		seen[ o ] = true
 		local out = { ModUtil.ToString.Value( o ), "{ " }
 		for k, v in pairs( o ) do
-			if v == __G._G or ModUtil.Mods.Index[ v ] then
+			if v == __G._G or ModUtil.Mods.Inverse[ v ] then
 				table.insert( out, ModUtil.ToString.Key( k ) )
 				table.insert( out, ' = ' )
 				table.insert( out, ModUtil.ToString.DeepNamespaces( v, seen ) )
@@ -717,9 +718,9 @@ function ModUtil.IndexArray.Get( baseTable, indexArray )
 		if type( node ) ~= "table" then
 			return nil
 		end
-		local nodeType = ModUtil.Nodes.Index[ key ]
+		local nodeType = ModUtil.Nodes.Inverse[ key ]
 		if nodeType then
-			node = ModUtil.Nodes.Table[ nodeType ].Get( node )
+			node = ModUtil.Nodes.Data[ nodeType ].Get( node )
 		else
 			node = node[ key ]
 		end
@@ -750,17 +751,17 @@ function ModUtil.IndexArray.Set( baseTable, indexArray, value )
 	for i = 1, n - 1 do
 		local key = indexArray[ i ]
 		if not ModUtil.Table.New( node, key ) then return false end
-		local nodeType = ModUtil.Nodes.Index[ key ]
+		local nodeType = ModUtil.Nodes.Inverse[ key ]
 		if nodeType then
-			node = ModUtil.Nodes.Table[ nodeType ].Get( node )
+			node = ModUtil.Nodes.Data[ nodeType ].Get( node )
 		else
 			node = node[ key ]
 		end
 	end
 	local key = indexArray[ n ]
-	local nodeType = ModUtil.Nodes.Index[ key ]
+	local nodeType = ModUtil.Nodes.Inverse[ key ]
 	if nodeType then
-		return ModUtil.Nodes.Table[ nodeType ].Set( node, value )
+		return ModUtil.Nodes.Data[ nodeType ].Set( node, value )
 	end
 	node[ key ] = value
 	return true
@@ -848,7 +849,7 @@ function ModUtil.Table.SetMap( inTable, setTable )
 end
 
 function ModUtil.IndexArray.Map( baseTable, indexArray, map, ... )
-	ModUtil.IndexAray.Set( baseTable, indexArray, map( ModUtil.IndexArray.Get( baseTable, indexArray ), ... ) )
+	ModUtil.IndexArray.Set( baseTable, indexArray, map( ModUtil.IndexArray.Get( baseTable, indexArray ), ... ) )
 end
 
 --[[
@@ -872,8 +873,7 @@ end
 -- Path Manipulation
 
 function ModUtil.Path.Map( path, map, ... )
-	local indexArray = ModUtil.Path.IndexArray( path )
-	ModUtil.IndexAray.Set( _G, indexArray, map( ModUtil.IndexArray.Get( _G, indexArray ), ... ) )
+	ModUtil.IndexArray.Map( _G, ModUtil.Path.IndexArray( path ), map, ... )
 end
 
 function ModUtil.Path.Join( a, b )
@@ -936,7 +936,7 @@ function ModUtil.Path.Set( path, value, base )
 	return ModUtil.IndexArray.Set( base or _G, ModUtil.Path.IndexArray( path ), value )
 end
 
--- Metaprogramming Shenanigans (EXPERIMENTAL) (WIP)
+-- Metaprogramming Shenanigans
 
 local stackLevelProperty
 stackLevelProperty = {
@@ -1614,313 +1614,198 @@ function ModUtil.Locals.Stacked( level )
 	return locals
 end
 
--- Automatically updating data structures
+-- Entangled Data Structures
 
-ModUtil.Metatables.EntangledInvertibleTable = {
-	__index = function( self, key )
-		return rawget( self, "Table" )[ key ]
-	end,
-	__newindex = function( self, key, value )
-		local Table, Index = rawget( self, "Table" ), rawget( self, "Index" )
-		if value ~= nil then
-			local k = Index[ value ]
-			if k ~= key  then
-				if k ~= nil then
-					Table[ k ] = nil
-				end
-				Index[ value ] = key
-			end
-		end
-		if key ~= nil then
-			local v = Table[ key ]
-			if v ~= value then
-				if v ~= nil then
-					Index[ v ] = nil
-				end
-				Table[ key ] = value
-			end
-		end
-	end,
-	__len = function( self )
-		return #rawget( self, "Table" )
-	end,
-	__next = function( self, key )
-		return next( rawget( self, "Table" ), key )
-	end,
-	__inext = function( self, idx )
-		return inext( rawget( self, "Table" ), idx )
-	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
-	end
-}
+ModUtil.Metatables.Entangled = { }
 
-ModUtil.Metatables.EntangledInvertibleIndex = {
-	__index = function( self, value )
-		return rawget( self, "Index" )[ value ]
-	end,
-	__newindex = function( self, value, key )
-		local table, index = rawget( self, "Table" ), rawget( self, "Index" )
-		if value ~= nil then
-			local k = index[ value ]
-			if k ~= key then
-				if k ~= nil then
-					table[ k ] = nil
-				end
-				index[ value ] = key
-			end
-		end
-		if key ~= nil then
-			local v = table[ key ]
-			if v ~= value then
-				if v ~= nil then
-					index[ v ] = nil
-				end
-				table[ key ] = value
-			end
-		end
-	end,
-	__len = function( self )
-		return #rawget( self, "Index" )
-	end,
-	__next = function( self, value )
-		return next( rawget( self, "Index" ), value )
-	end,
-	__inext = function( self, idx )
-		return inext( rawget( self, "Index" ), idx )
-	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
-	end
-}
+ModUtil.Metatables.Entangled.Map = {
 
-function ModUtil.EntangledInvertiblePair( )
-	local table, index = { }, { }
-	table, index = { Table = table, Index = index }, { Table = table, Index = index }
-	setmetatable( table, ModUtil.Metatables.EntangledInvertibleTable )
-	setmetatable( index, ModUtil.Metatables.EntangledInvertibleIndex )
-	return { Table = table, Index = index }
-end
-
-function ModUtil.EntangledInvertiblePairFromTable( tableArg )
-	local pair = ModUtil.EntangledInvertiblePair( )
-	for key, value in pairs( tableArg ) do
-		pair.Table[ key ] = value
-	end
-	return pair
-end
-
-function ModUtil.EntangledInvertiblePairFromIndex( index )
-	local pair = ModUtil.EntangledInvertiblePair( )
-	for value, key in pairs( index ) do
-		pair.Index[ value ] = key
-	end
-	return pair
-end
-
-ModUtil.Metatables.EntangledMap = {
-	__index = function( self, key )
-		return rawget( self, "Map" )[ key ]
-	end,
-	__newindex = function( self, key, value )
-		local map = rawget( self, "Map" )
-		local prevValue = map[ key ]
-		map[ key ] = value
-		local preImage = rawget( self, "PreImage" )
-		local prevKeys
-		if prevValue ~= nil then
-			prevKeys = preImage[ prevValue ]
-		end
-		local keys = preImage[ value ]
-		if not keys then
-			keys = { }
-			preImage[ value ] = keys
-		end
-		if prevKeys then
-			prevKeys[ key ] = nil
-		end
-		keys[ key ] = true
-	end,
-	__len = function( self )
-		return #rawget( self, "Map" )
-	end,
-	__next = function( self, key )
-		return next( rawget( self, "Map" ), key )
-	end,
-	__inext = function( self, idx )
-		return inext( rawget( self, "Map" ), idx )
-	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
-	end
-}
-
-ModUtil.Metatables.EntangledPreImage = {
-	__index = function( self, value )
-		return rawget( self, "PreImage" )[ value ]
-	end,
-	__newindex = function( self, value, keys )
-		rawget( self, "PreImage" )[ value ] = keys
-		local map = rawget( self, "Map" )
-		for key in pairs( map ) do
-			map[ key ] = nil
-		end
-		for key in ipairs( keys ) do
-			map[ key ] = value
-		end
-	end,
-	__len = function( self )
-		return #rawget( self, "PreImage" )
-	end,
-	__next = function( self, key )
-		return next( rawget( self, "PreImage" ), key )
-	end,
-	__inext = function( self, idx )
-		return inext( rawget( self, "PreImage" ), idx )
-	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
-	end
-}
-
-function ModUtil.EntangledPair( )
-	local map, preImage = { }, { }
-	map, preImage = { Map = map, PreImage = preImage }, { Map = map, PreImage = preImage }
-	setmetatable( map, ModUtil.Metatables.EntangledMap )
-	setmetatable( preImage, ModUtil.Metatables.EntangledPreImage )
-	return { Map = map, PreImage = preImage }
-end
-
-function ModUtil.EntangledPairFromTable( tableArg )
-	local pair = ModUtil.EntangledPair( )
-	for key, value in pairs( tableArg ) do
-		pair.Map[ key ] = value
-	end
-	return pair
-end
-
-function ModUtil.EntangledPairFromPreImage( preImage )
-	local pair = ModUtil.EntangledPair( )
-	for value, keys in pairs( preImage ) do
-		pair.PreImage[ value ] = keys
-	end
-	return pair
-end
-
-ModUtil.Metatables.EntangledQueueData = {
-	__index = function( self, key )
-		return rawget( self, "Data" )[ key ]
-	end,
-	__newindex = function( self, key, value )
-		local data = rawget( self, "Data" )
-		local prevValue = data[ key ]
-		data[ key ] = value
-		local order = rawget( self, "Order" )
-		local prevOrder = nil
-		local prevOrderPair
-		if prevValue ~= nil then
-			prevOrderPair = order[ prevValue ]
-			if not prevOrderPair then
-				prevOrderPair = ModUtil.EntangledInvertiblePair( )
-				order[ prevValue ] = prevOrderPair
-			end
-			prevOrder = prevOrderPair.Index[ key ]
-		end
-		local orderPair = order[ value ]
-		if not orderPair then
-			orderPair = ModUtil.EntangledInvertiblePair( )
-			order[ value ] = orderPair
-		end
-		if prevOrder then
-			table.remove( prevOrderPair.Table, prevOrder )
-		end
-		table.insert( orderPair.Table, key )
-	end,
-	__len = function( self )
-		return #rawget( self, "Data" )
-	end,
-	__next = function( self, key )
-		return next( rawget( self, "Data" ), key )
-	end,
-	__inext = function( self, idx )
-		return inext( rawget( self, "Data" ), idx )
-	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
-	end
-}
-
-ModUtil.Metatables.EntangledQueueOrder = {
-	__index = function( self, value )
-		return rawget( self, "Order" )[ value ]
-	end,
-	__newindex = function( self, value, pair )
-		rawget( self, "Order" )[ value ] = pair
-		local data = rawget( self, "Data" )
-		for _, key in pairs( data ) do
-			data[ key ] = nil
-		end
-		for _, key in ipairs( pair.Table ) do
+	Data = {
+		__index = function( self, key )
+			return rawget( self, "Map" )[ key ]
+		end,
+		__newindex = function( self, key, value )
+			local data = rawget( self, "Map" )
+			local prevValue = data[ key ]
 			data[ key ] = value
+			local preImage = rawget( self, "PreImage" )
+			local prevKeys
+			if prevValue ~= nil then
+				prevKeys = preImage[ prevValue ]
+			end
+			local keys = preImage[ value ]
+			if not keys then
+				keys = { }
+				preImage[ value ] = keys
+			end
+			if prevKeys then
+				prevKeys[ key ] = nil
+			end
+			keys[ key ] = true
+		end,
+		__len = function( self )
+			return #rawget( self, "Map" )
+		end,
+		__next = function( self, key )
+			return next( rawget( self, "Map" ), key )
+		end,
+		__inext = function( self, idx )
+			return inext( rawget( self, "Map" ), idx )
+		end,
+		__pairs = function( self )
+			return qrawpairs( self )
+		end,
+		__ipairs = function( self )
+			return qrawipairs( self )
 		end
-	end,
-	__len = function( self )
-		return #rawget( self, "Order" )
-	end,
-	__next = function( self, key )
-		return next( rawget( self, "Order" ), key )
-	end,
-	__inext = function( self, idx )
-		return inext( rawget( self, "Order" ), idx )
-	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
-	end
+	},
+
+	PreImage = {
+		__index = function( self, value )
+			return rawget( self, "PreImage" )[ value ]
+		end,
+		__newindex = function( self, value, keys )
+			rawget( self, "PreImage" )[ value ] = keys
+			local data = rawget( self, "Map" )
+			for key in pairs( data ) do
+				data[ key ] = nil
+			end
+			for key in ipairs( keys ) do
+				data[ key ] = value
+			end
+		end,
+		__len = function( self )
+			return #rawget( self, "PreImage" )
+		end,
+		__next = function( self, key )
+			return next( rawget( self, "PreImage" ), key )
+		end,
+		__inext = function( self, idx )
+			return inext( rawget( self, "PreImage" ), idx )
+		end,
+		__pairs = function( self )
+			return qrawpairs( self )
+		end,
+		__ipairs = function( self )
+			return qrawipairs( self )
+		end
+	},
+
+	Unique = {
+		
+		Data = {
+			__index = function( self, key )
+				return rawget( self, "Data" )[ key ]
+			end,
+			__newindex = function( self, key, value )
+				local data, inverse = rawget( self, "Data" ), rawget( self, "Inverse" )
+				if value ~= nil then
+					local k = inverse[ value ]
+					if k ~= key  then
+						if k ~= nil then
+							data[ k ] = nil
+						end
+						inverse[ value ] = key
+					end
+				end
+				if key ~= nil then
+					local v = data[ key ]
+					if v ~= value then
+						if v ~= nil then
+							inverse[ v ] = nil
+						end
+						data[ key ] = value
+					end
+				end
+			end,
+			__len = function( self )
+				return #rawget( self, "Data" )
+			end,
+			__next = function( self, key )
+				return next( rawget( self, "Data" ), key )
+			end,
+			__inext = function( self, idx )
+				return inext( rawget( self, "Data" ), idx )
+			end,
+			__pairs = function( self )
+				return qrawpairs( self )
+			end,
+			__ipairs = function( self )
+				return qrawipairs( self )
+			end
+		},
+
+		Inverse = {
+			__index = function( self, value )
+				return rawget( self, "Inverse" )[ value ]
+			end,
+			__newindex = function( self, value, key )
+				local data, inverse = rawget( self, "Data" ), rawget( self, "Inverse" )
+				if value ~= nil then
+					local k = inverse[ value ]
+					if k ~= key then
+						if k ~= nil then
+							data[ k ] = nil
+						end
+						inverse[ value ] = key
+					end
+				end
+				if key ~= nil then
+					local v = data[ key ]
+					if v ~= value then
+						if v ~= nil then
+							inverse[ v ] = nil
+						end
+						data[ key ] = value
+					end
+				end
+			end,
+			__len = function( self )
+				return #rawget( self, "Inverse" )
+			end,
+			__next = function( self, value )
+				return next( rawget( self, "Inverse" ), value )
+			end,
+			__inext = function( self, idx )
+				return inext( rawget( self, "Inverse" ), idx )
+			end,
+			__pairs = function( self )
+				return qrawpairs( self )
+			end,
+			__ipairs = function( self )
+				return qrawipairs( self )
+			end
+		}
+
+	}
+
 }
 
-function ModUtil.EntangledQueuePair( )
-	local data, order = { }, { }
-	data, order = { Data = data, Order = order }, { Data = data, Order = order }
-	setmetatable( data, ModUtil.Metatables.EntangledQueueData )
-	setmetatable( order, ModUtil.Metatables.EntangledQueueOrder )
-	return { Data = data, Order = order }
-end
+ModUtil.Entangled.Map = {
+	Unique = { }
+}
 
-function ModUtil.EntangledQueuePairFromData( data )
-	local pair = ModUtil.EntangledQueuePair( )
-	for key, value in pairs( data ) do
-		pair.Data[ key ] = value
+setmetatable( ModUtil.Entangled.Map, {
+	__call = function( )
+		local data, preImage = { }, { }
+		data, preImage = { Data = data, PreImage = preImage }, { Data = data, PreImage = preImage }
+		setmetatable( data, ModUtil.Metatables.Entangled.Map.Data )
+		setmetatable( preImage, ModUtil.Metatables.Entangled.Map.PreImage )
+		return { Data = data, Index = preImage, PreImage = preImage }
 	end
-	return pair
-end
+} )
 
-function ModUtil.EntangledQueuePairFromOrder( order )
-	local pair = ModUtil.EntangledQueuePair( )
-	for value, keys in pairs( order ) do
-		pair.Order[ value ] = keys
+setmetatable( ModUtil.Entangled.Map.Unique, {
+	__call = function( )
+		local data, inverse = { }, { }
+		data, inverse = { Data = data, Inverse = inverse }, { Data = data, Inverse = inverse }
+		setmetatable( data, ModUtil.Metatables.Entangled.Map.Unique.Data )
+		setmetatable( inverse, ModUtil.Metatables.Entangled.Map.Unique.Inverse )
+		return { Data = data, Index = inverse, Inverse = inverse }
 	end
-	return pair
-end
+} )
 
--- Context Managers (EXPERIMENTAL) (WIP) (BROKEN) (INCOMPLETE)
+-- Context Managers (EXPERIMENTAL)
 
 ModUtil.Context = { }
 
@@ -2015,27 +1900,27 @@ ModUtil.Context.Data = ModUtil.Context( function( info )
 end )
 
 ModUtil.Context.Meta = ModUtil.Context( function( info )
-	local env = { data = ModUtil.Nodes.Table.Metatable.New( info.args[ 1 ] ), fallback = _G }
+	local env = { data = ModUtil.Nodes.Data.Metatable.New( info.args[ 1 ] ), fallback = _G }
 	env.global = env
 	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )
 
 ModUtil.Context.Call = ModUtil.Context( function( info )
-	local env = { data = ModUtil.Nodes.Table.Environment.New( ModUtil.Nodes.Table.Call.Get( info.args[ 1 ] ) ), fallback = _G }
+	local env = { data = ModUtil.Nodes.Data.Environment.New( ModUtil.Nodes.Data.Call.Get( info.args[ 1 ] ) ), fallback = _G }
 	env.global = env
 	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )
 
--- Special traversal nodes (EXPERIMENTAL) (WIP) (INCOMPLETE)
+-- Special traversal nodes (EXPERIMENTAL)
 
-ModUtil.Nodes = ModUtil.EntangledInvertiblePair( )
+ModUtil.Nodes = ModUtil.Entangled.Map.Unique( )
 
 function ModUtil.Nodes.New( parent, key )
-	local nodeType = ModUtil.Nodes.Index[ key ]
+	local nodeType = ModUtil.Nodes.Inverse[ key ]
 	if nodeType then
-		return ModUtil.Nodes.Table[ nodeType ].New( parent )
+		return ModUtil.Nodes.Data[ nodeType ].New( parent )
 	end
 	local tbl = parent[ key ]
 	if type( tbl ) ~= "table" then
@@ -2045,7 +1930,7 @@ function ModUtil.Nodes.New( parent, key )
 	return tbl
 end
 
-ModUtil.Nodes.Table.Metatable = {
+ModUtil.Nodes.Data.Metatable = {
 	New = function( obj )
 		local meta = getmetatable( obj )
 		if meta == nil then
@@ -2063,7 +1948,7 @@ ModUtil.Nodes.Table.Metatable = {
 	end
 }
 
-ModUtil.Nodes.Table.Environment = {
+ModUtil.Nodes.Data.Environment = {
 	New = function( obj )
 		local env = surrogateEnvironments[ obj ]
 		if env == nil then
@@ -2085,7 +1970,7 @@ ModUtil.Nodes.Table.Environment = {
 	end
 }
 
-ModUtil.Nodes.Table.Call = {
+ModUtil.Nodes.Data.Call = {
 	New = function( obj )
 		local call
 		while type( obj ) == "table" do
@@ -2126,7 +2011,7 @@ ModUtil.Nodes.Table.Call = {
 	end
 }
 
-ModUtil.Nodes.Table.UpValues = {
+ModUtil.Nodes.Data.UpValues = {
 	New = function( obj )
 		return ModUtil.UpValues( obj )
 	end,
@@ -2138,97 +2023,26 @@ ModUtil.Nodes.Table.UpValues = {
 	end
 }
 
--- Identifier system (EXPERIMENTAL)
+-- Identifier System
 
-ModUtil.Identifiers = ModUtil.EntangledInvertiblePair( )
-setmetatable( rawget( ModUtil.Identifiers.Table, "Index" ), { __mode = "k" } )
-setmetatable( rawget( ModUtil.Identifiers.Index, "Table" ), { __mode = "v" } )
+ModUtil.Identifiers = ModUtil.Entangled.Map.Unique( )
+setmetatable( rawget( ModUtil.Identifiers.Data, "Inverse" ), { __mode = "k" } )
+setmetatable( rawget( ModUtil.Identifiers.Inverse, "Data" ), { __mode = "v" } )
 
-ModUtil.Identifiers.Index._G = _G
-ModUtil.Identifiers.Index.ModUtil = ModUtil
+ModUtil.Identifiers.Inverse._G = _G
+ModUtil.Identifiers.Inverse.ModUtil = ModUtil
 
-ModUtil.Mods = ModUtil.EntangledInvertiblePair( )
-setmetatable( rawget( ModUtil.Mods.Table, "Index" ), { __mode = "k" } )
-setmetatable( rawget( ModUtil.Mods.Index, "Table" ), { __mode = "v" } )
-ModUtil.Mods.Table.ModUtil = ModUtil
+ModUtil.Mods = ModUtil.Entangled.Map.Unique( )
+setmetatable( rawget( ModUtil.Mods.Data, "Inverse" ), { __mode = "k" } )
+setmetatable( rawget( ModUtil.Mods.Inverse, "Data" ), { __mode = "v" } )
+ModUtil.Mods.Data.ModUtil = ModUtil
 
--- Mods tracking (EXPERIMENTAL) (WIP) (UNTESTED) (INCOMPLETE)
-
-ModUtil.Mod.History = { }
-
---[[
-	Users should only ever opt-in to running this function
-]]
-function ModUtil.Mod.History.Enable( )
-	if not ModHistory then
-		ModHistory = { }
-		if PersistVariable then PersistVariable{ Name = "ModHistory" } end
-		SaveIgnores[ "ModHistory" ] = nil
-	end
-end
-
-function ModUtil.Mod.History.Disable( )
-	if not ModHistory then
-		ModHistory = nil
-		if PersistVariable then PersistVariable{ Name = "ModHistory" } end
-		SaveIgnores[ "ModHistory" ] = nil
-	end
-end
-
-function ModUtil.Mod.History.UpdateEntry( options )
-	if options.Override then
-		ModUtil.Mod.History.Enable( )
-	end
-	if ModHistory then
-		local mod = options.Mod
-		local path = options.Path
-		if mod == nil then
-			mod = ModUtil.Mods.Table[ path ]
-		end
-		if path == nil then
-			path = ModUtil.Mods.Index[ mod ]
-		end
-		local entry = ModHistory[ path ]
-		if entry == nil then
-			entry = { }
-			ModHistory[ path ] = entry
-		end
-		if options.Version then
-			entry.Version = options.Version
-		end
-		if options.FirstTime or options.All then
-			if not entry.FirstTime then
-				entry.FirstTime = os.time( )
-			end
-		end
-		if options.LastTime or options.All then
-			entry.LastTime = os.time( )
-		end
-
-		if options.Count or options.All then
-			local count = entry.Count
-			if not count then
-				count = 0
-			end
-			entry.Count = count + 1
-		end
-	end
-end
-
-function ModUtil.Mod.History.Populate( options )
-	if not options then
-		options = { }
-	end
-	for path, mod in pairs( ModUtil.Mods.Table ) do
-		options.Path, options.Mod = path, mod
-		ModUtil.Mod.History.UpdateEntry( options )
-	end
-end
-
--- Function Wrapping
+-- Function Wrapping, Overriding
 
 ModUtil.Internal.WrapCallbacks = { }
 setmetatable( ModUtil.Internal.WrapCallbacks, { __mode = "k" } )
+ModUtil.Internal.Overrides = { }
+setmetatable( ModUtil.Internal.Overrides, { __mode = "k" } )
 
 function ModUtil.Wrap( base, wrap, mod )
 	local obj = { Base = base, Wrap = wrap, Mod = mod }
@@ -2248,28 +2062,76 @@ function ModUtil.Rewrap( obj )
 	return ModUtil.Wrap( ModUtil.Rewrap( node.Base ), node.Wrap, node.Mod )
 end
 
--- Overrides
-
-ModUtil.Internal.Overrides = { }
-
 function ModUtil.Override( base, value, mod )
     local obj = { Base = ModUtil.OriginalValue( base ), Mod = mod }
     ModUtil.Internal.Overrides[ value ] = obj
     return ModUtil.Rewrap( value )
 end
 
--- Override and Wrap interaction
-
-function ModUtil.OverridenValue( obj )
+function ModUtil.Overriden( obj )
 	local node = ModUtil.Internal.WrapCallbacks[ obj ]
 	if not node then return obj end
-	return ModUtil.OriginalValue( node.Base )
+	return ModUtil.Original( node.Base )
 end
 
-function ModUtil.OriginalValue( obj )
+function ModUtil.Original( obj )
 	local node = ModUtil.Internal.WrapCallbacks[ obj ] or ModUtil.Internal.Overrides[ obj ]
 	if not node then return obj end
-	return ModUtil.OriginalValue( node.Base )
+	return ModUtil.Original( node.Base )
 end
+
+---
+
+function ModUtil.IndexArray.Wrap( baseTable, indexArray, wrapFunc, mod )
+	ModUtil.IndexArray.Map( baseTable, indexArray, ModUtil.Wrap, wrapFunc, mod )
+end
+
+function ModUtil.IndexArray.Unwrap( baseTable, indexArray )
+	ModUtil.IndexArray.Map( baseTable, indexArray, ModUtil.Unwrap )
+end
+
+function ModUtil.IndexArray.Rewrap( baseTable, indexArray )
+	ModUtil.IndexArray.Map( baseTable, indexArray, ModUtil.Rewrap )
+end
+
+function ModUtil.IndexArray.Override( baseTable, indexArray, value, mod )
+	ModUtil.IndexArray.Map( baseTable, indexArray, ModUtil.Override, value, mod )
+end
+
+function ModUtil.IndexArray.Overriden( baseTable, indexArray )
+	ModUtil.IndexArray.Map( baseTable, indexArray, ModUtil.Overriden )
+end
+
+function ModUtil.IndexArray.Original( baseTable, indexArray )
+	ModUtil.IndexArray.Map( baseTable, indexArray, ModUtil.Original )
+end
+
+---
+
+function ModUtil.Path.Wrap( path, wrapFunc, mod )
+	ModUtil.Path.Map( path, ModUtil.Wrap, wrapFunc, mod )
+end
+
+function ModUtil.Path.Unwrap( path )
+	ModUtil.Path.Map( path, ModUtil.Unwrap )
+end
+
+function ModUtil.Path.Rewrap( path )
+	ModUtil.Path.Map( path, ModUtil.Rewrap )
+end
+
+function ModUtil.Path.Override( path, value, mod )
+	ModUtil.Path.Map( path, ModUtil.Override, value, mod )
+end
+
+function ModUtil.Path.Overriden( path )
+	ModUtil.Path.Map( path, ModUtil.Overriden )
+end
+
+function ModUtil.Path.Original( path )
+	ModUtil.Path.Map( path, ModUtil.Original )
+end
+
+-- Finalise Setup
 
 replaceGlobalEnvironment()
