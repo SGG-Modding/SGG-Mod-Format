@@ -268,23 +268,13 @@ end
 
 local function replaceGlobalEnvironment()
 
-	local split = function( path )
-		if type( path ) == "string"
-		and path:find("[.]")
-		and not path:find("[.][.]+")
-		and not path:find("^[.]")
-		and not path:find("[.]$") then
-			return ModUtil.Path.IndexArray( path )
-		end
-		return { path }
-	end
-	local get = ModUtil.IndexArray.Get
-
 	local meta = {
 		__index = function( _, key )
 			local value = getfromenv( 2, key )
 			if value ~= nil then return value end
-			return get( getenv( 2 ), split( key ) )
+			if type( key ) == "function" then
+				return key
+			end
 		end,
 		__newindex = function( _, key, value )
 			getenv( 2 )[ key ] = value
@@ -308,6 +298,8 @@ local function replaceGlobalEnvironment()
 
 	debug.setmetatable( __G._G, meta )
 end
+
+replaceGlobalEnvironment()
 
 -- Management
 
@@ -2077,7 +2069,7 @@ setmetatable( rawget( ModUtil.Mods.Data, "Inverse" ), { __mode = "k" } )
 setmetatable( rawget( ModUtil.Mods.Inverse, "Data" ), { __mode = "v" } )
 ModUtil.Mods.Data.ModUtil = ModUtil
 
--- Function Wrapping, Overriding
+-- Function Wrapping, Overriding, Referral
 
 ModUtil.Internal.WrapCallbacks = { }
 setmetatable( ModUtil.Internal.WrapCallbacks, { __mode = "k" } )
@@ -2120,6 +2112,13 @@ function ModUtil.Original( obj )
 	return ModUtil.Original( node.Base )
 end
 
+function ModUtil.Referer( obtainer, ... )
+	local args = table.pack( ... )
+	return function( ... )
+		obtainer( table.unpack( args ) )( ... )
+	end
+end
+
 ---
 
 function ModUtil.IndexArray.Wrap( baseTable, indexArray, wrapFunc, mod )
@@ -2145,6 +2144,11 @@ end
 function ModUtil.IndexArray.Original( baseTable, indexArray )
 	ModUtil.IndexArray.Map( baseTable, indexArray, ModUtil.Original )
 end
+
+function ModUtil.IndexArray.Referer( baseTable, indexArray )
+	return ModUtil.Referer( ModUtil.IndexArray.Get, baseTable, indexArray )
+end
+
 
 ---
 
@@ -2172,6 +2176,6 @@ function ModUtil.Path.Original( path )
 	ModUtil.Path.Map( path, ModUtil.Original )
 end
 
--- Finalise Setup
-
-replaceGlobalEnvironment()
+function ModUtil.Path.Referer( path )
+	return ModUtil.Referer( ModUtil.Path.Get, path )
+end
