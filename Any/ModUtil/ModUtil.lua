@@ -244,6 +244,27 @@ local function getenv( level )
 	end
 	return (diffNode or surrogateEnvironments)( )
 end
+local function getfromenv( level, key )
+	level = ( level or 1 ) + 1
+	local stack = { }
+	local l = level
+	local info = getinfo( l, "f" )
+	while info do
+		stack[ l - level ] = info.func
+		l = l + 1
+		info = getinfo( l, "f" )
+	end
+	l = l - level - 1
+	local diffNode
+	local envNode
+	for i = l, 1, -1 do
+		envNode = ( envNode or surrogateEnvironments )[ stack[ i ] ] or surrogateEnvironments
+		if envNode ~= surrogateEnvironments and envNode( )[ key ] ~= nil then
+			diffNode = envNode
+		end
+	end
+	return (diffNode or surrogateEnvironments)( )[ key ]
+end
 
 local function replaceGlobalEnvironment()
 
@@ -261,10 +282,9 @@ local function replaceGlobalEnvironment()
 
 	local meta = {
 		__index = function( _, key )
-			local env = getenv( 2 )
-			local value = env[ key ]
+			local value = getfromenv( 2, key )
 			if value ~= nil then return value end
-			return get( env, split( key ) )
+			return get( getenv( 2 ), split( key ) )
 		end,
 		__newindex = function( _, key, value )
 			getenv( 2 )[ key ] = value
@@ -1927,12 +1947,29 @@ ModUtil.Context.Meta = ModUtil.Context( function( info )
 end )
 
 ModUtil.Context.Call = ModUtil.Context( function( info )
+	local stack = { }
+	local l = 1
+	while info and info.context == ModUtil.Context.Call do
+		stack[ l ] = info.args[ 1 ]
+		l = l + 1
+		info = info.parent
+	end
+	l = l - 1
+	ModUtil.Print( l, ModUtil.ToString.Deep( stack ))
 	local envNode = surrogateEnvironments
-	--[[ TODO:
-		use info.parent / info.args / info.parent.args etc with
-			ModUtil.Nodes.Data.Call.Get
-			to generate an index array of funcs and gen environment
-	]]
+	for i = l, 1, -1 do
+		local func = stack[ i ]
+		if not envNode[ func ] then
+			local node = { }
+			local env = { }
+			env._G = env
+			envNodeData[ node ] = env
+			envNode[ func ] = node
+			setmetatable( node, envNodeMeta )
+		end
+		envNode = envNode[ func ]
+	end
+	ModUtil.Print( l, ModUtil.ToString.Deep( stack ))
 	local env = { data = envNode( ) }
 	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
