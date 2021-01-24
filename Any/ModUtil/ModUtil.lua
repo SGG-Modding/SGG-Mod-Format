@@ -234,13 +234,15 @@ local function getenv( level )
 		info = getinfo( l, "f" )
 	end
 	l = l - level - 1
-	local envNode = surrogateEnvironments
+	local diffNode
+	local envNode
 	for i = l, 1, -1 do
-		local func = stack[ i ]
-		envNode = envNode[ func ]
-		if not envNode then return __G end
+		envNode = ( envNode or surrogateEnvironments )[ stack[ i ] ] or surrogateEnvironments
+		if envNode ~= surrogateEnvironments then
+			diffNode = envNode
+		end
 	end
-	return envNode( )
+	return (diffNode or surrogateEnvironments)( )
 end
 
 local function replaceGlobalEnvironment()
@@ -507,29 +509,35 @@ function ModUtil.ToString.DeepNamespaces( o, seen )
 end
 
 function ModUtil.MapVars( mapFunc, ... )
-	local out = {}
-	for _, v in ipairs{ ... } do
-		table.insert( out, mapFunc( v ) )
+	local out = { }
+	local args = table.pack( ... )
+	for i = 1, args.n do
+		table.insert( out, mapFunc( args[ i ] ) )
 	end
 	return table.unpack( out )
 end
 
-function ModUtil.MapTable( mapFunc, tableArg )
-	local out = {}
+function ModUtil.Table.MapCopy( tableArg, mapFunc )
+	local out = { }
 	for k, v in pairs( tableArg ) do
 		out[ k ] = mapFunc( v )
 	end
 	return out
 end
 
+function ModUtil.Table.Map( tableArg, mapFunc )
+	for k, v in pairs( tableArg ) do
+		tableArg[ k ] = mapFunc( v )
+	end
+end
+
 function ModUtil.String.Join( sep, ... )
 	local out = {}
-	local args = { ... }
-	local i
-	i, out[ 1 ] = inext( args )
-	for _, v in inext, args, i do
+	local args = table.pack( ... )
+	out[ 1 ] = args[ 1 ]
+	for i = 2, args.n do
 		table.insert( out, sep )
-		table.insert( out, v )
+		table.insert( out, args[ i ] )
 	end
 	return table.concat( out )
 end
@@ -564,7 +572,7 @@ function ModUtil.Table.Replace( target, data )
 	end
 end
 
-function ModUtil.Table.IsUnKeyed( tableArg )
+function ModUtil.Table.UnKeyed( tableArg )
 	local lk = 0
 	for k in pairs( tableArg ) do
 		if type( k ) ~= "number" then
@@ -811,11 +819,11 @@ end
 		}
 	}
 ]]
-function ModUtil.Table.NilMap( inTable, nilTable )
+function ModUtil.Table.NilMerge( inTable, nilTable )
 	for nilKey, nilVal in pairs( nilTable ) do
 		local inVal = inTable[ nilKey ]
 		if type( nilVal ) == "table" and type( inVal ) == "table" then
-			ModUtil.Table.NilMap( inVal, nilVal )
+			ModUtil.Table.NilMerge( inVal, nilVal )
 		else
 			inTable[ nilKey ] = nil
 		end
@@ -849,11 +857,11 @@ end
 		}
 	}
 ]]
-function ModUtil.Table.SetMap( inTable, setTable )
+function ModUtil.Table.Merge( inTable, setTable )
 	for setKey, setVal in pairs( setTable ) do
 		local inVal = inTable[ setKey ]
 		if type( setVal ) == "table" and type( inVal ) == "table" then
-			ModUtil.Table.SetMap( inVal, setVal )
+			ModUtil.Table.Merge( inVal, setVal )
 		else
 			inTable[ setKey ] = setVal
 		end
@@ -1621,7 +1629,7 @@ ModUtil.Metatables.Locals.Stacked = {
 	and its 'local hasRequirement' as ModUtil.Locals.Stacked().hasRequirement.
 ]]
 function ModUtil.Locals.Stacked( level )
-	local locals = { levels = ModUtil.StackLevels( ( level or 1 ) ) }
+	local locals = { levels = ModUtil.StackLevels( level or 1 ) }
 	setmetatable( locals, ModUtil.Metatables.Locals.Stacked )
 	return locals
 end
@@ -1824,13 +1832,13 @@ ModUtil.Context = { }
 ModUtil.Metatables.Environment = {
 	__index = function( self, key )
 		if key == "_G" then
-			return rawget( self, "global" )
+			return rawget( self, "global" ) or self
 		end
 		local value = rawget( self, "data" )[ key ]
 		if value ~= nil then
 			return value
 		end
-		return ( rawget( self, "fallback" ) or { } )[ key ]
+		return ( rawget( self, "fallback" ) or _G )[ key ]
 	end,
 	__newindex = function( self, key, value )
 		rawget( self, "data" )[ key ] = value
@@ -1842,26 +1850,21 @@ ModUtil.Metatables.Environment = {
 		return #rawget( self, "data" )
 	end,
 	__next = function( self, key )
-		local out, first = { key }, true
-		while out[ 2 ] == nil and ( out[ 1 ] ~= nil or first ) do
-			first = false
-			out = { next( rawget( self, "data" ), out[ 1 ] ) }
-			if out[ 1 ] == "_G" then
-				out = { "_G", rawget( self, "global" ) }
+		local data, value = rawget( self, "data" ), nil
+		repeat
+			key, value = next( data, key )
+			if key == "_G" then
+				return rawget( self, "global" ) or self
 			end
-		end
-		return table.unpack( out )
+		until value ~= nil or key == nil
+		return key, value
 	end,
 	__inext = function( self, idx )
-		local out, first = { idx }, true
-		while out[ 2 ] == nil and ( out[ 1 ] ~= nil or first ) do
-			first = false
-			out = { inext( rawget( self, "data" ), out[ 1 ] ) }
-			if out[ 1 ] == "_G" then
-				out = { "_G", rawget( self, "global" ) }
-			end
-		end
-		return table.unpack( out )
+		local data, value = rawget( self, "data" ), nil
+		repeat
+			idx, value = next( data, idx )
+		until value ~= nil or idx == nil
+		return idx, value
 	end,
 	__pairs = function( self )
 		return qrawpairs( self )
@@ -1871,28 +1874,35 @@ ModUtil.Metatables.Environment = {
 	end
 }
 
+local threadContexts = { }
+setmetatable( threadContexts, { __mode = "kv" } )
+
 ModUtil.Metatables.Context = {
 	__call = function( self, callContext, ... )
-		local oldContextInfo = ModUtil.Locals.Stacked( 2 )._ContextInfo
+
+		local thread = coroutine.running( )
+
 		local contextInfo = {
 			call = callContext,
-			parent = oldContextInfo
+			wrap = function( ... ) callContext( ... ) end,
+			parent = threadContexts[ thread ]
 		}
 
-		local callContextProcessor = rawget( self, "callContextProcessor" )
-		contextInfo.callContextProcessor = callContextProcessor
+		threadContexts[ thread ] = contextInfo
 
-		local contextData, contextArgs = callContextProcessor( contextInfo, ... )
-		contextData = contextData or _G
-		contextArgs = contextArgs or { }
+		contextInfo.context = self
+		contextInfo.args = table.pack( ... )
+		local processed = table.pack( rawget( self, "callContextProcessor" )( contextInfo, ... ) )
+		contextInfo.params = table.pack( table.unpack( processed, 2, processed.n ) )
+		contextInfo.data = processed[ 1 ]
 
-		local _ContextInfo = contextInfo
-		_ContextInfo.data = contextData
-		_ContextInfo.args = contextArgs
+		local envNode = { }
+		setmetatable( envNode, envNodeMeta )
+		envNodeData[ envNode ] = contextInfo.data
+		surrogateEnvironments[ contextInfo.wrap ] = envNode
+		contextInfo.wrap( table.unpack( contextInfo.params ) )
 
-		local callWrap = function( ... ) callContext( ... ) end
-		surrogateEnvironments[ callWrap ] = contextData
-		callWrap( table.unpack( contextArgs ) )
+		threadContexts[ thread ] = contextInfo.parent
 	end
 }
 
@@ -1905,15 +1915,13 @@ setmetatable( ModUtil.Context, {
 } )
 
 ModUtil.Context.Data = ModUtil.Context( function( info )
-	local env = { data = info.args[ 1 ], fallback = _G }
-	env.global = env
+	local env = { data = info.args[ 1 ] }
 	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )
 
 ModUtil.Context.Meta = ModUtil.Context( function( info )
-	local env = { data = ModUtil.Nodes.Data.Metatable.New( info.args[ 1 ] ), fallback = _G }
-	env.global = env
+	local env = { data = ModUtil.Nodes.Data.Metatable.New( info.args[ 1 ] ) }
 	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )
@@ -1925,8 +1933,7 @@ ModUtil.Context.Call = ModUtil.Context( function( info )
 			ModUtil.Nodes.Data.Call.Get
 			to generate an index array of funcs and gen environment
 	]]
-	local env = { data = envNode( ), fallback = _G }
-	env.global = env
+	local env = { data = envNode( ) }
 	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )

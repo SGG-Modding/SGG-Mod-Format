@@ -1,7 +1,7 @@
 
 ModUtil.Mod.Register( "Hades", ModUtil )
 
-ModUtil.Table.SetMap( ModUtil.Hades, {
+ModUtil.Table.Merge( ModUtil.Hades, {
 	PrintStackHeight = 10,
 	PrintStackCapacity = 80
 } )
