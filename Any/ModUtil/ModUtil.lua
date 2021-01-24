@@ -272,7 +272,8 @@ local function replaceGlobalEnvironment()
 		__index = function( _, key )
 			local value = getfromenv( 2, key )
 			if value ~= nil then return value end
-			if type( key ) == "function" then
+			local t = type( key )
+			if t == "function" or t == "table" then
 				return key
 			end
 		end,
@@ -2112,11 +2113,45 @@ function ModUtil.Original( obj )
 	return ModUtil.Original( node.Base )
 end
 
-function ModUtil.Referer( obtainer, ... )
+function ModUtil.ReferFunction( obtainer, ... )
 	local args = table.pack( ... )
 	return function( ... )
-		obtainer( table.unpack( args ) )( ... )
+		return obtainer( table.unpack( args ) )( ... )
 	end
+end
+
+ModUtil.Metatables.ReferTable = {
+	__index = function( self, value )
+		return rawget( self, "obtain" )( )[ value ]
+	end,
+	__newindex = function( self, value, key )
+		rawget( self, "obtain" )( )[ value ] = key
+	end,
+	__len = function( self )
+		return #rawget( self, "obtain" )( )
+	end,
+	__next = function( self, value )
+		return next( rawget( self, "obtain" )( ), value )
+	end,
+	__inext = function( self, idx )
+		return inext( rawget( self, "obtain" )( ), idx )
+	end,
+	__pairs = function( self )
+		return pairs( rawget( self, "obtain" )( ) )
+	end,
+	__ipairs = function( self )
+		return ipairs( rawget( self, "obtain" )( ) )
+	end
+}
+
+function ModUtil.ReferTable( obtainer, ... )
+	local args = table.pack( ... )
+	local obtain = function( )
+		return obtainer( table.unpack( args ) )
+	end
+	local referTable = { obtain = obtain }
+	setmetatable( referTable, ModUtil.Metatables.ReferTable )
+	return referTable
 end
 
 ---
@@ -2145,10 +2180,13 @@ function ModUtil.IndexArray.Original( baseTable, indexArray )
 	ModUtil.IndexArray.Map( baseTable, indexArray, ModUtil.Original )
 end
 
-function ModUtil.IndexArray.Referer( baseTable, indexArray )
-	return ModUtil.Referer( ModUtil.IndexArray.Get, baseTable, indexArray )
+function ModUtil.IndexArray.ReferFunction( baseTable, indexArray )
+	return ModUtil.ReferFunction( ModUtil.IndexArray.Get, baseTable, indexArray )
 end
 
+function ModUtil.IndexArray.ReferTable( baseTable, indexArray )
+	return ModUtil.ReferTable( ModUtil.IndexArray.Get, baseTable, indexArray )
+end
 
 ---
 
@@ -2176,6 +2214,10 @@ function ModUtil.Path.Original( path )
 	ModUtil.Path.Map( path, ModUtil.Original )
 end
 
-function ModUtil.Path.Referer( path )
-	return ModUtil.Referer( ModUtil.Path.Get, path )
+function ModUtil.Path.ReferFunction( path )
+	return ModUtil.ReferFunction( ModUtil.Path.Get, path )
+end
+
+function ModUtil.Path.ReferTable( path )
+	return ModUtil.ReferTable( ModUtil.Path.Get, path )
 end

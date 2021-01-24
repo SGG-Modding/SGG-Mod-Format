@@ -365,11 +365,11 @@ function ModUtil.Hades.NewMenuYesNo( group, closeFunc, openFunc, yesFunc, noFunc
 
 	components.CloseButton = CreateScreenComponent({ Name = "ButtonClose", Scale = 0.7, Group = group })
 	Attach({ Id = components.CloseButton.Id, DestinationId = components.Background.Id, OffsetX = 0, OffsetY = ScreenCenterY - 315 })
-	components.CloseButton.OnPressedFunctionName = ModUtil.Path.Referer( "ModUtil.Hades.CloseMenuYesNo" )
+	components.CloseButton.OnPressedFunctionName = ModUtil.Path.ReferFunction( "ModUtil.Hades.CloseMenuYesNo" )
 	components.CloseButton.ControlHotkey = "Cancel"
 
 	components.YesButton = CreateScreenComponent({ Name = "BoonSlot1", Group = group, Scale = 0.35, })
-	components.YesButton.OnPressedFunctionName = ModUtil.Path.Referer( "ModUtil.Anchors.Menu."..group..".Funcs.Yes" )
+	components.YesButton.OnPressedFunctionName = ModUtil.Path.ReferFunction( "ModUtil.Anchors.Menu."..group..".Funcs.Yes" )
 	SetScaleX({Id = components.YesButton.Id, Fraction = 0.75})
 	SetScaleY({Id = components.YesButton.Id, Fraction = 1.15})
 	Attach({ Id = components.YesButton.Id, DestinationId = components.Background.Id, OffsetX = -150, OffsetY = 75 })
@@ -379,7 +379,7 @@ function ModUtil.Hades.NewMenuYesNo( group, closeFunc, openFunc, yesFunc, noFunc
 	})
 	
 	components.NoButton = CreateScreenComponent({ Name = "BoonSlot1", Group = group, Scale = 0.35, })
-	components.NoButton.OnPressedFunctionName = ModUtil.Path.Referer( "ModUtil.Anchors.Menu."..group..".Funcs.No" )
+	components.NoButton.OnPressedFunctionName = ModUtil.Path.ReferFunction( "ModUtil.Anchors.Menu."..group..".Funcs.No" )
 	SetScaleX({Id = components.NoButton.Id, Fraction = 0.75})
 	SetScaleY({Id = components.NoButton.Id, Fraction = 1.15})
 	Attach({ Id = components.NoButton.Id, DestinationId = components.Background.Id, OffsetX = 150, OffsetY = 75 })
