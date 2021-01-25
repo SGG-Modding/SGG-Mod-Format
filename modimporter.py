@@ -21,6 +21,8 @@ except ModuleNotFoundError:
 
 ## Global Settings
 
+game_aliases = {"Resources":"Hades"} #alias for temporary mac support
+
 logging.basicConfig(filename="modimporter.log.txt",filemode='w')
 
 modsdir = "Mods"
@@ -42,10 +44,9 @@ modified_lua = "-- "+modified+" "
 modified_xml = "<!-- "+modified+" -->"
 modified_sjson = "/* "+modified+" */"
 
-default_to = defaultdict(str)
-default_to.update({"Hades":["Scripts/RoomManager.lua"],
+default_to = {"Hades":["Scripts/RoomManager.lua"],
             "Pyre":["Scripts/Campaign.lua","Scripts/MPScripts.lua"],
-            "Transistor":["Scripts/AllCampaignScripts.txt"]})
+            "Transistor":["Scripts/AllCampaignScripts.txt"]}
 default_priority = 100
 
 kwrd_to = ["To"]
@@ -323,6 +324,7 @@ def strup(string):
 selffile = "".join(os.path.realpath(__file__).replace("\\","/").split(".")[:-1])+".py"
 gamedir = os.path.join(os.path.realpath(gamerel), '').replace("\\","/")[:-1]
 game = strup(gamedir.split("/")[-1])
+game = game_aliases.get(game,game)
 
 def in_directory(file,nobackup=True):
     if file.find(".pkg") == -1:
