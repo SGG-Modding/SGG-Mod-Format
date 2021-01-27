@@ -1,5 +1,6 @@
 # Mod Importer for SuperGiant Games' Games
 
+import argparse
 import os
 from collections import defaultdict
 from pathlib import Path
@@ -592,6 +593,10 @@ def start():
     print("\n"+str(bs)+" base file"+"s"*(bs!=1)+" import"+"s"*(bs==1)+" a total of "+str(ms)+" mod file"+"s"*(ms!=1)+".")
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--game', '-g', choices=[game for game in default_to])
+    args = parser.parse_args()
+    game = args.game or game
     try:
         start()
     except Exception as e:

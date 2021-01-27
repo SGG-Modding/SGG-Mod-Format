@@ -1,9 +1,10 @@
 
-ModUtil.RegisterMod("Hades",ModUtil)
-ModUtil.Hades={
+ModUtil.RegisterMod( "Hades", ModUtil )
+
+ModUtil.MapSetTable( ModUtil.Hades, {
 	PrintStackHeight = 10,
 	PrintStackCapacity = 80
-}
+} )
 
 ModUtil.Anchors.PrintOverhead = {}
 
@@ -156,11 +157,10 @@ local function ClosePrintStack()
 		ModUtil.Anchors.PrintStack.KeepOpen = false
 		
 		CloseScreen(GetAllIds(ModUtil.Anchors.PrintStack.Components),0)
+		ModUtil.Anchors.CloseFuncs["PrintStack"] = nil
 		ModUtil.Anchors.PrintStack = nil
 	end
 end
-
-OnAnyLoad{ ClosePrintStack }
 
 local function OrderPrintStack(screen,components)
 	
@@ -249,6 +249,7 @@ function ModUtil.Hades.PrintStack( text, delay, color, bgcol, fontsize, font, so
 	if not ModUtil.Anchors.PrintStack then
 		first = true
 		ModUtil.Anchors.PrintStack = { Components = {} }
+		ModUtil.Anchors.CloseFuncs["PrintStack"] = ClosePrintStack
 	end
 	local screen = ModUtil.Anchors.PrintStack
 	local components = screen.Components
