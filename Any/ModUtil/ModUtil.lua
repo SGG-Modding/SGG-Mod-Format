@@ -211,25 +211,36 @@ local __G = ModUtil.RawInterface( _G )
 __G.__G = __G
 
 local surrogateEnvironments = { }
-local envNodeData = { [surrogateEnvironments] = __G }
+local envNodeInfo = { [ surrogateEnvironments ] = { data = __G, depth = 0, parent = nil } }
+setmetatable( envNodeInfo, { __mode = "k" } )
 local envNodeMeta = {
 	__mode = "k",
-	__index = ModUtil.RawInterface( surrogateEnvironments ),
+	__gc = function( self )
+		envNodeInfo[ self ] = nil
+	end,
+	__index = ModUtil.RawInterface( surrogateEnvironments ), -- may need to remove this
 	__call = function( self )
-		return envNodeData[ self ]
+		return envNodeInfo[ self ].data
+	end,
+	__len = function( self )
+		return envNodeInfo[ self ].depth
+	end,
+	__unm = function( self )
+		return envNodeInfo[ self ].parent
 	end
 }
 setmetatable( surrogateEnvironments, envNodeMeta )
-setmetatable( envNodeData, { __mode = "k" } )
 
 local getinfo = debug.getinfo
 local function getenv( level )
 	level = ( level or 1 ) + 1
 	local stack = { }
+	local index = { }
 	local l = level
 	local info = getinfo( l, "f" )
 	while info do
-		stack[ l - level ] = info.func
+		local i, func = l - level, info.func
+		stack[ i ], index[ func ] = func, i
 		l = l + 1
 		info = getinfo( l, "f" )
 	end
@@ -242,35 +253,14 @@ local function getenv( level )
 			diffNode = envNode
 		end
 	end
-	return (diffNode or surrogateEnvironments)( )
-end
-local function getfromenv( level, key )
-	level = ( level or 1 ) + 1
-	local stack = { }
-	local l = level
-	local info = getinfo( l, "f" )
-	while info do
-		stack[ l - level ] = info.func
-		l = l + 1
-		info = getinfo( l, "f" )
-	end
-	l = l - level - 1
-	local diffNode
-	local envNode
-	for i = l, 1, -1 do
-		envNode = ( envNode or surrogateEnvironments )[ stack[ i ] ] or surrogateEnvironments
-		if envNode ~= surrogateEnvironments and envNode( )[ key ] ~= nil then
-			diffNode = envNode
-		end
-	end
-	return (diffNode or surrogateEnvironments)( )[ key ]
+	return ( diffNode or surrogateEnvironments )( )
 end
 
-local function replaceGlobalEnvironment()
+local function replaceGlobalEnvironment( )
 
 	local meta = {
 		__index = function( _, key )
-			local value = getfromenv( 2, key )
+			local value = getenv( 2 )[ key ]
 			if value ~= nil then return value end
 			local t = type( key )
 			if t == "function" or t == "table" then
@@ -1909,10 +1899,10 @@ ModUtil.Metatables.Context = {
 		contextInfo.params = table.pack( table.unpack( processed, 2, processed.n ) )
 		contextInfo.data = processed[ 1 ]
 
-		local envNode = { }
-		setmetatable( envNode, envNodeMeta )
-		envNodeData[ envNode ] = contextInfo.data
-		surrogateEnvironments[ contextInfo.wrap ] = envNode
+		contextInfo.envNode = { }
+		setmetatable( contextInfo.envNode, envNodeMeta )
+		envNodeInfo[ contextInfo.envNode ] = { data = contextInfo.data, parent = surrogateEnvironments, depth = 1 }
+		surrogateEnvironments[ contextInfo.wrap ] = contextInfo.envNode
 		contextInfo.wrap( table.unpack( contextInfo.params ) )
 
 		threadContexts[ thread ] = contextInfo.parent
@@ -1953,10 +1943,11 @@ ModUtil.Context.Call = ModUtil.Context( function( info )
 	for i = l, 1, -1 do
 		local func = stack[ i ]
 		if not envNode[ func ] then
-			local node = { }
 			local env = { }
 			env._G = env
-			envNodeData[ node ] = env
+			setmetatable( env, { __index = envNode( ) } )
+			local node = { }
+			envNodeInfo[ node ] = { data = env, parent = envNode, depth = #envNode + 1 }
 			envNode[ func ] = node
 			setmetatable( node, envNodeMeta )
 		end
