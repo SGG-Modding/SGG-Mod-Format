@@ -5,7 +5,7 @@ Author: MagicGonads
 	Library to allow mods to be more compatible with eachother and expand capabilities.
 	Use the mod importer to import this mod to ensure it is loaded in the right position.
 
-]]
+--]]
 ModUtil = {
 
 	Mod = { },
@@ -163,11 +163,11 @@ end
 	- table.unpack
 	- table.concat
 	- table.sort
-]]
+--]]
 
 -- Environment Context (EXPERIMENTAL)
 
--- bind to locals to minimise environment recursion and improve speed
+--- bind to locals to minimise environment recursion and improve speed
 local
 	rawset, rawlen, ModUtil, getmetatable, setmetatable, pairs, ipairs, coroutine,
 		rawpairs, rawipairs, qrawpairs, qrawipairs, tostring
@@ -196,7 +196,7 @@ function ModUtil.RawInterface( obj )
 		__pairs = function( )
 			return rawpairs( obj )
 		end,
-		__ipairs = function(  )
+		__ipairs = function( )
 			return rawipairs( obj )
 		end
 	}
@@ -210,50 +210,56 @@ end
 local __G = ModUtil.RawInterface( _G )
 __G.__G = __G
 
-local surrogateEnvironments = { }
-local envNodeInfo = { [ surrogateEnvironments ] = { data = __G, depth = 0, parent = nil } }
+local envNodes = { }
+local envNodeInfo = { }
 setmetatable( envNodeInfo, { __mode = "k" } )
 local envNodeMeta = {
 	__mode = "k",
 	__gc = function( self )
 		envNodeInfo[ self ] = nil
-	end,
-	__index = ModUtil.RawInterface( surrogateEnvironments ), -- may need to remove this
-	__call = function( self )
-		return envNodeInfo[ self ].data
-	end,
-	__len = function( self )
-		return envNodeInfo[ self ].depth
-	end,
-	__unm = function( self )
-		return envNodeInfo[ self ].parent
 	end
 }
-setmetatable( surrogateEnvironments, envNodeMeta )
+setmetatable( envNodes, envNodeMeta )
 
 local getinfo = debug.getinfo
 local function getenv( level )
-	level = ( level or 1 ) + 1
+	level = level or 1
 	local stack = { }
 	local index = { }
-	local l = level
-	local info = getinfo( l, "f" )
-	while info do
-		local i, func = l - level, info.func
-		stack[ i ], index[ func ] = func, i
-		l = l + 1
-		info = getinfo( l, "f" )
-	end
-	l = l - level - 1
-	local diffNode
-	local envNode
-	for i = l, 1, -1 do
-		envNode = ( envNode or surrogateEnvironments )[ stack[ i ] ] or surrogateEnvironments
-		if envNode ~= surrogateEnvironments then
-			diffNode = envNode
+	local l = 1
+	do
+		local info = getinfo( l + level, "f" )
+		while info do
+			stack[ l ], index[ info.func ] = info.func, l
+			info = getinfo( l + level, "f" )
+			l = l + 1
 		end
 	end
-	return ( diffNode or surrogateEnvironments )( )
+	local envNode = envNodes
+	local i, j = l, l
+	while true do
+		j = j - 1
+		local func = stack[ j ]
+		if envNode[ func ] then
+			envNode = envNode[ func ]
+			if j == 1 then return envNodeInfo[ envNode ].data end
+			i = i - 1
+		end
+		if j == 1 then
+			if i == l then return __G end
+			j = i
+			local info = envNodeInfo[ envNode ]
+			if info then
+				envNode = info.parent
+				info = envNodeInfo[ envNode ]
+				if info then
+					i = index[ info.func ]
+				else
+					i = l
+				end
+			end
+		end
+	end
 end
 
 local function replaceGlobalEnvironment( )
@@ -290,8 +296,6 @@ local function replaceGlobalEnvironment( )
 	debug.setmetatable( __G._G, meta )
 end
 
-replaceGlobalEnvironment()
-
 -- Management
 
 --[[
@@ -300,7 +304,7 @@ replaceGlobalEnvironment()
 
 	modName - the name of the mod
 	parent	- the parent mod, or nil if this mod stands alone
-]]
+--]]
 function ModUtil.Mod.Register( modName, parent, content )
 	if not parent then
 		parent = _G
@@ -328,44 +332,44 @@ end
 
 --[[
 	Tell each screen anchor that they have been forced closed by the game
-]]
-function ModUtil.Internal.ForceClosed( triggerArgs )
+--]]
+local function forceClosed( triggerArgs )
 	for _, v in pairs( ModUtil.Anchors.CloseFuncs ) do
 		v( nil, nil, triggerArgs )
 	end
 	ModUtil.Anchors.CloseFuncs = { }
 	ModUtil.Anchors.Menu = { }
 end
-OnAnyLoad{ function( triggerArgs ) ModUtil.Internal.ForceClosed( triggerArgs ) end }
+OnAnyLoad{ function( triggerArgs ) forceClosed( triggerArgs ) end }
 
-ModUtil.Internal.FuncsToLoad = { }
+local funcsToLoad = { }
 
-function ModUtil.Internal.LoadFuncs( triggerArgs )
-	for _, v in pairs( ModUtil.Internal.FuncsToLoad ) do
+local function loadFuncs( triggerArgs )
+	for _, v in pairs( funcsToLoad ) do
 		v( triggerArgs )
 	end
-	ModUtil.Internal.FuncsToLoad = { }
+	funcsToLoad = { }
 end
-OnAnyLoad{ function( triggerArgs ) ModUtil.Internal.LoadFuncs( triggerArgs ) end }
+OnAnyLoad{ function( triggerArgs ) loadFuncs( triggerArgs ) end }
 
 --[[
 	Run the provided function once on the next in-game load.
 
 	triggerFunction - the function to run
-]]
+--]]
 function ModUtil.LoadOnce( triggerFunction )
-	table.insert( ModUtil.Internal.FuncsToLoad, triggerFunction )
+	table.insert( funcsToLoad, triggerFunction )
 end
 
 --[[
 	Cancel running the provided function once on the next in-game load.
 
 	triggerFunction - the function to cancel running
-]]
+--]]
 function ModUtil.CancelLoadOnce( triggerFunction )
-	for i, v in ipairs( ModUtil.Internal.FuncsToLoad ) do
+	for i, v in ipairs( funcsToLoad ) do
 		if v == triggerFunction then
-			table.remove( ModUtil.Internal.FuncsToLoad, i )
+			table.remove( funcsToLoad, i )
 		end
 	end
 end
@@ -685,7 +689,7 @@ end
 --[[
 	Call a function with the provided arguments
 	instead of halting when an error occurs it prints the entire error traceback
-]]
+--]]
 function ModUtil.DebugCall( f, ... )
 	return xpcall( f, function( err )
 		ModUtil.Print( err )
@@ -701,11 +705,11 @@ end
 --[[
 	Return a slice of an array table, python style
 		would be written state[ start : stop : step ] in python
-	
+
 	start and stop are offsets rather than ordinals
 		meaning 0 corresponds to the start of the array
 		and -1 corresponds to the end
-]]
+--]]
 function ModUtil.Array.Slice( state, start, stop, step )
 	local slice = { }
 	local n = #state
@@ -734,7 +738,7 @@ end
 
 	Table			 - the table to retrieve from
 	indexArray	- the list of indices
-]]
+--]]
 function ModUtil.IndexArray.Get( baseTable, indexArray )
 	local node = baseTable
 	for _, key in ipairs( indexArray ) do
@@ -764,7 +768,7 @@ end
 	baseTable	 - the table to set the value in
 	indexArray	- the list of indices
 	value	- the value to add
-]]
+--]]
 function ModUtil.IndexArray.Set( baseTable, indexArray, value )
 	if next( indexArray ) == nil then
 		return false -- can't set the input argument
@@ -821,7 +825,7 @@ end
 			InnerBar = nil
 		}
 	}
-]]
+--]]
 function ModUtil.Table.NilMerge( inTable, nilTable )
 	for nilKey, nilVal in pairs( nilTable ) do
 		local inVal = inTable[ nilKey ]
@@ -859,7 +863,7 @@ end
 			InnerBar = 8
 		}
 	}
-]]
+--]]
 function ModUtil.Table.Merge( inTable, setTable )
 	for setKey, setVal in pairs( setTable ) do
 		local inVal = inTable[ setKey ]
@@ -879,7 +883,7 @@ end
 	Concatenates two index arrays, in order.
 
 	a, b - the index arrays
-]]
+--]]
 function ModUtil.IndexArray.Join( a, b )
 	local c = { }
 	local j = 0
@@ -912,7 +916,7 @@ end
 	manipulation functions, such as ModUtil.IndexArray.Set and ModUtil.IndexArray.Get.
 
 	path - a dot-separated string that represents a path into a table
-]]
+--]]
 function ModUtil.Path.IndexArray( path )
 	if type( path ) == "table" then return path end -- assume index array is given
 	local s = ""
@@ -940,7 +944,7 @@ end
 	path - the path to get the value
 	base - (optional) The table to retreive the value from.
 				 If not provided, retreive a global.
-]]
+--]]
 function ModUtil.Path.Get( path, base )
 	return ModUtil.IndexArray.Get( base or _G, ModUtil.Path.IndexArray( path ) )
 end
@@ -954,7 +958,7 @@ end
 	path - the path to get the value
 	base - (optional) The table to retreive the value from.
 				 If not provided, retreive a global.
-]]
+--]]
 function ModUtil.Path.Set( path, value, base )
 	return ModUtil.IndexArray.Set( base or _G, ModUtil.Path.IndexArray( path ), value )
 end
@@ -1513,7 +1517,7 @@ ModUtil.Metatables.Locals.Values.__inext = ModUtil.Metatables.Locals.Values.__ne
 	for i, name, value in pairs( ModUtil.Locals.Values( level ) ) do
 		--
 	end
-]]
+--]]
 function ModUtil.Locals.Values( level )
 	if level == nil then level = 1 end
 	local locals = { level = ModUtil.StackLevel( level + 1 ) }
@@ -1554,7 +1558,7 @@ ModUtil.Metatables.Locals.Names.__inext = ModUtil.Metatables.Locals.Names.__next
 	for i, name, value in pairs( ModUtil.Locals.Names( level ) ) do
 		--
 	end
-]]
+--]]
 function ModUtil.Locals.Names( level )
 	if level == nil then level = 1 end
 	local locals = { level = ModUtil.StackLevel( level + 1 ) }
@@ -1630,7 +1634,7 @@ ModUtil.Metatables.Locals.Stacked = {
 	For example, if your function is called from CreateTraitRequirements,
 	you could access its 'local screen' as ModUtil.Locals.Stacked().screen
 	and its 'local hasRequirement' as ModUtil.Locals.Stacked().hasRequirement.
-]]
+--]]
 function ModUtil.Locals.Stacked( level )
 	local locals = { levels = ModUtil.StackLevels( level or 1 ) }
 	setmetatable( locals, ModUtil.Metatables.Locals.Stacked )
@@ -1901,8 +1905,8 @@ ModUtil.Metatables.Context = {
 
 		contextInfo.envNode = { }
 		setmetatable( contextInfo.envNode, envNodeMeta )
-		envNodeInfo[ contextInfo.envNode ] = { data = contextInfo.data, parent = surrogateEnvironments, depth = 1 }
-		surrogateEnvironments[ contextInfo.wrap ] = contextInfo.envNode
+		envNodeInfo[ contextInfo.envNode ] = { data = contextInfo.data, parent = envNodes, func = contextInfo.wrap }
+		envNodes[ contextInfo.wrap ] = contextInfo.envNode
 		contextInfo.wrap( table.unpack( contextInfo.params ) )
 
 		threadContexts[ thread ] = contextInfo.parent
@@ -1939,22 +1943,24 @@ ModUtil.Context.Call = ModUtil.Context( function( info )
 	end
 	l = l - 1
 	ModUtil.Print( l, ModUtil.ToString.Deep( stack ))
-	local envNode = surrogateEnvironments
+	local envNode = envNodes
 	for i = l, 1, -1 do
 		local func = stack[ i ]
 		if not envNode[ func ] then
 			local env = { }
 			env._G = env
-			setmetatable( env, { __index = envNode( ) } )
+			if envNodeInfo[ envNode ] then
+				setmetatable( env, { __index = envNodeInfo[ envNode ].data } )
+			end
 			local node = { }
-			envNodeInfo[ node ] = { data = env, parent = envNode, depth = #envNode + 1 }
+			envNodeInfo[ node ] = { data = env, parent = envNode, func = func }
 			envNode[ func ] = node
 			setmetatable( node, envNodeMeta )
 		end
 		envNode = envNode[ func ]
 	end
 	ModUtil.Print( l, ModUtil.ToString.Deep( stack ))
-	local env = { data = envNode( ) }
+	local env = { data = envNodeInfo[ envNode ].data }
 	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )
@@ -2063,43 +2069,43 @@ ModUtil.Mods.Data.ModUtil = ModUtil
 
 -- Function Wrapping, Overriding, Referral
 
-ModUtil.Internal.WrapCallbacks = { }
-setmetatable( ModUtil.Internal.WrapCallbacks, { __mode = "k" } )
-ModUtil.Internal.Overrides = { }
-setmetatable( ModUtil.Internal.Overrides, { __mode = "k" } )
+local wrapCallbacks = { }
+setmetatable( wrapCallbacks, { __mode = "k" } )
+local overrides = { }
+setmetatable( overrides, { __mode = "k" } )
 
 function ModUtil.Wrap( base, wrap, mod )
 	local obj = { Base = base, Wrap = wrap, Mod = mod }
 	local func = function( ... ) return wrap( base, ... ) end
-	ModUtil.Internal.WrapCallbacks[ func ] = obj
+	wrapCallbacks[ func ] = obj
 	return func
 end
 
 function ModUtil.Unwrap( obj )
-	local callback = ModUtil.Internal.WrapCallbacks[ obj ]
+	local callback = wrapCallbacks[ obj ]
 	return callback and callback.Base or obj
 end
 
 function ModUtil.Rewrap( obj )
-	local node = ModUtil.Internal.WrapCallbacks[ obj ]
+	local node = wrapCallbacks[ obj ]
 	if not node then return ModUtil.OverridenValue( obj ) end
 	return ModUtil.Wrap( ModUtil.Rewrap( node.Base ), node.Wrap, node.Mod )
 end
 
 function ModUtil.Override( base, value, mod )
     local obj = { Base = ModUtil.OriginalValue( base ), Mod = mod }
-    ModUtil.Internal.Overrides[ value ] = obj
+    overrides[ value ] = obj
     return ModUtil.Rewrap( value )
 end
 
 function ModUtil.Overriden( obj )
-	local node = ModUtil.Internal.WrapCallbacks[ obj ]
+	local node = wrapCallbacks[ obj ]
 	if not node then return obj end
 	return ModUtil.Original( node.Base )
 end
 
 function ModUtil.Original( obj )
-	local node = ModUtil.Internal.WrapCallbacks[ obj ] or ModUtil.Internal.Overrides[ obj ]
+	local node = wrapCallbacks[ obj ] or overrides[ obj ]
 	if not node then return obj end
 	return ModUtil.Original( node.Base )
 end
@@ -2212,3 +2218,29 @@ end
 function ModUtil.Path.ReferTable( path )
 	return ModUtil.ReferTable( ModUtil.Path.Get, path )
 end
+
+-- Internal access
+
+ModUtil.Internal.__G = __G
+
+ModUtil.Internal.ForceClosed = forceClosed
+
+ModUtil.Internal.FuncsToLoad = funcsToLoad
+
+ModUtil.Internal.LoadFuncs = loadFuncs
+
+ModUtil.Internal.WrapCallbacks = wrapCallbacks
+
+ModUtil.Internal.Overrides = overrides
+
+ModUtil.Internal.EnvNodes = envNodes
+
+ModUtil.Internal.EnvNodeInfo = envNodeInfo
+
+ModUtil.Internal.GetEnv = getenv
+
+ModUtil.Internal.ReplaceGlobalEnvironment = replaceGlobalEnvironment
+
+-- Final Actions
+
+--replaceGlobalEnvironment( )
