@@ -477,7 +477,7 @@ def loadmodfile(filename,echo=True):
                 elif startswith(tokens,kwrd_import,1):
                     loadcommand(reldir,tokens[len(kwrd_import):],to,1,mode_lua,ep=ep)
                 elif startswith(tokens,kwrd_topimport,1):
-                    loadcommand(reldir,tokens[len(kwrd_topimport):],to,1,mode_lua_alt,ep=ep)
+                    loadcommand(reldir,tokens[len(kwrd_topimport):],to,1,mode_lua_alt,ep=-ep)
                 elif startswith(tokens,kwrd_xml,1):
                     loadcommand(reldir,tokens[len(kwrd_xml):],to,1,mode_xml,ep=ep)
                 elif can_sjson and startswith(tokens,kwrd_sjson,1):
