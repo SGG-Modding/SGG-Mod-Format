@@ -235,18 +235,23 @@ local function getenv( level )
 			l = l + 1
 		end
 	end
+	if l == 1 then return __G end
+	local diffNode
 	local envNode = envNodes
-	local i, j = l, l
+	local i = l + 1
+	local j = i
 	while true do
 		j = j - 1
 		local func = stack[ j ]
 		if envNode[ func ] then
 			envNode = envNode[ func ]
+			diffNode = envNode
 			if j == 1 then return envNodeInfo[ envNode ].data end
-			i = i - 1
+			i = j
+			j = i
 		end
 		if j == 1 then
-			if i == l then return __G end
+			if i == l + 1 then return diffNode and envNodeInfo[ diffNode ].data or __G end
 			j = i
 			local info = envNodeInfo[ envNode ]
 			if info then
@@ -255,11 +260,12 @@ local function getenv( level )
 				if info then
 					i = index[ info.func ]
 				else
-					i = l
+					i = l + 1
 				end
 			end
 		end
 	end
+	return __G
 end
 
 local function replaceGlobalEnvironment( )
@@ -1942,7 +1948,6 @@ ModUtil.Context.Call = ModUtil.Context( function( info )
 		info = info.parent
 	end
 	l = l - 1
-	ModUtil.Print( l, ModUtil.ToString.Deep( stack ))
 	local envNode = envNodes
 	for i = l, 1, -1 do
 		local func = stack[ i ]
@@ -1959,7 +1964,6 @@ ModUtil.Context.Call = ModUtil.Context( function( info )
 		end
 		envNode = envNode[ func ]
 	end
-	ModUtil.Print( l, ModUtil.ToString.Deep( stack ))
 	local env = { data = envNodeInfo[ envNode ].data }
 	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
@@ -2243,4 +2247,4 @@ ModUtil.Internal.ReplaceGlobalEnvironment = replaceGlobalEnvironment
 
 -- Final Actions
 
---replaceGlobalEnvironment( )
+replaceGlobalEnvironment( )
