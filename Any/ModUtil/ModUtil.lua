@@ -1851,7 +1851,8 @@ ModUtil.Metatables.Environment = {
 		if value ~= nil then
 			return value
 		end
-		return ( rawget( self, "fallback" ) or _G )[ key ]
+		local fallback = rawget( self, "fallback" )
+		return fallback and fallback[ key ] or nil
 	end,
 	__newindex = function( self, key, value )
 		rawget( self, "data" )[ key ] = value
@@ -1928,14 +1929,14 @@ setmetatable( ModUtil.Context, {
 } )
 
 ModUtil.Context.Data = ModUtil.Context( function( info )
-	local env = { data = info.args[ 1 ] }
+	local env = { data = info.args[ 1 ], fallback = _G }
 	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )
 
 ModUtil.Context.Meta = ModUtil.Context( function( info )
-	local env = { data = ModUtil.Nodes.Data.Metatable.New( info.args[ 1 ] ) }
-	setmetatable( env, ModUtil.Metatables.Environment )
+	local env = { data = ModUtil.Nodes.Data.Metatable.New( info.args[ 1 ] ), fallback = _G }
+	setmetatable( env, ModUtil.Metatables.Environment)
 	return env
 end )
 
@@ -1949,13 +1950,15 @@ ModUtil.Context.Call = ModUtil.Context( function( info )
 	end
 	l = l - 1
 	local envNode = envNodes
+	local nodeInfo
 	for i = l, 1, -1 do
 		local func = stack[ i ]
 		if not envNode[ func ] then
 			local env = { }
 			env._G = env
-			if envNodeInfo[ envNode ] then
-				setmetatable( env, { __index = envNodeInfo[ envNode ].data } )
+			nodeInfo = envNodeInfo[ envNode ]
+			if nodeInfo then
+				setmetatable( env, { __index = nodeInfo.data } )
 			end
 			local node = { }
 			envNodeInfo[ node ] = { data = env, parent = envNode, func = func }
@@ -1964,7 +1967,7 @@ ModUtil.Context.Call = ModUtil.Context( function( info )
 		end
 		envNode = envNode[ func ]
 	end
-	local env = { data = envNodeInfo[ envNode ].data }
+	local env = { data = envNodeInfo[ envNode ].data, fallback = __G }
 	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )
