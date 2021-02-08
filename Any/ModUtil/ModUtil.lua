@@ -1847,15 +1847,23 @@ ModUtil.Metatables.Environment = {
 		if key == "_G" then
 			return rawget( self, "global" ) or self
 		end
-		local value = rawget( self, "data" )[ key ]
+		local value
+		if rawget( self, "rawget" ) then
+			value = rawget( rawget( self, "data" ), key )
+		else
+			value = rawget( self, "data" )[ key ]
+		end
 		if value ~= nil then
 			return value
 		end
-		local fallback = rawget( self, "fallback" )
-		return fallback and fallback[ key ] or nil
+		return ( rawget( self, "fallback" ) or __G )[ key ]
 	end,
 	__newindex = function( self, key, value )
-		rawget( self, "data" )[ key ] = value
+		if rawget( self, "rawset" ) then
+			rawset( rawget( self, "data" ), key, value )
+		else
+			rawget( self, "data" )[ key ] = value
+		end
 		if key == "_G" then
 			rawset( self, "global", value )
 		end
@@ -1929,14 +1937,14 @@ setmetatable( ModUtil.Context, {
 } )
 
 ModUtil.Context.Data = ModUtil.Context( function( info )
-	local env = { data = info.args[ 1 ], fallback = _G }
+	local env = { data = info.args[ 1 ] }
 	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )
 
 ModUtil.Context.Meta = ModUtil.Context( function( info )
-	local env = { data = ModUtil.Nodes.Data.Metatable.New( info.args[ 1 ] ), fallback = _G }
-	setmetatable( env, ModUtil.Metatables.Environment)
+	local env = { data = ModUtil.Nodes.Data.Metatable.New( info.args[ 1 ] ) }
+	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )
 
@@ -1958,7 +1966,7 @@ ModUtil.Context.Call = ModUtil.Context( function( info )
 			env._G = env
 			nodeInfo = envNodeInfo[ envNode ]
 			if nodeInfo then
-				setmetatable( env, { __index = nodeInfo.data } )
+				setmetatable( env, { __index = nodeInfo.data, __newindex = nodeInfo.data } )
 			end
 			local node = { }
 			envNodeInfo[ node ] = { data = env, parent = envNode, func = func }
@@ -1967,7 +1975,7 @@ ModUtil.Context.Call = ModUtil.Context( function( info )
 		end
 		envNode = envNode[ func ]
 	end
-	local env = { data = envNodeInfo[ envNode ].data, fallback = __G }
+	local env = { data = envNodeInfo[ envNode ].data, rawset = true }
 	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )
@@ -2227,6 +2235,8 @@ function ModUtil.Path.ReferTable( path )
 end
 
 -- Internal access
+
+ModUtil.Internal._G = _G
 
 ModUtil.Internal.__G = __G
 
