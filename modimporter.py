@@ -11,6 +11,7 @@ from collections import OrderedDict
 from shutil import copyfile
 from datetime import datetime
 
+import csv
 import xml.etree.ElementTree as xml
 
 can_sjson = False
@@ -45,6 +46,7 @@ modified_modrep = " by Mod Importer @ "
 modified_lua = "-- "+modified+" "
 modified_xml = "<!-- "+modified+" -->"
 modified_sjson = "/* "+modified+" */"
+modified_csv = modified
 
 default_to = {"Hades":["Scripts/RoomManager.lua"],
             "Pyre":["Scripts/Campaign.lua","Scripts/MPScripts.lua"],
@@ -60,6 +62,7 @@ kwrd_topimport = ["Top","Import"]
 kwrd_xml = ["XML"]
 kwrd_sjson = ["SJSON"]
 kwrd_replace = ["Replace"]
+kwrd_csv = ["CSV"]
 
 reserved_sequence = "_sequence"
 reserved_append = "_append"
@@ -115,6 +118,64 @@ def addtopimport(base,path):
         basefile.seek(0)                 
         basefile.truncate()
         basefile.writelines(lines)
+
+### CSV mapping
+
+def readcsv(filename):
+    with open(filename,'r',newline='',encoding='utf-8-sig') as file:
+        return list(csv.reader(file))
+    
+
+def writecsv(filename,content):
+    with open(filename,'w',newline='',encoding='utf-8-sig') as file:
+        writer = csv.writer(file,quoting=csv.QUOTE_MINIMAL)
+        for row in content:
+            writer.writerow(row)
+
+def csvmap(indata,mapdata):
+    target = [0,0]
+    current = [0,0]
+    append = False
+    replace = False
+    for row in mapdata:
+        if len(row) == 2 and row[0][0] == '<' and row[-1][-1] == '>':
+            target[0] = int(row[0][1:])
+            target[1] = int(row[-1][:-1])
+            current[0] = target[0]
+            append = False
+            replace = False
+            continue
+        if len(row) == 1 and row[0] == reserved_append:
+            append = True
+            replace = False
+        if len(row) == 1 and row[0] == reserved_replace:
+            append = False
+            replace = True
+        if append:
+            indata.append(row)
+        else:
+            if replace:
+                indata[current[0]]=row
+            else:
+                current[1] = target[1]
+                for value in row:
+                    if value == reserved_delete:
+                        indata[current[0]][current[1]] = ""
+                    elif value != "":
+                        indata[current[0]][current[1]] = value
+                    current[1] += 1
+            current[0] += 1
+    return indata
+            
+
+def mergecsv(infile,mapfile):
+    indata = readcsv(infile)
+    if mapfile:
+        mapdata = readcsv(mapfile)
+    else:
+        mapdata = DNE
+    indata = csvmap(indata,mapdata)
+    writecsv(infile,indata)
 
 ### XML mapping
 
@@ -301,6 +362,7 @@ mode_lua_alt = 2
 mode_xml = 3
 mode_sjson = 4
 mode_replace = 5
+mode_csv = 6
 
 class modcode():
     def __init__(self,src,data,mode,key,**load):
@@ -475,6 +537,8 @@ def loadmodfile(filename,echo=True):
                     loadcommand(reldir,tokens[len(kwrd_topimport):],to,1,mode_lua_alt,ep=ep,reverse=True)
                 elif startswith(tokens,kwrd_xml,1):
                     loadcommand(reldir,tokens[len(kwrd_xml):],to,1,mode_xml,ep=ep)
+                elif startswith(tokens,kwrd_csv,1):
+                    loadcommand(reldir,tokens[len(kwrd_csv):],to,1,mode_csv,ep=ep)
                 elif can_sjson and startswith(tokens,kwrd_sjson,1):
                     loadcommand(reldir,tokens[len(kwrd_sjson):],to,1,mode_sjson,ep=ep)
 
@@ -530,6 +594,8 @@ def makeedit(base,mods,echo=True):
         modifiedstr = "\n"+modified_xml
     elif mods[0].mode == mode_sjson:
         modifiedstr = "\n"+modified_sjson
+    elif mods[0].mode == mode_csv:
+         modifiedstr = "\n"+modified_csv
     with open(base,'a',encoding='utf-8') as basefile:
         basefile.write(modifiedstr.replace(modified,modified+modified_modrep+str(datetime.now())))
 
