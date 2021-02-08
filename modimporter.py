@@ -3,6 +3,7 @@
 import argparse
 import os
 from collections import defaultdict
+from collections import deque
 from pathlib import Path
 
 import logging
@@ -295,7 +296,6 @@ if can_sjson:
 
 ## FILE/MOD CONTROL
 
-mode_dud = 0
 mode_lua = 1
 mode_lua_alt = 2
 mode_xml = 3
@@ -303,21 +303,12 @@ mode_sjson = 4
 mode_replace = 5
 
 class modcode():
-    ep = None
-    ap = None
-    before = None
-    after = None
-    rbefore = None
-    rafter = None
-    
-    mode = mode_dud
-    def __init__(self,src,data,mode,key,index,**load):
+    def __init__(self,src,data,mode,key,**load):
         self.src = src
         self.data = data
         self.mode = mode
         self.key = key
-        self.id = index
-        self.ep = load.get("ep",default_priority)
+        self.ep = load["ep"]
 
 def strup(string):
     return string[0].upper()+string[1:]
@@ -399,8 +390,6 @@ def tokenise(line):
 
 ## FILE/MOD LOADING
 
-codes = defaultdict(list)
-
 def startswith(tokens,keyword,n):
     return tokens[:len(keyword)] == keyword and len(tokens)>=len(keyword)+1
 
@@ -428,7 +417,13 @@ def loadcommand(reldir,tokens,to,n,mode,**load):
                 if paths:
                     for j in range(abs(num)):
                         sources = [x[j] if isinstance(x,list) else x for x in paths]
-                        codes[path].append(modcode('\n'.join(sources),tuple(sources),mode,path,len(codes[path]),**load))
+                        codeargs = ('\n'.join(sources),tuple(sources),mode,path)
+                        load["ep"] = load.get("ep",default_priority)
+                        if load.get("reverse",False):
+                            load["ep"] = -load["ep"]
+                            codes[path].appendleft(modcode(*codeargs,**load))
+                        else:
+                            codes[path].append(modcode(*codeargs,**load))
 
 def loadmodfile(filename,echo=True):
     if in_directory(filename):
@@ -477,7 +472,7 @@ def loadmodfile(filename,echo=True):
                 elif startswith(tokens,kwrd_import,1):
                     loadcommand(reldir,tokens[len(kwrd_import):],to,1,mode_lua,ep=ep)
                 elif startswith(tokens,kwrd_topimport,1):
-                    loadcommand(reldir,tokens[len(kwrd_topimport):],to,1,mode_lua_alt,ep=ep)
+                    loadcommand(reldir,tokens[len(kwrd_topimport):],to,1,mode_lua_alt,ep=ep,reverse=True)
                 elif startswith(tokens,kwrd_xml,1):
                     loadcommand(reldir,tokens[len(kwrd_xml):],to,1,mode_xml,ep=ep)
                 elif can_sjson and startswith(tokens,kwrd_sjson,1):
@@ -493,9 +488,7 @@ def isedited(base):
     return False
          
 def sortmods(base,mods):
-    codes[base].sort(key=lambda x: x.ep)
-    for i in range(len(mods)):
-        mods[i].id=i
+    codes[base] = deque(sorted(codes[base],key=lambda x: x.ep))
 
 def makeedit(base,mods,echo=True):
     Path(bakdir+"/"+"/".join(base.split("/")[:-1])).mkdir(parents=True, exist_ok=True)
@@ -571,7 +564,7 @@ def cleanup(folder=bakdir,echo=True):
 
 def start():
     global codes
-    codes = defaultdict(list)
+    codes = defaultdict(deque)
 
     print("Cleaning edits... (if there are issues validate/reinstall files)\n")
     Path(bakdir).mkdir(parents=True, exist_ok=True)
