@@ -2,4 +2,5 @@
 
 Load Priority 0
 Top Import "ModUtil.lua"
-Import "ModUtilHades.lua"
+Import "ModUtil.Compat.lua"
+Import "ModUtil.Hades.lua"
