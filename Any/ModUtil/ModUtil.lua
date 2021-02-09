@@ -2103,12 +2103,12 @@ end
 
 function ModUtil.Rewrap( obj )
 	local node = wrapCallbacks[ obj ]
-	if not node then return ModUtil.OverridenValue( obj ) end
+	if not node then return ModUtil.Overriden( obj ) end
 	return ModUtil.Wrap( ModUtil.Rewrap( node.Base ), node.Wrap, node.Mod )
 end
 
 function ModUtil.Override( base, value, mod )
-    local obj = { Base = ModUtil.OriginalValue( base ), Mod = mod }
+    local obj = { Base = ModUtil.Original( base ), Mod = mod }
     overrides[ value ] = obj
     return ModUtil.Rewrap( value )
 end
