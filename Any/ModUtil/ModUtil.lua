@@ -24,7 +24,7 @@ ModUtil = {
 	Anchors = {
 		Menu = { },
 		CloseFuncs = { }
-	},
+	}
 
 }
 SaveIgnores[ "ModUtil" ] = true
@@ -34,7 +34,7 @@ SaveIgnores[ "ModUtil" ] = true
 local error, pcall, xpcall = error, pcall, xpcall
 
 local debug, type, table = debug, type, table
-local function getname()
+local function getname( )
 	return debug.getinfo( 2, "n" ).name
 end
 
@@ -73,15 +73,15 @@ local rawget = rawget
 function rawinext( t, i )
 
 	if type( t ) ~= "table" then
-		error( "bad argument #1 to '" .. getname() .. "'(table expected got " .. type( i ) ..")", 2 )
+		error( "bad argument #1 to '" .. getname( ) .. "'(table expected got " .. type( i ) ..")", 2 )
 	end
 
 	if i == nil then
 		i = 0
 	elseif type( i ) ~= "number" then
-		error( "bad argument #2 to '" .. getname() .. "'(number expected got " .. type( i ) ..")", 2 )
+		error( "bad argument #2 to '" .. getname( ) .. "'(number expected got " .. type( i ) ..")", 2 )
 	elseif i < 0 then
-		error( "bad argument #2 to '" .. getname() .. "'(index out of bounds, too low)", 2 )
+		error( "bad argument #2 to '" .. getname( ) .. "'(index out of bounds, too low)", 2 )
 	end
 
 	i = i + 1
@@ -125,7 +125,7 @@ function table.insert( list, pos, value )
 		pos = last + 1
 	end
 	if pos < 1 or pos > last + 1 then
-		error( "bad argument #2 to '" .. getname() .. "' (position out of bounds)", 2 )
+		error( "bad argument #2 to '" .. getname( ) .. "' (position out of bounds)", 2 )
 	end
 	if pos <= last then
 		local i = last
@@ -145,7 +145,7 @@ function table.remove( list, pos )
 		pos = last
 	end
 	if pos < 1 or pos > last then
-		error( "bad argument #2 to '" .. getname() .. "' (position out of bounds)", 2 )
+		error( "bad argument #2 to '" .. getname( ) .. "' (position out of bounds)", 2 )
 	end
 	local value = list[ pos ]
 	if pos <= last then
@@ -207,9 +207,6 @@ function ModUtil.RawInterface( obj )
 
 end
 
-local __G = ModUtil.RawInterface( _G )
-__G.__G = __G
-
 local envNodes = { }
 local envNodeInfo = { }
 setmetatable( envNodeInfo, { __mode = "k" } )
@@ -221,17 +218,26 @@ local envNodeMeta = {
 }
 setmetatable( envNodes, envNodeMeta )
 
+local __G = ModUtil.RawInterface( _G )
 local getinfo = debug.getinfo
-local function getenv( level )
+
+local function getenvNode( thread, level )
+	if not type( thread ) ~= "thread" then
+		if level ~= nil then
+			error( "bad argument #2 to '" .. getname( ) .. "'(nil expected got " .. type( level ) ..")", 2 )
+		end
+		level = thread
+		thread = coroutine.running( )
+	end
 	level = level or 1
 	local stack = { }
 	local index = { }
 	local l = 1
 	do
-		local info = getinfo( l + level, "f" )
+		local info = getinfo( thread, l + level, "f" )
 		while info do
 			stack[ l ], index[ info.func ] = info.func, l
-			info = getinfo( l + level, "f" )
+			info = getinfo( thread, l + level, "f" )
 			l = l + 1
 		end
 	end
@@ -246,12 +252,65 @@ local function getenv( level )
 		if envNode[ func ] then
 			envNode = envNode[ func ]
 			diffNode = envNode
-			if j == 1 then return envNodeInfo[ envNode ].data end
+			if j == 1 then return envNode end
 			i = j
 			j = i
 		end
 		if j == 1 then
-			if i == l + 1 then return diffNode and envNodeInfo[ diffNode ].data or __G end
+			if i == l + 1 then return diffNode end
+			j = i
+			local info = envNodeInfo[ envNode ]
+			if info then
+				envNode = info.parent
+				info = envNodeInfo[ envNode ]
+				if info then
+					i = index[ info.func ]
+				else
+					i = l + 1
+				end
+			end
+		end
+	end
+	return
+end
+
+local function getenv( thread, level )
+	if not type( thread ) ~= "thread" then
+		if level ~= nil then
+			error( "bad argument #2 to '" .. getname( ) .. "'(nil expected got " .. type( level ) ..")", 2 )
+		end
+		level = thread
+		thread = coroutine.running( )
+	end
+	level = level or 1
+	local stack = { }
+	local index = { }
+	local l = 1
+	do
+		local info = getinfo( thread, l + level, "f" )
+		while info do
+			stack[ l ], index[ info.func ] = info.func, l
+			info = getinfo( thread, l + level, "f" )
+			l = l + 1
+		end
+	end
+	if l == 1 then return __G end
+	local diffNode
+	local envNode = envNodes
+	local i = l + 1
+	local j = i
+	while true do
+		j = j - 1
+		local func = stack[ j ]
+		if envNode[ func ] then
+			envNode = envNode[ func ]
+			diffNode = envNode
+			if j == 1 then return envNodeInfo[ envNode ].env end
+			i = j
+			j = i
+		end
+		if j == 1 then
+			if i == l + 1 then return diffNode and envNodeInfo[ diffNode ].env or __G end
 			j = i
 			local info = envNodeInfo[ envNode ]
 			if info then
@@ -272,6 +331,11 @@ local function replaceGlobalEnvironment( )
 
 	local meta = {
 		__index = function( _, key )
+			if key == "_C" then
+				return getenv( 2 )
+			elseif key == "_R" then
+				return __G
+			end
 			local value = getenv( 2 )[ key ]
 			if value ~= nil then return value end
 			local t = type( key )
@@ -299,7 +363,7 @@ local function replaceGlobalEnvironment( )
 		end
 	}
 
-	debug.setmetatable( __G._G, meta )
+	debug.setmetatable( _ENV, meta )
 end
 
 -- Management
@@ -676,7 +740,7 @@ function ModUtil.Print.Namespaces( level )
 	ModUtil.Print( "\t" .. "Locals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	text = ModUtil.ToString.DeepNamespaces( ModUtil.UpValues( level + 1 ) )
 	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
-	text = ModUtil.ToString.DeepNamespaces( getenv( level + 1 ) )
+	text = ModUtil.ToString.DeepNamespaces( _G )
 	ModUtil.Print( "\t" .. "Globals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 end
 
@@ -688,7 +752,7 @@ function ModUtil.Print.Variables( level )
 	ModUtil.Print( "\t" .. "Locals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	text = ModUtil.ToString.DeepNoNamespaces( ModUtil.UpValues( level + 1 ) )
 	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
-	text = ModUtil.ToString.DeepNoNamespaces( getenv( level + 1 ) )
+	text = ModUtil.ToString.DeepNoNamespaces( _G )
 	ModUtil.Print( "\t" .. "Globals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 end
 
@@ -999,6 +1063,9 @@ stackLevelProperty = {
 }
 
 local stackLevelFunction = {
+	getenv = function( self, ... )
+		return getenv( self.co, self.here, ... )
+	end,
 	gethook = function( self, ... )
 		return debug.gethook( self.co, ... )
 	end,
@@ -1093,7 +1160,7 @@ ModUtil.Metatables.StackLevels = {
 	__index = function( self, level )
 		return ModUtil.StackLevel( ( level or 0 ) + rawget( self, "level" ).here )
 	end,
-	__newindex = function() end,
+	__newindex = function( ) end,
 	__len = function( self )
 		return rawget( self, "level" ).bottom
 	end,
@@ -1167,12 +1234,12 @@ ModUtil.Metatables.UpValues = {
 			end
 		until not n
 	end,
-	__inext = function() end,
+	__inext = function( ) end,
 	__pairs = function( self )
 		return qrawpairs( self )
 	end,
 	__ipairs = function( self )
-		return function() end, self
+		return function( ) end, self
 	end
 }
 
@@ -1399,7 +1466,7 @@ ModUtil.Metatables.UpValues.Stacked = {
 		return qrawpairs( self ), self
 	end,
 	__ipairs = function( self )
-		return function() end, self
+		return function( ) end, self
 	end
 }
 
@@ -1628,7 +1695,7 @@ ModUtil.Metatables.Locals.Stacked = {
 		return qrawpairs( self ), self
 	end,
 	__ipairs = function( self )
-		return function() end, self
+		return function( ) end, self
 	end
 }
 
@@ -1638,8 +1705,8 @@ ModUtil.Metatables.Locals.Stacked = {
 	be used.
 
 	For example, if your function is called from CreateTraitRequirements,
-	you could access its 'local screen' as ModUtil.Locals.Stacked().screen
-	and its 'local hasRequirement' as ModUtil.Locals.Stacked().hasRequirement.
+	you could access its 'local screen' as ModUtil.Locals.Stacked( ).screen
+	and its 'local hasRequirement' as ModUtil.Locals.Stacked( ).hasRequirement.
 --]]
 function ModUtil.Locals.Stacked( level )
 	local locals = { levels = ModUtil.StackLevels( level or 1 ) }
@@ -1844,42 +1911,40 @@ ModUtil.Context = { }
 
 ModUtil.Metatables.Environment = {
 	__index = function( self, key )
-		if key == "_G" then
-			return rawget( self, "global" ) or self
+		if key == "_R" then
+			return rawget( self, "raw" ) or rawget( self, "data" )
+		elseif key == "_C" then
+			return self
 		end
-		local value
-		if rawget( self, "rawget" ) then
-			value = rawget( rawget( self, "data" ), key )
-		else
-			value = rawget( self, "data" )[ key ]
-		end
+		local value = rawget( self, "data" )[ key ]
 		if value ~= nil then
 			return value
 		end
-		return ( rawget( self, "fallback" ) or __G )[ key ]
+		return ( rawget( self, "index" ) or __G )[ key ]
 	end,
 	__newindex = function( self, key, value )
-		if rawget( self, "rawset" ) then
-			rawset( rawget( self, "data" ), key, value )
-		else
+		local data = rawget( self, "data" )
+		if data[ key ] ~= nil then
 			rawget( self, "data" )[ key ] = value
-		end
-		if key == "_G" then
-			rawset( self, "global", value )
+		else
+			( rawget( self, "newindex" ) or __G )[ key ] = value
 		end
 	end,
 	__len = function( self )
 		return #rawget( self, "data" )
 	end,
 	__next = function( self, key )
-		local data, value = rawget( self, "data" ), nil
+		local data, value
 		repeat
-			key, value = next( data, key )
-			if key == "_G" then
-				return rawget( self, "global" ) or self
-			end
-		until value ~= nil or key == nil
-		return key, value
+			data, value = rawget( self, "data" ), nil
+			repeat
+				key, value = next( data, key )
+				if value ~= nil then
+					return key, value
+				end
+			until key == nil
+			self = rawget( self, "index" )
+		until self == nil
 	end,
 	__inext = function( self, idx )
 		local data, value = rawget( self, "data" ), nil
@@ -1916,11 +1981,11 @@ ModUtil.Metatables.Context = {
 		contextInfo.args = table.pack( ... )
 		local processed = table.pack( rawget( self, "callContextProcessor" )( contextInfo, ... ) )
 		contextInfo.params = table.pack( table.unpack( processed, 2, processed.n ) )
-		contextInfo.data = processed[ 1 ]
+		contextInfo.env = processed[ 1 ]
 
 		contextInfo.envNode = { }
 		setmetatable( contextInfo.envNode, envNodeMeta )
-		envNodeInfo[ contextInfo.envNode ] = { data = contextInfo.data, parent = envNodes, func = contextInfo.wrap }
+		envNodeInfo[ contextInfo.envNode ] = { env = contextInfo.env, parent = envNodes, func = contextInfo.wrap }
 		envNodes[ contextInfo.wrap ] = contextInfo.envNode
 		contextInfo.wrap( table.unpack( contextInfo.params ) )
 
@@ -1937,13 +2002,13 @@ setmetatable( ModUtil.Context, {
 } )
 
 ModUtil.Context.Data = ModUtil.Context( function( info )
-	local env = { data = info.args[ 1 ] }
+	local env = { data = info.args[ 1 ], newindex = { } }
 	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )
 
 ModUtil.Context.Meta = ModUtil.Context( function( info )
-	local env = { data = ModUtil.Nodes.Data.Metatable.New( info.args[ 1 ] ) }
+	local env = { data = ModUtil.Nodes.Data.Metatable.New( info.args[ 1 ] ), newindex = { } }
 	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )
@@ -1958,25 +2023,24 @@ ModUtil.Context.Call = ModUtil.Context( function( info )
 	end
 	l = l - 1
 	local envNode = envNodes
-	local nodeInfo
+	local env
 	for i = l, 1, -1 do
 		local func = stack[ i ]
 		if not envNode[ func ] then
-			local env = { }
-			env._G = env
-			nodeInfo = envNodeInfo[ envNode ]
+			env = { data = { } }
+			local nodeInfo = envNodeInfo[ envNode ]
 			if nodeInfo then
-				setmetatable( env, { __index = nodeInfo.data, __newindex = nodeInfo.data } )
+				env.index = nodeInfo.env
+				env.newindex = nodeInfo.env
 			end
+			setmetatable( env, ModUtil.Metatables.Environment )
 			local node = { }
-			envNodeInfo[ node ] = { data = env, parent = envNode, func = func }
+			envNodeInfo[ node ] = { env = env, parent = envNode, func = func }
 			envNode[ func ] = node
 			setmetatable( node, envNodeMeta )
 		end
 		envNode = envNode[ func ]
 	end
-	local env = { data = envNodeInfo[ envNode ].data, rawset = true }
-	setmetatable( env, ModUtil.Metatables.Environment )
 	return env
 end )
 
@@ -2253,6 +2317,8 @@ ModUtil.Internal.Overrides = overrides
 ModUtil.Internal.EnvNodes = envNodes
 
 ModUtil.Internal.EnvNodeInfo = envNodeInfo
+
+ModUtil.Internal.GetEnvNode = getenvNode
 
 ModUtil.Internal.GetEnv = getenv
 
