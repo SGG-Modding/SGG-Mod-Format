@@ -1,6 +1,9 @@
 :: Mod Utility
 
 Load Priority 0
-Top Import "ModUtil.lua"
-Top Import "ModUtil.Compat.lua"
+
 Import "ModUtil.Hades.lua"
+
+To "Scripts/Main.lua"
+Import "ModUtil.lua"
+Import "ModUtil.Compat.lua"

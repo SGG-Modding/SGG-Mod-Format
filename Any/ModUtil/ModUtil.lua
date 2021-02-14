@@ -165,8 +165,6 @@ end
 	- table.sort
 --]]
 
--- Environment Context (EXPERIMENTAL)
-
 --- bind to locals to minimise environment recursion and improve speed
 local
 	rawset, rawlen, ModUtil, getmetatable, setmetatable, pairs, ipairs, coroutine,
@@ -175,37 +173,97 @@ local
 	rawset, rawlen, ModUtil, getmetatable, setmetatable, pairs, ipairs, coroutine,
 		rawpairs, rawipairs, qrawpairs, qrawipairs, tostring
 
-function ModUtil.RawInterface( obj )
+-- Managed and private Data Objects (EXPERIMENTAL) (INCOMPLETE)
 
-	local meta = {
-		__index = function( _, key )
-			return rawget( obj, key )
-		end,
-		__newindex = function( _, key, value )
-			rawset( obj, key, value )
-		end,
-		__len = function( )
-			return rawlen( obj )
-		end,
-		__next = function( _, key )
-			return rawnext( obj, key )
-		end,
-		__inext = function( _ , idx )
-			return rawinext( obj, idx )
-		end,
-		__pairs = function( )
-			return rawpairs( obj )
-		end,
-		__ipairs = function( )
-			return rawipairs( obj )
-		end
-	}
+local objectData = setmetatable( { }, { __mode = "k" } )
 
-	local interface = { }
-	setmetatable( interface, meta )
-	return interface
-
+local function onew( obj )
+	local odata = objectData[ obj ] or { }
+	objectData[ obj ] = odata
+	return odata
 end
+
+local function oget( obj, key )
+	return objectData[ obj ][ key ]
+end
+local function oset( obj, key, val )
+	objectData[ obj ][ key ] = val
+end
+local function ocall( obj, ... )
+	return objectData[ obj ]( ... )
+end
+local function olen( obj )
+	return #objectData[ obj ]
+end
+local function onext( obj, key )
+	return next( objectData[ obj ], key )
+end
+local function oinext( obj, idx )
+	return inext( objectData[ obj ], idx )
+end
+local function opairs( obj )
+	return pairs( objectData[ obj ] )
+end
+local function oipairs( obj )
+	return ipairs( objectData[ obj ] )
+end
+
+function ModUtil.PrivateInterface( obj )
+	return setmetatable( { }, {
+		__index = function( _, ... )
+			return oget( obj, ... )
+		end,
+		__newindex = function( _, ... )
+			return oset( obj, ... )
+		end,
+		__call = function( _, ... )
+			return ocall( obj, ... )
+		end,
+		__len = function( _, ... )
+			return olen( obj, ... )
+		end,
+		__next = function( _, ... )
+			return onext( obj, ... )
+		end,
+		__inext = function( _, ... )
+			return oinext( obj, ... )
+		end,
+		__pairs = function( ... )
+			return opairs( obj, ... )
+		end,
+		__ipairs = function( ... )
+			return oipairs( obj, ... )
+		end
+	} )
+end
+
+function ModUtil.RawInterface( obj )
+	return setmetatable( { }, {
+		__index = function( _, ... )
+			return rawget( obj, ... )
+		end,
+		__newindex = function( _, ... )
+			return rawset( obj, ... )
+		end,
+		__len = function( _, ...)
+			return rawlen( obj, ... )
+		end,
+		__next = function( _, ... )
+			return rawnext( obj, ... )
+		end,
+		__inext = function( _, ... )
+			return rawinext( obj, ... )
+		end,
+		__pairs = function( _, ... )
+			return rawpairs( obj, ... )
+		end,
+		__ipairs = function( _, ... )
+			return rawipairs( obj, ... )
+		end
+	} )
+end
+
+-- Environment Context (EXPERIMENTAL)
 
 local envNodes = { }
 local envNodeInfo = { }
@@ -218,10 +276,10 @@ local envNodeMeta = {
 }
 setmetatable( envNodes, envNodeMeta )
 
-local __G = ModUtil.RawInterface( _G )
+local _G = _ENV
 local getinfo = debug.getinfo
 
-local function getenvNode( thread, level )
+local function getEnvNode( thread, level )
 	if not type( thread ) ~= "thread" then
 		if level ~= nil then
 			error( "bad argument #2 to '" .. getname( ) .. "'(nil expected got " .. type( level ) ..")", 2 )
@@ -241,23 +299,22 @@ local function getenvNode( thread, level )
 			l = l + 1
 		end
 	end
-	if l == 1 then return __G end
 	local diffNode
 	local envNode = envNodes
 	local i = l + 1
 	local j = i
-	while true do
+	while l ~= 1 do
 		j = j - 1
 		local func = stack[ j ]
 		if envNode[ func ] then
 			envNode = envNode[ func ]
 			diffNode = envNode
-			if j == 1 then return envNode end
+			if j == 1 then break end
 			i = j
 			j = i
 		end
 		if j == 1 then
-			if i == l + 1 then return diffNode end
+			if i == l + 1 then break end
 			j = i
 			local info = envNodeInfo[ envNode ]
 			if info then
@@ -271,10 +328,10 @@ local function getenvNode( thread, level )
 			end
 		end
 	end
-	return
+	return diffNode
 end
 
-local function getenv( thread, level )
+local function getEnv( thread, level )
 	if not type( thread ) ~= "thread" then
 		if level ~= nil then
 			error( "bad argument #2 to '" .. getname( ) .. "'(nil expected got " .. type( level ) ..")", 2 )
@@ -294,23 +351,22 @@ local function getenv( thread, level )
 			l = l + 1
 		end
 	end
-	if l == 1 then return __G end
 	local diffNode
 	local envNode = envNodes
 	local i = l + 1
 	local j = i
-	while true do
+	while l ~= 1 do
 		j = j - 1
 		local func = stack[ j ]
 		if envNode[ func ] then
 			envNode = envNode[ func ]
 			diffNode = envNode
-			if j == 1 then return envNodeInfo[ envNode ].env end
+			if j == 1 then break end
 			i = j
 			j = i
 		end
 		if j == 1 then
-			if i == l + 1 then return diffNode and envNodeInfo[ diffNode ].env or __G end
+			if i == l + 1 then break end
 			j = i
 			local info = envNodeInfo[ envNode ]
 			if info then
@@ -324,19 +380,18 @@ local function getenv( thread, level )
 			end
 		end
 	end
-	return __G
+	return diffNode and envNodeInfo[ diffNode ].env or _G
 end
 
 local function replaceGlobalEnvironment( )
-
-	local meta = {
+	_ENV = debug.setmetatable( { }, {
 		__index = function( _, key )
 			if key == "_C" then
-				return getenv( 2 )
+				return getEnv( 2 )
 			elseif key == "_R" then
-				return __G
+				return _G
 			end
-			local value = getenv( 2 )[ key ]
+			local value = getEnv( 2 )[ key ]
 			if value ~= nil then return value end
 			local t = type( key )
 			if t == "function" or t == "table" then
@@ -344,26 +399,29 @@ local function replaceGlobalEnvironment( )
 			end
 		end,
 		__newindex = function( _, key, value )
-			getenv( 2 )[ key ] = value
+			getEnv( 2 )[ key ] = value
 		end,
 		__len = function( )
-			return #getenv( 2 )
+			return #getEnv( 2 )
 		end,
 		__next = function( _, key )
-			return next( getenv( 2 ), key )
+			return next( getEnv( 2 ), key )
 		end,
 		__inext = function( _, key )
-			return inext( getenv( 2 ), key )
+			return inext( getEnv( 2 ), key )
 		end,
 		__pairs = function( )
-			return pairs( getenv( 2 ) )
+			return pairs( getEnv( 2 ) )
 		end,
 		__ipairs = function( )
-			return ipairs( getenv( 2 ) )
+			return ipairs( getEnv( 2 ) )
 		end
-	}
-
-	debug.setmetatable( _ENV, meta )
+	} )
+	local reg = debug.getregistry( )
+	for i, v in ipairs( reg ) do
+		if v == _G then reg[ i ] = _ENV end
+	end
+	ModUtil.Identifiers.Inverse._ENV = _ENV
 end
 
 -- Management
@@ -543,11 +601,11 @@ function ModUtil.ToString.DeepNoNamespaces( o, seen )
 		first = true
 		seen = { }
 	end
-	if type( o ) == "table" and not seen[ o ] and o ~= __G and o ~= __G._G and ( first or not ModUtil.Mods.Inverse[ o ] ) then
+	if type( o ) == "table" and not seen[ o ] and o ~= _G and o ~= _G._G and ( first or not ModUtil.Mods.Inverse[ o ] ) then
 		seen[ o ] = true
 		local out = { ModUtil.ToString.Value( o ), "{ " }
 		for k, v in pairs( o ) do
-			if v ~= __G and v ~= __G._G and not ModUtil.Mods.Inverse[ v ] then
+			if v ~= _G and v ~= _G._G and not ModUtil.Mods.Inverse[ v ] then
 				table.insert( out, ModUtil.ToString.Key( k ) )
 				table.insert( out, ' = ' )
 				table.insert( out, ModUtil.ToString.DeepNoNamespaces( v, seen ) )
@@ -567,11 +625,11 @@ function ModUtil.ToString.DeepNamespaces( o, seen )
 		first = true
 		seen = { }
 	end
-	if type( o ) == "table" and not seen[ o ] and ( first or o == __G or o == __G._G or ModUtil.Mods.Inverse[ o ] ) then
+	if type( o ) == "table" and not seen[ o ] and ( first or o == _G or o == _G._G or ModUtil.Mods.Inverse[ o ] ) then
 		seen[ o ] = true
 		local out = { ModUtil.ToString.Value( o ), "{ " }
 		for k, v in pairs( o ) do
-			if v == __G or v == __G._G or ModUtil.Mods.Inverse[ v ] then
+			if v == _G or v == _G._G or ModUtil.Mods.Inverse[ v ] then
 				table.insert( out, ModUtil.ToString.Key( k ) )
 				table.insert( out, ' = ' )
 				table.insert( out, ModUtil.ToString.DeepNamespaces( v, seen ) )
@@ -740,7 +798,7 @@ function ModUtil.Print.Namespaces( level )
 	ModUtil.Print( "\t" .. "Locals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	text = ModUtil.ToString.DeepNamespaces( ModUtil.UpValues( level + 1 ) )
 	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
-	text = ModUtil.ToString.DeepNamespaces( _G )
+	text = ModUtil.ToString.DeepNamespaces( _ENV._G )
 	ModUtil.Print( "\t" .. "Globals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 end
 
@@ -752,7 +810,7 @@ function ModUtil.Print.Variables( level )
 	ModUtil.Print( "\t" .. "Locals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	text = ModUtil.ToString.DeepNoNamespaces( ModUtil.UpValues( level + 1 ) )
 	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
-	text = ModUtil.ToString.DeepNoNamespaces( _G )
+	text = ModUtil.ToString.DeepNoNamespaces( _ENV._G )
 	ModUtil.Print( "\t" .. "Globals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 end
 
@@ -970,7 +1028,7 @@ end
 -- Path Manipulation
 
 function ModUtil.Path.Map( path, map, ... )
-	ModUtil.IndexArray.Map( _G, ModUtil.Path.IndexArray( path ), map, ... )
+	ModUtil.IndexArray.Map( _ENV._G, ModUtil.Path.IndexArray( path ), map, ... )
 end
 
 function ModUtil.Path.Join( a, b )
@@ -1016,7 +1074,7 @@ end
 				 If not provided, retreive a global.
 --]]
 function ModUtil.Path.Get( path, base )
-	return ModUtil.IndexArray.Get( base or _G, ModUtil.Path.IndexArray( path ) )
+	return ModUtil.IndexArray.Get( base or _ENV._G, ModUtil.Path.IndexArray( path ) )
 end
 
 --[[
@@ -1030,7 +1088,7 @@ end
 				 If not provided, retreive a global.
 --]]
 function ModUtil.Path.Set( path, value, base )
-	return ModUtil.IndexArray.Set( base or _G, ModUtil.Path.IndexArray( path ), value )
+	return ModUtil.IndexArray.Set( base or _ENV._G, ModUtil.Path.IndexArray( path ), value )
 end
 
 -- Metaprogramming Shenanigans
@@ -1063,8 +1121,8 @@ stackLevelProperty = {
 }
 
 local stackLevelFunction = {
-	getenv = function( self, ... )
-		return getenv( self.co, self.here, ... )
+	getEnv = function( self, ... )
+		return getEnv( self.co, self.here, ... )
 	end,
 	gethook = function( self, ... )
 		return debug.gethook( self.co, ... )
@@ -1150,7 +1208,7 @@ function ModUtil.StackLevel( level )
 	end
 	size = size - level - 1
 	if size > 0 then
-		local stackLevel = { level = level, size = size, thread = thread }
+		local stackLevel = --[[detour]]{ level = level, size = size, thread = thread }
 		setmetatable( stackLevel, ModUtil.Metatables.StackLevel )
 		return stackLevel
 	end
@@ -1179,7 +1237,7 @@ ModUtil.Metatables.StackLevels.__ipairs = ModUtil.Metatables.StackLevels.__pairs
 ModUtil.Metatables.StackLevels.__inext = ModUtil.Metatables.StackLevels.__next
 
 function ModUtil.StackLevels( level )
-	local levels = { level = ModUtil.StackLevel( level or 0 ) }
+	local levels = --[[detour]]{ level = ModUtil.StackLevel( level or 0 ) }
 	setmetatable( levels, ModUtil.Metatables.StackLevels )
 	return levels
 end
@@ -1213,10 +1271,10 @@ ModUtil.Metatables.UpValues = {
 			end
 		until not n
 	end,
-	__len = function ( self )
+	__len = function( )
 		return 0
 	end,
-	__next = function ( self, name )
+	__next = function( self, name )
 		local func = rawget( self, "func" )
 		local idx = name and 0 or -1
 		repeat
@@ -1245,10 +1303,10 @@ ModUtil.Metatables.UpValues = {
 
 setmetatable( ModUtil.UpValues, {
 	__call = function( _, func )
-		if type(func) ~= "function" then
+		if type( func ) ~= "function" then
 			func = debug.getinfo( ( func or 1 ) + 1, "f" ).func
 		end
-		local upValues = { func = func }
+		local upValues = --[[detour]]{ func = func }
 		setmetatable( upValues, ModUtil.Metatables.UpValues )
 		return upValues
 	end
@@ -1265,7 +1323,7 @@ end
 local function setUpValueIdData( id, func, idx )
 	local tbl = idData[ id ]
 	if not tbl then
-		tbl = {}
+		tbl = { }
 		idData[ id ] = tbl
 	end
 	tbl.func, tbl.idx = func, idx
@@ -1324,7 +1382,7 @@ function ModUtil.UpValues.Ids( func )
 	if type(func) ~= "function" then
 		func = debug.getinfo( ( func or 1 ) + 1, "f" ).func
 	end
-	local ups = { func = func }
+	local ups = --[[detour]]{ func = func }
 	setmetatable( ups, ModUtil.Metatables.UpValues.Ids )
 	return ups
 end
@@ -1369,7 +1427,7 @@ function ModUtil.UpValues.Values( func )
 	if type(func) ~= "function" then
 		func = debug.getinfo( ( func or 1 ) + 1, "f" ).func
 	end
-	local ups = { func = func }
+	local ups = --[[detour]]{ func = func }
 	setmetatable( ups, ModUtil.Metatables.UpValues.Values )
 	return ups
 end
@@ -1405,7 +1463,7 @@ function ModUtil.UpValues.Names( func )
 	if type(func) ~= "function" then
 		func = debug.getinfo( ( func or 1 ) + 1, "f" ).func
 	end
-	local ups = { func = func }
+	local ups = --[[detour]]{ func = func }
 	setmetatable( ups, ModUtil.Metatables.UpValues.Names )
 	return ups
 end
@@ -1471,7 +1529,7 @@ ModUtil.Metatables.UpValues.Stacked = {
 }
 
 function ModUtil.UpValues.Stacked( level )
-	local upValues = { levels = ModUtil.StackLevels( ( level or 1 ) ) }
+	local upValues = --[[detour]]{ levels = ModUtil.StackLevels( ( level or 1 ) ) }
 	setmetatable( upValues, ModUtil.Metatables.UpValues.Stacked )
 	return upValues
 end
@@ -1536,7 +1594,7 @@ ModUtil.Metatables.Locals = {
 
 setmetatable( ModUtil.Locals, {
 	__call = function( _, level )
-		local locals = { level = ModUtil.StackLevel( ( level or 1 ) + 1 ) }
+		local locals = --[[detour]]{ level = ModUtil.StackLevel( ( level or 1 ) + 1 ) }
 		setmetatable( locals, ModUtil.Metatables.Locals )
 		return locals
 	end
@@ -1593,7 +1651,7 @@ ModUtil.Metatables.Locals.Values.__inext = ModUtil.Metatables.Locals.Values.__ne
 --]]
 function ModUtil.Locals.Values( level )
 	if level == nil then level = 1 end
-	local locals = { level = ModUtil.StackLevel( level + 1 ) }
+	local locals = --[[detour]]{ level = ModUtil.StackLevel( level + 1 ) }
 	setmetatable( locals, ModUtil.Metatables.Locals.Values )
 	return locals
 end
@@ -1634,7 +1692,7 @@ ModUtil.Metatables.Locals.Names.__inext = ModUtil.Metatables.Locals.Names.__next
 --]]
 function ModUtil.Locals.Names( level )
 	if level == nil then level = 1 end
-	local locals = { level = ModUtil.StackLevel( level + 1 ) }
+	local locals = --[[detour]]{ level = ModUtil.StackLevel( level + 1 ) }
 	setmetatable( locals, ModUtil.Metatables.Locals.Names )
 	return locals
 end
@@ -1709,7 +1767,7 @@ ModUtil.Metatables.Locals.Stacked = {
 	and its 'local hasRequirement' as ModUtil.Locals.Stacked( ).hasRequirement.
 --]]
 function ModUtil.Locals.Stacked( level )
-	local locals = { levels = ModUtil.StackLevels( level or 1 ) }
+	local locals = --[[detour]]{ levels = ModUtil.StackLevels( level or 1 ) }
 	setmetatable( locals, ModUtil.Metatables.Locals.Stacked )
 	return locals
 end
@@ -1888,7 +1946,7 @@ ModUtil.Entangled.Map = {
 setmetatable( ModUtil.Entangled.Map, {
 	__call = function( )
 		local data, preImage = { }, { }
-		data, preImage = { Data = data, PreImage = preImage }, { Data = data, PreImage = preImage }
+		data, preImage = --[[detour]]{ Data = data, PreImage = preImage }, --[[detour]]{ Data = data, PreImage = preImage }
 		setmetatable( data, ModUtil.Metatables.Entangled.Map.Data )
 		setmetatable( preImage, ModUtil.Metatables.Entangled.Map.PreImage )
 		return { Data = data, Index = preImage, PreImage = preImage }
@@ -1898,7 +1956,7 @@ setmetatable( ModUtil.Entangled.Map, {
 setmetatable( ModUtil.Entangled.Map.Unique, {
 	__call = function( )
 		local data, inverse = { }, { }
-		data, inverse = { Data = data, Inverse = inverse }, { Data = data, Inverse = inverse }
+		data, inverse = --[[detour]]{ Data = data, Inverse = inverse }, --[[detour]]{ Data = data, Inverse = inverse }
 		setmetatable( data, ModUtil.Metatables.Entangled.Map.Unique.Data )
 		setmetatable( inverse, ModUtil.Metatables.Entangled.Map.Unique.Inverse )
 		return { Data = data, Index = inverse, Inverse = inverse }
@@ -1920,14 +1978,14 @@ ModUtil.Metatables.Environment = {
 		if value ~= nil then
 			return value
 		end
-		return ( rawget( self, "index" ) or __G )[ key ]
+		return ( rawget( self, "index" ) or _G )[ key ]
 	end,
 	__newindex = function( self, key, value )
 		local data = rawget( self, "data" )
 		if data[ key ] ~= nil then
 			rawget( self, "data" )[ key ] = value
 		else
-			( rawget( self, "newindex" ) or __G )[ key ] = value
+			( rawget( self, "newindex" ) or _G )[ key ] = value
 		end
 	end,
 	__len = function( self )
@@ -2027,7 +2085,7 @@ ModUtil.Context.Call = ModUtil.Context( function( info )
 	for i = l, 1, -1 do
 		local func = stack[ i ]
 		if not envNode[ func ] then
-			env = { data = { } }
+			env = --[[detour]]{ data = { } }
 			local nodeInfo = envNodeInfo[ envNode ]
 			if nodeInfo then
 				env.index = nodeInfo.env
@@ -2139,6 +2197,7 @@ setmetatable( rawget( ModUtil.Identifiers.Data, "Inverse" ), { __mode = "k" } )
 setmetatable( rawget( ModUtil.Identifiers.Inverse, "Data" ), { __mode = "v" } )
 
 ModUtil.Identifiers.Inverse._G = _G
+ModUtil.Identifiers.Inverse._ENV = _ENV
 ModUtil.Identifiers.Inverse.ModUtil = ModUtil
 
 ModUtil.Mods = ModUtil.Entangled.Map.Unique( )
@@ -2197,17 +2256,20 @@ function ModUtil.ReferFunction( obtainer, ... )
 end
 
 ModUtil.Metatables.ReferTable = {
-	__index = function( self, value )
-		return rawget( self, "obtain" )( )[ value ]
+	__index = function( self, key )
+		return rawget( self, "obtain" )( )[ key ]
 	end,
-	__newindex = function( self, value, key )
-		rawget( self, "obtain" )( )[ value ] = key
+	__newindex = function( self, key, value )
+		rawget( self, "obtain" )( )[ key ] = value
+	end,
+	__call = function( self, ... )
+		return rawget( self, "obtain" )( )( ... )
 	end,
 	__len = function( self )
 		return #rawget( self, "obtain" )( )
 	end,
-	__next = function( self, value )
-		return next( rawget( self, "obtain" )( ), value )
+	__next = function( self, key )
+		return next( rawget( self, "obtain" )( ), key )
 	end,
 	__inext = function( self, idx )
 		return inext( rawget( self, "obtain" )( ), idx )
@@ -2225,7 +2287,7 @@ function ModUtil.ReferTable( obtainer, ... )
 	local obtain = function( )
 		return obtainer( table.unpack( args ) )
 	end
-	local referTable = { obtain = obtain }
+	local referTable = --[[detour]]{ obtain = obtain }
 	setmetatable( referTable, ModUtil.Metatables.ReferTable )
 	return referTable
 end
@@ -2300,29 +2362,13 @@ end
 
 -- Internal access
 
-ModUtil.Internal._G = _G
+local function internalHolder( )
+	return { internalHolder, _G, forceClosed, funcsToLoad, loadFuncs,
+		wrapCallbacks, overrides, envNodes, envNodeInfo, getEnv,
+		getEnvNode, replaceGlobalEnvironment }
+end
 
-ModUtil.Internal.__G = __G
-
-ModUtil.Internal.ForceClosed = forceClosed
-
-ModUtil.Internal.FuncsToLoad = funcsToLoad
-
-ModUtil.Internal.LoadFuncs = loadFuncs
-
-ModUtil.Internal.WrapCallbacks = wrapCallbacks
-
-ModUtil.Internal.Overrides = overrides
-
-ModUtil.Internal.EnvNodes = envNodes
-
-ModUtil.Internal.EnvNodeInfo = envNodeInfo
-
-ModUtil.Internal.GetEnvNode = getenvNode
-
-ModUtil.Internal.GetEnv = getenv
-
-ModUtil.Internal.ReplaceGlobalEnvironment = replaceGlobalEnvironment
+ModUtil.Internal = ModUtil.UpValues( internalHolder )
 
 -- Final Actions
 
