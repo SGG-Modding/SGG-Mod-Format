@@ -2277,9 +2277,9 @@ end
 
 local function internalHolder( )
 	return { internalHolder, _G,
+		objectData, onew, oget, oset, ocall, olen, onext, oinext, opairs, opairs,
 		wrapCallbacks, overrides,
-		envNodes, envNodeInfo, getEnv,
-		getEnvNode, replaceGlobalEnvironment }
+		envNodes, envNodeInfo, getEnv, getEnvNode, replaceGlobalEnvironment }
 end
 
 do
