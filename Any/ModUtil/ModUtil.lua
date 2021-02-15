@@ -165,18 +165,6 @@ end
 	- table.sort
 --]]
 
---[[
-	local version of ToLookup as to not depend on Main.lua
-]]
-local function ToLookup( tableArg )
-	local lookup = {}
-	for key,value in pairs( tableArg ) do
-		lookup[value] = true
-	end
-	return lookup
-end
-
-
 --- bind to locals to minimise environment recursion and improve speed
 local
 	rawset, rawlen, ModUtil, getmetatable, setmetatable, pairs, ipairs, coroutine,
@@ -185,14 +173,25 @@ local
 	rawset, rawlen, ModUtil, getmetatable, setmetatable, pairs, ipairs, coroutine,
 		rawpairs, rawipairs, qrawpairs, qrawipairs, tostring
 
+--[[
+	local version of ToLookup as to not depend on Main.lua
+]]
+local function ToLookup( tableArg )
+	local lookup = { }
+	for _, value in pairs( tableArg ) do
+		lookup[ value ] = true
+	end
+	return lookup
+end
+
 -- Managed and private Data Objects (EXPERIMENTAL) (INCOMPLETE)
 
 local objectData = setmetatable( { }, { __mode = "k" } )
 
-local function onew( obj )
-	local odata = objectData[ obj ] or { }
-	objectData[ obj ] = odata
-	return odata
+local function onew( data )
+	local obj = { }
+	objectData[ obj ] = data
+	return obj
 end
 
 local function oget( obj, key )
@@ -218,6 +217,10 @@ local function opairs( obj )
 end
 local function oipairs( obj )
 	return ipairs( objectData[ obj ] )
+end
+
+function ModUtil.PrivateProxy( data, meta )
+	return setmetatable( onew( data ), meta )
 end
 
 function ModUtil.PrivateInterface( obj )
@@ -398,8 +401,12 @@ end
 local function replaceGlobalEnvironment( )
 	_ENV = debug.setmetatable( { }, {
 		__index = function( _, key )
-			if key == "_C" then
+			if key == "_G" then
+				return _ENV
+			elseif key == "_C" then
 				return getEnv( 2 )
+			elseif key == "_N" then
+				return getEnvNode( 2 )
 			elseif key == "_R" then
 				return _G
 			end
@@ -429,6 +436,7 @@ local function replaceGlobalEnvironment( )
 			return ipairs( getEnv( 2 ) )
 		end
 	} )
+	_G._G = _ENV
 	local reg = debug.getregistry( )
 	for i, v in ipairs( reg ) do
 		if v == _G then reg[ i ] = _ENV end
@@ -535,11 +543,11 @@ function ModUtil.ToString.DeepNoNamespaces( o, seen )
 		first = true
 		seen = { }
 	end
-	if type( o ) == "table" and not seen[ o ] and o ~= _G and o ~= _G._G and ( first or not ModUtil.Mods.Inverse[ o ] ) then
+	if type( o ) == "table" and not seen[ o ] and o ~= _G and o ~= _ENV and ( first or not ModUtil.Mods.Inverse[ o ] ) then
 		seen[ o ] = true
 		local out = { ModUtil.ToString.Value( o ), "{ " }
 		for k, v in pairs( o ) do
-			if v ~= _G and v ~= _G._G and not ModUtil.Mods.Inverse[ v ] then
+			if v ~= _G and v ~= _ENV and not ModUtil.Mods.Inverse[ v ] then
 				table.insert( out, ModUtil.ToString.Key( k ) )
 				table.insert( out, ' = ' )
 				table.insert( out, ModUtil.ToString.DeepNoNamespaces( v, seen ) )
@@ -559,11 +567,11 @@ function ModUtil.ToString.DeepNamespaces( o, seen )
 		first = true
 		seen = { }
 	end
-	if type( o ) == "table" and not seen[ o ] and ( first or o == _G or o == _G._G or ModUtil.Mods.Inverse[ o ] ) then
+	if type( o ) == "table" and not seen[ o ] and ( first or o == _G or o == _ENV or ModUtil.Mods.Inverse[ o ] ) then
 		seen[ o ] = true
 		local out = { ModUtil.ToString.Value( o ), "{ " }
 		for k, v in pairs( o ) do
-			if v == _G or v == _G._G or ModUtil.Mods.Inverse[ v ] then
+			if v == _G or v == _ENV or ModUtil.Mods.Inverse[ v ] then
 				table.insert( out, ModUtil.ToString.Key( k ) )
 				table.insert( out, ' = ' )
 				table.insert( out, ModUtil.ToString.DeepNamespaces( v, seen ) )
@@ -732,7 +740,7 @@ function ModUtil.Print.Namespaces( level )
 	ModUtil.Print( "\t" .. "Locals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	text = ModUtil.ToString.DeepNamespaces( ModUtil.UpValues( level + 1 ) )
 	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
-	text = ModUtil.ToString.DeepNamespaces( _ENV._G )
+	text = ModUtil.ToString.DeepNamespaces( _ENV )
 	ModUtil.Print( "\t" .. "Globals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 end
 
@@ -744,7 +752,7 @@ function ModUtil.Print.Variables( level )
 	ModUtil.Print( "\t" .. "Locals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 	text = ModUtil.ToString.DeepNoNamespaces( ModUtil.UpValues( level + 1 ) )
 	ModUtil.Print( "\t" .. "UpValues:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
-	text = ModUtil.ToString.DeepNoNamespaces( _ENV._G )
+	text = ModUtil.ToString.DeepNoNamespaces( _ENV )
 	ModUtil.Print( "\t" .. "Globals:" .. "\t" .. text:sub( 1 + text:find( ">" ) ) )
 end
 
@@ -962,7 +970,7 @@ end
 -- Path Manipulation
 
 function ModUtil.Path.Map( path, map, ... )
-	ModUtil.IndexArray.Map( _ENV._G, ModUtil.Path.IndexArray( path ), map, ... )
+	ModUtil.IndexArray.Map( _ENV, ModUtil.Path.IndexArray( path ), map, ... )
 end
 
 function ModUtil.Path.Join( a, b )
@@ -1008,7 +1016,7 @@ end
 				 If not provided, retreive a global.
 --]]
 function ModUtil.Path.Get( path, base )
-	return ModUtil.IndexArray.Get( base or _ENV._G, ModUtil.Path.IndexArray( path ) )
+	return ModUtil.IndexArray.Get( base or _ENV, ModUtil.Path.IndexArray( path ) )
 end
 
 --[[
@@ -1022,7 +1030,7 @@ end
 				 If not provided, retreive a global.
 --]]
 function ModUtil.Path.Set( path, value, base )
-	return ModUtil.IndexArray.Set( base or _ENV._G, ModUtil.Path.IndexArray( path ), value )
+	return ModUtil.IndexArray.Set( base or _ENV, ModUtil.Path.IndexArray( path ), value )
 end
 
 -- Metaprogramming Shenanigans
@@ -1030,25 +1038,25 @@ end
 local stackLevelProperty
 stackLevelProperty = {
 	here = function( self )
-		local thread = rawget( self, "thread" )
-		local cursize = rawget( self, "level" ) + 1
+		local thread = oget( self, "thread" )
+		local cursize = oget( self, "level" ) + 1
 		while debug.getinfo( thread, cursize, "f" ) do
 			cursize = cursize + 1
 		end
-		return cursize - rawget( self, "size" ) - 1
+		return cursize - oget( self, "size" ) - 1
 	end,
 	top = function( self )
-		local thread = rawget( self, "thread" )
-		local level = rawget( self, "level" )
+		local thread = oget( self, "thread" )
+		local level = oget( self, "level" )
 		local cursize = level + 1
 		while debug.getinfo( thread, cursize, "f" ) do
 			cursize = cursize + 1
 		end
 		return cursize - level - 1
 	end,
-	there = function( self ) return rawget( self, "level" ) end,
-	bottom = function( self ) return rawget( self, "size" ) end,
-	co = function( self ) return rawget( self, "thread" ) end,
+	there = function( self ) return oget( self, "level" ) end,
+	bottom = function( self ) return oget( self, "size" ) end,
+	co = function( self ) return oget( self, "thread" ) end,
 	func = function( self )
 		return debug.getinfo( self.co, self.here, "f" ).func
 	end
@@ -1126,9 +1134,9 @@ ModUtil.Metatables.StackLevel = {
 		return function( ) end, self
 	end,
 	__eq = function( self, other )
-		return rawget( self, "thread" ) == rawget( other, "thread" )
-		and rawget( self, "size" ) == rawget( other, "size")
-		and rawget( self, "level" ) == rawget( other, "level")
+		return oget( self, "thread" ) == oget( other, "thread" )
+		and oget( self, "size" ) == oget( other, "size")
+		and oget( self, "level" ) == oget( other, "level")
 	end
 }
 
@@ -1142,19 +1150,17 @@ function ModUtil.StackLevel( level )
 	end
 	size = size - level - 1
 	if size > 0 then
-		local stackLevel = --[[detour]]{ level = level, size = size, thread = thread }
-		setmetatable( stackLevel, ModUtil.Metatables.StackLevel )
-		return stackLevel
+		return ModUtil.PrivateProxy( { level = level, size = size, thread = thread }, ModUtil.Metatables.StackLevel )
 	end
 end
 
 ModUtil.Metatables.StackLevels = {
 	__index = function( self, level )
-		return ModUtil.StackLevel( ( level or 0 ) + rawget( self, "level" ).here )
+		return ModUtil.StackLevel( ( level or 0 ) + oget( self, "level" ).here )
 	end,
 	__newindex = function( ) end,
 	__len = function( self )
-		return rawget( self, "level" ).bottom
+		return oget( self, "level" ).bottom
 	end,
 	__next = function( self, level )
 		level = ( level or 0 ) + 1
@@ -1171,9 +1177,7 @@ ModUtil.Metatables.StackLevels.__ipairs = ModUtil.Metatables.StackLevels.__pairs
 ModUtil.Metatables.StackLevels.__inext = ModUtil.Metatables.StackLevels.__next
 
 function ModUtil.StackLevels( level )
-	local levels = --[[detour]]{ level = ModUtil.StackLevel( level or 0 ) }
-	setmetatable( levels, ModUtil.Metatables.StackLevels )
-	return levels
+	return ModUtil.PrivateProxy( { level = ModUtil.StackLevel( level or 0 ) }, ModUtil.Metatables.StackLevels )
 end
 
 
@@ -1182,7 +1186,7 @@ local excludedUpValueNames = ToLookup{ "_ENV" }
 ModUtil.Metatables.UpValues = {
 	__index = function( self, name )
 		if excludedUpValueNames[ name ] then return end
-		local func = rawget( self, "func" )
+		local func = oget( self, "func" )
 		local idx = 0
 		repeat
 			idx = idx + 1
@@ -1194,7 +1198,7 @@ ModUtil.Metatables.UpValues = {
 	end,
 	__newindex = function( self, name, value )
 		if excludedUpValueNames[ name ] then return end
-		local func = rawget( self, "func" )
+		local func = oget( self, "func" )
 		local idx = name and 0 or -1
 		repeat
 			idx = idx + 1
@@ -1209,7 +1213,7 @@ ModUtil.Metatables.UpValues = {
 		return 0
 	end,
 	__next = function( self, name )
-		local func = rawget( self, "func" )
+		local func = oget( self, "func" )
 		local idx = name and 0 or -1
 		repeat
 			idx = idx + 1
@@ -1240,9 +1244,7 @@ setmetatable( ModUtil.UpValues, {
 		if type( func ) ~= "function" then
 			func = debug.getinfo( ( func or 1 ) + 1, "f" ).func
 		end
-		local upValues = --[[detour]]{ func = func }
-		setmetatable( upValues, ModUtil.Metatables.UpValues )
-		return upValues
+		return ModUtil.PrivateProxy( { func = func }, ModUtil.Metatables.UpValues )
 	end
 })
 
@@ -1272,7 +1274,7 @@ end
 
 ModUtil.Metatables.UpValues.Ids = {
 	__index = function( self, idx )
-		local func =  rawget( self, "func" )
+		local func =  oget( self, "func" )
 		local name = debug.getupvalue( func, idx )
 		if name and not excludedUpValueNames[ name ] then
 			local id = debug.upvalueid( func, idx )
@@ -1281,7 +1283,7 @@ ModUtil.Metatables.UpValues.Ids = {
 		end
 	end,
 	__newindex = function( self, idx, value )
-		local func = rawget( self, "func" )
+		local func = oget( self, "func" )
 		local name = debug.getupvalue( func, idx )
 		if name and not excludedUpValueNames[ name ] then
 			local func2, idx2 = getUpValueIdData( value )
@@ -1290,10 +1292,10 @@ ModUtil.Metatables.UpValues.Ids = {
 		end
 	end,
 	__len = function( self )
-		return debug.getinfo( rawget( self, "func" ), 'u' ).nups
+		return debug.getinfo( oget( self, "func" ), 'u' ).nups
 	end,
 	__next = function ( self, idx )
-		local func = rawget( self, "func" )
+		local func = oget( self, "func" )
 		idx = idx or 0
 		local name
 		while true do
@@ -1316,20 +1318,18 @@ function ModUtil.UpValues.Ids( func )
 	if type(func) ~= "function" then
 		func = debug.getinfo( ( func or 1 ) + 1, "f" ).func
 	end
-	local ups = --[[detour]]{ func = func }
-	setmetatable( ups, ModUtil.Metatables.UpValues.Ids )
-	return ups
+	return ModUtil.PrivateProxy( { func = func }, ModUtil.Metatables.UpValues.Ids )
 end
 
 ModUtil.Metatables.UpValues.Values = {
 	__index = function( self, idx )
-		local name, value = debug.getupvalue( rawget( self, "func" ), idx )
+		local name, value = debug.getupvalue( oget( self, "func" ), idx )
 		if name and not excludedUpValueNames[ name ] then
 			return value
 		end
 	end,
 	__newindex = function( self, idx, value )
-		local func = rawget( self, "func" )
+		local func = oget( self, "func" )
 		local name = debug.getupvalue( func, idx )
 		if name and not excludedUpValueNames[ name ] then
 			debug.setupvalue( func, idx, value )
@@ -1337,10 +1337,10 @@ ModUtil.Metatables.UpValues.Values = {
 		end
 	end,
 	__len = function( self )
-		return debug.getinfo( rawget( self, "func" ), 'u' ).nups
+		return debug.getinfo( oget( self, "func" ), 'u' ).nups
 	end,
 	__next = function ( self, idx )
-		local func = rawget( self, "func" )
+		local func = oget( self, "func" )
 		idx = idx or 0
 		local name, value
 		while true do
@@ -1361,14 +1361,12 @@ function ModUtil.UpValues.Values( func )
 	if type(func) ~= "function" then
 		func = debug.getinfo( ( func or 1 ) + 1, "f" ).func
 	end
-	local ups = --[[detour]]{ func = func }
-	setmetatable( ups, ModUtil.Metatables.UpValues.Values )
-	return ups
+	return ModUtil.PrivateProxy( { func = func }, ModUtil.Metatables.UpValues.Values )
 end
 
 ModUtil.Metatables.UpValues.Names = {
 	__index = function( self, idx )
-		local name = debug.getupvalue( rawget( self, "func" ), idx )
+		local name = debug.getupvalue( oget( self, "func" ), idx )
 		if name and not excludedUpValueNames[ name ] then
 			return name
 		end
@@ -1376,7 +1374,7 @@ ModUtil.Metatables.UpValues.Names = {
 	__newindex = function( ) end,
 	__len = ModUtil.Metatables.UpValues.Values.__len,
 	__next = function ( self, idx )
-		local func = rawget( self, "func" )
+		local func = oget( self, "func" )
 		idx = idx or 0
 		local name
 		while true do
@@ -1397,15 +1395,13 @@ function ModUtil.UpValues.Names( func )
 	if type(func) ~= "function" then
 		func = debug.getinfo( ( func or 1 ) + 1, "f" ).func
 	end
-	local ups = --[[detour]]{ func = func }
-	setmetatable( ups, ModUtil.Metatables.UpValues.Names )
-	return ups
+	return ModUtil.PrivateProxy( { func = func }, ModUtil.Metatables.UpValues.Names )
 end
 
 ModUtil.Metatables.UpValues.Stacked = {
 	__index = function( self, name )
 		if excludedUpValueNames[ name ] then return end
-		for _, level in pairs( rawget( self, "levels" ) ) do
+		for _, level in pairs( oget( self, "levels" ) ) do
 			local idx = 0
 			repeat
 				idx = idx + 1
@@ -1418,7 +1414,7 @@ ModUtil.Metatables.UpValues.Stacked = {
 	end,
 	__newindex = function( self, name, value )
 		if excludedUpValueNames[ name ] then return end
-		for _, level in pairs( rawget( self, "levels" ) ) do
+		for _, level in pairs( oget( self, "levels" ) ) do
 			local idx = 0
 			repeat
 				idx = idx + 1
@@ -1434,7 +1430,7 @@ ModUtil.Metatables.UpValues.Stacked = {
 		return 0
 	end,
 	__next = function( self, name )
-		local levels = rawget( self, "levels" )
+		local levels = oget( self, "levels" )
 		for _, level in pairs( levels ) do
 			local idx = name and 0 or -1
 			repeat
@@ -1463,9 +1459,7 @@ ModUtil.Metatables.UpValues.Stacked = {
 }
 
 function ModUtil.UpValues.Stacked( level )
-	local upValues = --[[detour]]{ levels = ModUtil.StackLevels( ( level or 1 ) ) }
-	setmetatable( upValues, ModUtil.Metatables.UpValues.Stacked )
-	return upValues
+	return ModUtil.PrivateProxy( { levels = ModUtil.StackLevels( ( level or 1 ) ) }, ModUtil.Metatables.UpValues.Stacked )
 end
 
 local excludedLocalNames = ToLookup{ "(*temporary)", "(for generator)", "(for state)", "(for control)" }
@@ -1473,7 +1467,7 @@ local excludedLocalNames = ToLookup{ "(*temporary)", "(for generator)", "(for st
 ModUtil.Metatables.Locals = {
 	__index = function( self, name )
 		if excludedLocalNames[ name ] then return end
-		local level = rawget( self, "level" )
+		local level = oget( self, "level" )
 		local idx = 0
 		repeat
 			idx = idx + 1
@@ -1485,7 +1479,7 @@ ModUtil.Metatables.Locals = {
 	end,
 	__newindex = function( self, name, value )
 		if excludedLocalNames[ name ] then return end
-		local level = rawget( self, "level" )
+		local level = oget( self, "level" )
 		local idx = 0
 		repeat
 			idx = idx + 1
@@ -1500,7 +1494,7 @@ ModUtil.Metatables.Locals = {
 		return 0
 	end,
 	__next = function( self, name )
-		local level = rawget( self, "level" )
+		local level = oget( self, "level" )
 		local idx = name and 0 or -1
 		repeat
 			idx = idx + 1
@@ -1528,15 +1522,13 @@ ModUtil.Metatables.Locals = {
 
 setmetatable( ModUtil.Locals, {
 	__call = function( _, level )
-		local locals = --[[detour]]{ level = ModUtil.StackLevel( ( level or 1 ) + 1 ) }
-		setmetatable( locals, ModUtil.Metatables.Locals )
-		return locals
+		return ModUtil.PrivateProxy( { level = ModUtil.StackLevel( ( level or 1 ) + 1 ) }, ModUtil.Metatables.Locals )
 	end
 } )
 
 ModUtil.Metatables.Locals.Values = {
 	__index = function( self, idx )
-		local name, value = rawget( self, "level" ).getlocal( idx )
+		local name, value = oget( self, "level" ).getlocal( idx )
 		if name then
 			if not excludedLocalNames[ name ] then
 				return value
@@ -1544,7 +1536,7 @@ ModUtil.Metatables.Locals.Values = {
 		end
 	end,
 	__newindex = function( self, idx, value )
-		local level = rawget( self, "level" )
+		local level = oget( self, "level" )
 		local name = level.getlocal( idx )
 		if name then
 			if not excludedLocalNames[ name ] then
@@ -1553,7 +1545,7 @@ ModUtil.Metatables.Locals.Values = {
 		end
 	end,
 	__len = function( self )
-		local level = rawget( self, "level" )
+		local level = oget( self, "level" )
 		local idx = 1
 		while level.getlocal( level, idx ) do
 			idx = idx + 1
@@ -1563,7 +1555,7 @@ ModUtil.Metatables.Locals.Values = {
 	__next = function( self, idx )
 		idx = idx or 0
 		idx = idx + 1
-		local name, val = rawget( self, "level" ).getlocal( idx )
+		local name, val = oget( self, "level" ).getlocal( idx )
 		if name then
 			if not excludedLocalNames[ name ] then
 				return idx, val
@@ -1584,15 +1576,12 @@ ModUtil.Metatables.Locals.Values.__inext = ModUtil.Metatables.Locals.Values.__ne
 	end
 --]]
 function ModUtil.Locals.Values( level )
-	if level == nil then level = 1 end
-	local locals = --[[detour]]{ level = ModUtil.StackLevel( level + 1 ) }
-	setmetatable( locals, ModUtil.Metatables.Locals.Values )
-	return locals
+	return ModUtil.PrivateProxy( { level = ModUtil.StackLevel( ( level or 1 ) + 1 ) }, ModUtil.Metatables.Locals.Values )
 end
 
 ModUtil.Metatables.Locals.Names = {
 	__index = function( self, idx )
-		local name = rawget( self, "level" ).getlocal( idx )
+		local name = oget( self, "level" ).getlocal( idx )
 		if name then
 			if not excludedLocalNames[ name ] then
 				return name
@@ -1604,7 +1593,7 @@ ModUtil.Metatables.Locals.Names = {
 	__next = function( self, idx )
 		if idx == nil then idx = 0 end
 		idx = idx + 1
-		local name = rawget( self, "level" ).getlocal( idx )
+		local name = oget( self, "level" ).getlocal( idx )
 		if name then
 			if not excludedLocalNames[ name ] then
 				return idx, name
@@ -1625,16 +1614,13 @@ ModUtil.Metatables.Locals.Names.__inext = ModUtil.Metatables.Locals.Names.__next
 	end
 --]]
 function ModUtil.Locals.Names( level )
-	if level == nil then level = 1 end
-	local locals = --[[detour]]{ level = ModUtil.StackLevel( level + 1 ) }
-	setmetatable( locals, ModUtil.Metatables.Locals.Names )
-	return locals
+	return ModUtil.PrivateProxy( { level = ModUtil.StackLevel( ( level or 1 ) + 1 ) }, ModUtil.Metatables.Locals.Names )
 end
 
 ModUtil.Metatables.Locals.Stacked = {
 	__index = function( self, name )
 		if excludedLocalNames[ name ] then return end
-		for _, level in pairs( rawget( self, "levels" ) ) do
+		for _, level in pairs( oget( self, "levels" ) ) do
 			local idx = 0
 			repeat
 				idx = idx + 1
@@ -1647,7 +1633,7 @@ ModUtil.Metatables.Locals.Stacked = {
 	end,
 	__newindex = function( self, name, value )
 		if excludedLocalNames[ name ] then return end
-		for _, level in pairs( rawget( self, "levels" ) ) do
+		for _, level in pairs( oget( self, "levels" ) ) do
 			local idx = 0
 			repeat
 				idx = idx + 1
@@ -1663,7 +1649,7 @@ ModUtil.Metatables.Locals.Stacked = {
 		return 0
 	end,
 	__next = function( self, name )
-		local levels = rawget( self, "levels" )
+		local levels = oget( self, "levels" )
 		for _, level in pairs( levels ) do
 			local idx = name and 0 or -1
 			repeat
@@ -1701,9 +1687,7 @@ ModUtil.Metatables.Locals.Stacked = {
 	and its 'local hasRequirement' as ModUtil.Locals.Stacked( ).hasRequirement.
 --]]
 function ModUtil.Locals.Stacked( level )
-	local locals = --[[detour]]{ levels = ModUtil.StackLevels( level or 1 ) }
-	setmetatable( locals, ModUtil.Metatables.Locals.Stacked )
-	return locals
+	return ModUtil.PrivateProxy( { levels = ModUtil.StackLevels( level or 1 ) }, ModUtil.Metatables.Locals.Stacked )
 end
 
 -- Entangled Data Structures
@@ -1714,13 +1698,13 @@ ModUtil.Metatables.Entangled.Map = {
 
 	Data = {
 		__index = function( self, key )
-			return rawget( self, "Map" )[ key ]
+			return oget( self, "Map" )[ key ]
 		end,
 		__newindex = function( self, key, value )
-			local data = rawget( self, "Map" )
+			local data = oget( self, "Map" )
 			local prevValue = data[ key ]
 			data[ key ] = value
-			local preImage = rawget( self, "PreImage" )
+			local preImage = oget( self, "PreImage" )
 			local prevKeys
 			if prevValue ~= nil then
 				prevKeys = preImage[ prevValue ]
@@ -1736,13 +1720,13 @@ ModUtil.Metatables.Entangled.Map = {
 			keys[ key ] = true
 		end,
 		__len = function( self )
-			return #rawget( self, "Map" )
+			return #oget( self, "Map" )
 		end,
 		__next = function( self, key )
-			return next( rawget( self, "Map" ), key )
+			return next( oget( self, "Map" ), key )
 		end,
 		__inext = function( self, idx )
-			return inext( rawget( self, "Map" ), idx )
+			return inext( oget( self, "Map" ), idx )
 		end,
 		__pairs = function( self )
 			return qrawpairs( self )
@@ -1754,11 +1738,11 @@ ModUtil.Metatables.Entangled.Map = {
 
 	PreImage = {
 		__index = function( self, value )
-			return rawget( self, "PreImage" )[ value ]
+			return oget( self, "PreImage" )[ value ]
 		end,
 		__newindex = function( self, value, keys )
-			rawget( self, "PreImage" )[ value ] = keys
-			local data = rawget( self, "Map" )
+			oget( self, "PreImage" )[ value ] = keys
+			local data = oget( self, "Map" )
 			for key in pairs( data ) do
 				data[ key ] = nil
 			end
@@ -1767,13 +1751,13 @@ ModUtil.Metatables.Entangled.Map = {
 			end
 		end,
 		__len = function( self )
-			return #rawget( self, "PreImage" )
+			return #oget( self, "PreImage" )
 		end,
 		__next = function( self, key )
-			return next( rawget( self, "PreImage" ), key )
+			return next( oget( self, "PreImage" ), key )
 		end,
 		__inext = function( self, idx )
-			return inext( rawget( self, "PreImage" ), idx )
+			return inext( oget( self, "PreImage" ), idx )
 		end,
 		__pairs = function( self )
 			return qrawpairs( self )
@@ -1787,10 +1771,10 @@ ModUtil.Metatables.Entangled.Map = {
 
 		Data = {
 			__index = function( self, key )
-				return rawget( self, "Data" )[ key ]
+				return oget( self, "Data" )[ key ]
 			end,
 			__newindex = function( self, key, value )
-				local data, inverse = rawget( self, "Data" ), rawget( self, "Inverse" )
+				local data, inverse = oget( self, "Data" ), oget( self, "Inverse" )
 				if value ~= nil then
 					local k = inverse[ value ]
 					if k ~= key  then
@@ -1811,13 +1795,13 @@ ModUtil.Metatables.Entangled.Map = {
 				end
 			end,
 			__len = function( self )
-				return #rawget( self, "Data" )
+				return #oget( self, "Data" )
 			end,
 			__next = function( self, key )
-				return next( rawget( self, "Data" ), key )
+				return next( oget( self, "Data" ), key )
 			end,
 			__inext = function( self, idx )
-				return inext( rawget( self, "Data" ), idx )
+				return inext( oget( self, "Data" ), idx )
 			end,
 			__pairs = function( self )
 				return qrawpairs( self )
@@ -1829,10 +1813,10 @@ ModUtil.Metatables.Entangled.Map = {
 
 		Inverse = {
 			__index = function( self, value )
-				return rawget( self, "Inverse" )[ value ]
+				return oget( self, "Inverse" )[ value ]
 			end,
 			__newindex = function( self, value, key )
-				local data, inverse = rawget( self, "Data" ), rawget( self, "Inverse" )
+				local data, inverse = oget( self, "Data" ), oget( self, "Inverse" )
 				if value ~= nil then
 					local k = inverse[ value ]
 					if k ~= key then
@@ -1853,13 +1837,13 @@ ModUtil.Metatables.Entangled.Map = {
 				end
 			end,
 			__len = function( self )
-				return #rawget( self, "Inverse" )
+				return #oget( self, "Inverse" )
 			end,
 			__next = function( self, value )
-				return next( rawget( self, "Inverse" ), value )
+				return next( oget( self, "Inverse" ), value )
 			end,
 			__inext = function( self, idx )
-				return inext( rawget( self, "Inverse" ), idx )
+				return inext( oget( self, "Inverse" ), idx )
 			end,
 			__pairs = function( self )
 				return qrawpairs( self )
@@ -1880,9 +1864,9 @@ ModUtil.Entangled.Map = {
 setmetatable( ModUtil.Entangled.Map, {
 	__call = function( )
 		local data, preImage = { }, { }
-		data, preImage = --[[detour]]{ Data = data, PreImage = preImage }, --[[detour]]{ Data = data, PreImage = preImage }
-		setmetatable( data, ModUtil.Metatables.Entangled.Map.Data )
-		setmetatable( preImage, ModUtil.Metatables.Entangled.Map.PreImage )
+		data, preImage = { Data = data, PreImage = preImage }, { Data = data, PreImage = preImage }
+		data = ModUtil.PrivateProxy( data, ModUtil.Metatables.Entangled.Map.Data )
+		preImage = ModUtil.PrivateProxy( preImage, ModUtil.Metatables.Entangled.Map.PreImage )
 		return { Data = data, Index = preImage, PreImage = preImage }
 	end
 } )
@@ -1890,9 +1874,9 @@ setmetatable( ModUtil.Entangled.Map, {
 setmetatable( ModUtil.Entangled.Map.Unique, {
 	__call = function( )
 		local data, inverse = { }, { }
-		data, inverse = --[[detour]]{ Data = data, Inverse = inverse }, --[[detour]]{ Data = data, Inverse = inverse }
-		setmetatable( data, ModUtil.Metatables.Entangled.Map.Unique.Data )
-		setmetatable( inverse, ModUtil.Metatables.Entangled.Map.Unique.Inverse )
+		data, inverse = { Data = data, Inverse = inverse }, { Data = data, Inverse = inverse }
+		data = ModUtil.PrivateProxy( data, ModUtil.Metatables.Entangled.Map.Unique.Data )
+		inverse = ModUtil.PrivateProxy( inverse, ModUtil.Metatables.Entangled.Map.Unique.Inverse )
 		return { Data = data, Index = inverse, Inverse = inverse }
 	end
 } )
@@ -1903,43 +1887,47 @@ ModUtil.Context = { }
 
 ModUtil.Metatables.Environment = {
 	__index = function( self, key )
-		if key == "_R" then
-			return rawget( self, "raw" ) or rawget( self, "data" )
+		if key == "_G" then
+			return _ENV
 		elseif key == "_C" then
 			return self
+		elseif key == "_N" then
+			return oget( self, "node" )
+		elseif key == "_R" then
+			return oget( self, "raw" ) or oget( self, "data" )
 		end
-		local value = rawget( self, "data" )[ key ]
+		local value = oget( self, "data" )[ key ]
 		if value ~= nil then
 			return value
 		end
-		return ( rawget( self, "index" ) or _G )[ key ]
+		return ( oget( self, "index" ) or _G )[ key ]
 	end,
 	__newindex = function( self, key, value )
-		local data = rawget( self, "data" )
+		local data = oget( self, "data" )
 		if data[ key ] ~= nil then
-			rawget( self, "data" )[ key ] = value
+			oget( self, "data" )[ key ] = value
 		else
-			( rawget( self, "newindex" ) or _G )[ key ] = value
+			( oget( self, "newindex" ) or _G )[ key ] = value
 		end
 	end,
 	__len = function( self )
-		return #rawget( self, "data" )
+		return #oget( self, "data" )
 	end,
 	__next = function( self, key )
 		local data, value
 		repeat
-			data, value = rawget( self, "data" ), nil
+			data, value = oget( self, "data" ), nil
 			repeat
 				key, value = next( data, key )
 				if value ~= nil then
 					return key, value
 				end
 			until key == nil
-			self = rawget( self, "index" )
+			self = oget( self, "index" )
 		until self == nil
 	end,
 	__inext = function( self, idx )
-		local data, value = rawget( self, "data" ), nil
+		local data, value = oget( self, "data" ), nil
 		repeat
 			idx, value = next( data, idx )
 		until value ~= nil or idx == nil
@@ -1971,7 +1959,7 @@ ModUtil.Metatables.Context = {
 
 		contextInfo.context = self
 		contextInfo.args = table.pack( ... )
-		local processed = table.pack( rawget( self, "callContextProcessor" )( contextInfo, ... ) )
+		local processed = table.pack( oget( self, "callContextProcessor" )( contextInfo, ... ) )
 		contextInfo.params = table.pack( table.unpack( processed, 2, processed.n ) )
 		contextInfo.env = processed[ 1 ]
 
@@ -1987,22 +1975,16 @@ ModUtil.Metatables.Context = {
 
 setmetatable( ModUtil.Context, {
 	__call = function( _, callContextProcessor )
-		local context = { callContextProcessor = callContextProcessor }
-		setmetatable( context, ModUtil.Metatables.Context )
-		return context
+		return ModUtil.PrivateProxy( { callContextProcessor = callContextProcessor }, ModUtil.Metatables.Context )
 	end
 } )
 
 ModUtil.Context.Data = ModUtil.Context( function( info )
-	local env = { data = info.args[ 1 ], newindex = { } }
-	setmetatable( env, ModUtil.Metatables.Environment )
-	return env
+	return ModUtil.PrivateProxy( { data = info.args[ 1 ], newindex = { } }, ModUtil.Metatables.Environment )
 end )
 
 ModUtil.Context.Meta = ModUtil.Context( function( info )
-	local env = { data = ModUtil.Nodes.Data.Metatable.New( info.args[ 1 ] ), newindex = { } }
-	setmetatable( env, ModUtil.Metatables.Environment )
-	return env
+	return ModUtil.PrivateProxy( { data = ModUtil.Nodes.Data.Metatable.New( info.args[ 1 ] ), newindex = { } }, ModUtil.Metatables.Environment )
 end )
 
 ModUtil.Context.Call = ModUtil.Context( function( info )
@@ -2019,14 +2001,14 @@ ModUtil.Context.Call = ModUtil.Context( function( info )
 	for i = l, 1, -1 do
 		local func = stack[ i ]
 		if not envNode[ func ] then
-			env = --[[detour]]{ data = { } }
+			local node = { }
+			env = { data = { }, node = node }
 			local nodeInfo = envNodeInfo[ envNode ]
 			if nodeInfo then
 				env.index = nodeInfo.env
 				env.newindex = nodeInfo.env
 			end
-			setmetatable( env, ModUtil.Metatables.Environment )
-			local node = { }
+			env = ModUtil.PrivateProxy( env, ModUtil.Metatables.Environment )
 			envNodeInfo[ node ] = { env = env, parent = envNode, func = func }
 			envNode[ func ] = node
 			setmetatable( node, envNodeMeta )
@@ -2127,16 +2109,15 @@ ModUtil.Nodes.Data.UpValues = {
 -- Identifier System
 
 ModUtil.Identifiers = ModUtil.Entangled.Map.Unique( )
-setmetatable( rawget( ModUtil.Identifiers.Data, "Inverse" ), { __mode = "k" } )
-setmetatable( rawget( ModUtil.Identifiers.Inverse, "Data" ), { __mode = "v" } )
+setmetatable( oget( ModUtil.Identifiers.Data, "Inverse" ), { __mode = "k" } )
+setmetatable( oget( ModUtil.Identifiers.Inverse, "Data" ), { __mode = "v" } )
 
 ModUtil.Identifiers.Inverse._G = _G
-ModUtil.Identifiers.Inverse._ENV = _ENV
 ModUtil.Identifiers.Inverse.ModUtil = ModUtil
 
 ModUtil.Mods = ModUtil.Entangled.Map.Unique( )
-setmetatable( rawget( ModUtil.Mods.Data, "Inverse" ), { __mode = "k" } )
-setmetatable( rawget( ModUtil.Mods.Inverse, "Data" ), { __mode = "v" } )
+setmetatable( oget( ModUtil.Mods.Data, "Inverse" ), { __mode = "k" } )
+setmetatable( oget( ModUtil.Mods.Inverse, "Data" ), { __mode = "v" } )
 ModUtil.Mods.Data.ModUtil = ModUtil
 
 -- Function Wrapping, Overriding, Referral
@@ -2191,28 +2172,28 @@ end
 
 ModUtil.Metatables.ReferTable = {
 	__index = function( self, key )
-		return rawget( self, "obtain" )( )[ key ]
+		return oget( self, "obtain" )( )[ key ]
 	end,
 	__newindex = function( self, key, value )
-		rawget( self, "obtain" )( )[ key ] = value
+		oget( self, "obtain" )( )[ key ] = value
 	end,
 	__call = function( self, ... )
-		return rawget( self, "obtain" )( )( ... )
+		return oget( self, "obtain" )( )( ... )
 	end,
 	__len = function( self )
-		return #rawget( self, "obtain" )( )
+		return #oget( self, "obtain" )( )
 	end,
 	__next = function( self, key )
-		return next( rawget( self, "obtain" )( ), key )
+		return next( oget( self, "obtain" )( ), key )
 	end,
 	__inext = function( self, idx )
-		return inext( rawget( self, "obtain" )( ), idx )
+		return inext( oget( self, "obtain" )( ), idx )
 	end,
 	__pairs = function( self )
-		return pairs( rawget( self, "obtain" )( ) )
+		return pairs( oget( self, "obtain" )( ) )
 	end,
 	__ipairs = function( self )
-		return ipairs( rawget( self, "obtain" )( ) )
+		return ipairs( oget( self, "obtain" )( ) )
 	end
 }
 
@@ -2221,9 +2202,7 @@ function ModUtil.ReferTable( obtainer, ... )
 	local obtain = function( )
 		return obtainer( table.unpack( args ) )
 	end
-	local referTable = --[[detour]]{ obtain = obtain }
-	setmetatable( referTable, ModUtil.Metatables.ReferTable )
-	return referTable
+	return ModUtil.PrivateProxy( { obtain = obtain }, ModUtil.Metatables.ReferTable )
 end
 
 ---
@@ -2303,7 +2282,10 @@ local function internalHolder( )
 		getEnvNode, replaceGlobalEnvironment }
 end
 
-ModUtil.Internal = ModUtil.UpValues( internalHolder )
+do
+	local ups = ModUtil.UpValues( internalHolder )
+	setmetatable( ModUtil.Internal, { __index = ups, __newindex = ups } )
+end
 
 -- Final Actions
 

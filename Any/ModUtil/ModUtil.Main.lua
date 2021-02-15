@@ -4,8 +4,8 @@
 ]]
 
 --- bind to locals to minimise environment recursion and improve speed
-local ModUtil, pairs, ipairs, table, SaveIgnores, OnAnyLoad, _G
-    = ModUtil, pairs, ipairs, table, SaveIgnores, OnAnyLoad, ModUtil.Internal._G
+local ModUtil, pairs, ipairs, table, SaveIgnores, _G
+    = ModUtil, pairs, ipairs, table, SaveIgnores, ModUtil.Internal._G
 
 -- Management
 
@@ -93,4 +93,7 @@ local function internalHolderMain( )
     return { internalHolderMain, forceClosed, funcsToLoad, loadFuncs }
 end
 
-ModUtil.Internal.Main = ModUtil.UpValues( internalHolderMain )
+do
+	local ups = ModUtil.UpValues( internalHolderMain )
+	rawset( ModUtil.Internal, "Main", setmetatable( { }, { __index = ups, __newindex = ups } ) )
+end
