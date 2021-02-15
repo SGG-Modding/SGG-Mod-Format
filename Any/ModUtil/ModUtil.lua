@@ -1876,53 +1876,6 @@ setmetatable( ModUtil.Entangled.Map.Unique, {
 
 ModUtil.Context = { }
 
-ModUtil.Metatables.Environment = {
-	__index = function( self, key )
-		local value = oget( self, "data" )[ key ]
-		if value ~= nil then
-			return value
-		end
-		return ( oget( self, "index" ) or _G )[ key ]
-	end,
-	__newindex = function( self, key, value )
-		local data = oget( self, "data" )
-		if data[ key ] ~= nil then
-			oget( self, "data" )[ key ] = value
-		else
-			( oget( self, "newindex" ) or _G )[ key ] = value
-		end
-	end,
-	__len = function( self )
-		return #oget( self, "data" )
-	end,
-	__next = function( self, key )
-		local data, value
-		repeat
-			data, value = oget( self, "data" ), nil
-			repeat
-				key, value = next( data, key )
-				if value ~= nil then
-					return key, value
-				end
-			until key == nil
-			self = oget( self, "index" )
-		until self == nil
-	end,
-	__inext = function( self, idx )
-		local data, value = oget( self, "data" ), nil
-		repeat
-			idx, value = next( data, idx )
-		until value ~= nil or idx == nil
-		return idx, value
-	end,
-	__pairs = function( self )
-		return qrawpairs( self )
-	end,
-	__ipairs = function( self )
-		return qrawipairs( self )
-	end
-}
-
 local threadContexts = { }
 setmetatable( threadContexts, { __mode = "kv" } )
 
@@ -1962,11 +1915,19 @@ setmetatable( ModUtil.Context, {
 } )
 
 ModUtil.Context.Data = ModUtil.Context( function( info )
-	return ModUtil.PrivateProxy( { data = info.args[ 1 ], newindex = { } }, ModUtil.Metatables.Environment )
+	local tbl = info.args[ 1 ]
+	return setmetatable( { }, {
+		__index = function( _, key ) return tbl[ key ] or _G[ key ] end,
+		__newindex = tbl
+	} )
 end )
 
 ModUtil.Context.Meta = ModUtil.Context( function( info )
-	return ModUtil.PrivateProxy( { data = ModUtil.Nodes.Data.Metatable.New( info.args[ 1 ] ), newindex = { } }, ModUtil.Metatables.Environment )
+	local tbl = ModUtil.Nodes.Data.Metatable.New( info.args[ 1 ] )
+	return setmetatable( { }, {
+		__index = function( _, key ) return tbl[ key ] or _G[ key ] end,
+		__newindex = tbl
+	} )
 end )
 
 ModUtil.Context.Call = ModUtil.Context( function( info )
@@ -1979,26 +1940,24 @@ ModUtil.Context.Call = ModUtil.Context( function( info )
 	end
 	l = l - 1
 	local envNode = envNodes
-	local env, data
+	local env
 	for i = l, 1, -1 do
 		local func = stack[ i ]
 		if not envNode[ func ] then
-			local node = { }
-			data = { }
-			env = { data = data, node = node }
+			local penv = _G
 			local nodeInfo = envNodeInfo[ envNode ]
 			if nodeInfo then
-				env.index = nodeInfo.env
-				env.newindex = nodeInfo.env
+				penv = nodeInfo.env
 			end
-			env = ModUtil.PrivateProxy( env, ModUtil.Metatables.Environment )
+			env = setmetatable( { }, { __index = penv, __newindex = penv } )
+			local node = { }
 			envNodeInfo[ node ] = { env = env, parent = envNode, func = func }
 			envNode[ func ] = node
 			setmetatable( node, envNodeMeta )
 		end
 		envNode = envNode[ func ]
 	end
-	return setmetatable( { }, { __index = env, __newindex = data } )
+	return setmetatable( { }, { __index = env, __newindex = ModUtil.RawInterface( env ) } )
 end )
 
 -- Special traversal nodes (EXPERIMENTAL)
