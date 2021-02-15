@@ -401,15 +401,6 @@ end
 local function replaceGlobalEnvironment( )
 	_ENV = debug.setmetatable( { }, {
 		__index = function( _, key )
-			if key == "_G" then
-				return _ENV
-			elseif key == "_C" then
-				return getEnv( 2 )
-			elseif key == "_N" then
-				return getEnvNode( 2 )
-			elseif key == "_R" then
-				return _G
-			end
 			local value = getEnv( 2 )[ key ]
 			if value ~= nil then return value end
 			local t = type( key )
@@ -1887,15 +1878,6 @@ ModUtil.Context = { }
 
 ModUtil.Metatables.Environment = {
 	__index = function( self, key )
-		if key == "_G" then
-			return _ENV
-		elseif key == "_C" then
-			return self
-		elseif key == "_N" then
-			return oget( self, "node" )
-		elseif key == "_R" then
-			return oget( self, "raw" ) or oget( self, "data" )
-		end
 		local value = oget( self, "data" )[ key ]
 		if value ~= nil then
 			return value
@@ -1997,12 +1979,13 @@ ModUtil.Context.Call = ModUtil.Context( function( info )
 	end
 	l = l - 1
 	local envNode = envNodes
-	local env
+	local env, data
 	for i = l, 1, -1 do
 		local func = stack[ i ]
 		if not envNode[ func ] then
 			local node = { }
-			env = { data = { }, node = node }
+			data = { }
+			env = { data = data, node = node }
 			local nodeInfo = envNodeInfo[ envNode ]
 			if nodeInfo then
 				env.index = nodeInfo.env
@@ -2015,7 +1998,7 @@ ModUtil.Context.Call = ModUtil.Context( function( info )
 		end
 		envNode = envNode[ func ]
 	end
-	return env
+	return setmetatable( { }, { __index = env, __newindex = data } )
 end )
 
 -- Special traversal nodes (EXPERIMENTAL)
