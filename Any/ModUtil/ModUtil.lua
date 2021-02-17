@@ -116,6 +116,45 @@ function qrawipairs( t )
 	end, t, nil
 end
 
+function getfenv( fn )
+	if type( fn ) ~= "function" then
+		fn = debug.getinfo( ( fn or 1 ) + 1, "f" ).func
+	end
+	local i = 0
+	repeat
+		i = i + 1
+		local name, val = debug.getupvalue( fn, i )
+		if name == "_ENV" then
+			return val
+		end
+	until not name
+end
+
+--[[
+	Replace a function's _ENV with a new environment table.
+	Global variable lookups (including function calls) in that function
+	will use the new environment table rather than the normal one.
+	This is useful for function-specific overrides. The new environment
+	table should generally have _G as its __index, so that any globals
+	other than those being overridden can still be read.
+]]
+function setfenv( fn, env )
+	if type( fn ) ~= "function" then
+		fn = debug.getinfo( ( fn or 1 ) + 1, "f" ).func
+	end
+	local i = 0
+	repeat
+		i = i + 1
+		local name = debug.getupvalue( fn, i )
+		if name == "_ENV" then
+			debug.upvaluejoin( fn, i, ( function( )
+				return env
+			end ), 1 )
+			return
+		end
+	until not name
+end
+
 table.rawinsert = table.insert
 -- table.insert that respects metamethods
 function table.insert( list, pos, value )
@@ -168,10 +207,10 @@ end
 --- bind to locals to minimise environment recursion and improve speed
 local
 	rawset, rawlen, ModUtil, getmetatable, setmetatable, pairs, ipairs, coroutine,
-		rawpairs, rawipairs, qrawpairs, qrawipairs, tostring
+		rawpairs, rawipairs, qrawpairs, qrawipairs, tostring, getfenv, setfenv
 	=
 	rawset, rawlen, ModUtil, getmetatable, setmetatable, pairs, ipairs, coroutine,
-		rawpairs, rawipairs, qrawpairs, qrawipairs, tostring
+		rawpairs, rawipairs, qrawpairs, qrawipairs, tostring, getfenv, setfenv
 
 --[[
 	local version of ToLookup as to not depend on Main.lua
@@ -230,79 +269,19 @@ end
 
 -- Environment Context
 
-local envNodes = { }
-local envNodeInfo = { }
-setmetatable( envNodeInfo, { __mode = "k" } )
-local envNodeMeta = {
-	__mode = "k",
-	__gc = function( self )
-		envNodeInfo[ self ] = nil
-	end
-}
-setmetatable( envNodes, envNodeMeta )
-
 local _G = _ENV
-local getinfo = debug.getinfo
+local __G
 
-local function getEnv( thread, level )
-	if not type( thread ) ~= "thread" then
-		if level ~= nil then
-			error( "bad argument #2 to '" .. getname( ) .. "'(nil expected got " .. type( level ) ..")", 2 )
-		end
-		level = thread
-		thread = coroutine.running( )
-	end
-	level = level or 1
-	local stack = { }
-	local index = { }
-	local l = 1
-	do
-		local info = getinfo( thread, l + level, "f" )
-		while info do
-			stack[ l ] = info.func
-			local idxtbl = index[ info.func ] or { }
-			index[ info.func ] = idxtbl
-			table.insert( idxtbl, l )
-			info = getinfo( thread, l + level, "f" )
-			l = l + 1
-		end
-	end
-	local diffNode
-	local envNode = envNodes
-	local i = l + 1
-	local j = i
-	while l ~= 1 do
-		j = j - 1
-		local func = stack[ j ]
-		if envNode[ func ] then
-			envNode = envNode[ func ]
-			diffNode = envNode
-			if j == 1 then break end
-			i = j
-			j = i
-		end
-		if j == 1 then
-			if i == l + 1 then break end
-			j = i
-			local info = envNodeInfo[ envNode ]
-			if info then
-				envNode = info.parent
-				info = envNodeInfo[ envNode ]
-				if info then
-					i = table.remove( index[ info.func ] )
-				else
-					i = l + 1
-				end
-			end
-		end
-	end
-	return diffNode and envNodeInfo[ diffNode ].env or _G
+local threadEnvironments = setmetatable( { }, { __mode = "k" } )
+
+local function getEnv( thread )
+	return threadEnvironments[ thread or coroutine.running( ) ] or _G
 end
 
 local function replaceGlobalEnvironment( )
-	_ENV = debug.setmetatable( { }, {
+	__G = debug.setmetatable( { }, {
 		__index = function( _, key )
-			local value = getEnv( 2 )[ key ]
+			local value = getEnv( )[ key ]
 			if value ~= nil then return value end
 			local t = type( key )
 			if t == "function" or t == "table" then
@@ -310,30 +289,30 @@ local function replaceGlobalEnvironment( )
 			end
 		end,
 		__newindex = function( _, key, value )
-			getEnv( 2 )[ key ] = value
+			getEnv( )[ key ] = value
 		end,
 		__len = function( )
-			return #getEnv( 2 )
+			return #getEnv( )
 		end,
 		__next = function( _, key )
-			return next( getEnv( 2 ), key )
+			return next( getEnv( ), key )
 		end,
 		__inext = function( _, key )
-			return inext( getEnv( 2 ), key )
+			return inext( getEnv( ), key )
 		end,
 		__pairs = function( )
-			return pairs( getEnv( 2 ) )
+			return pairs( getEnv( ) )
 		end,
 		__ipairs = function( )
-			return ipairs( getEnv( 2 ) )
+			return ipairs( getEnv( ) )
 		end
 	} )
-	_G._G = _ENV
+	_G._G = __G
 	local reg = debug.getregistry( )
 	for i, v in ipairs( reg ) do
-		if v == _G then reg[ i ] = _ENV end
+		if v == _G then reg[ i ] = __G end
 	end
-	ModUtil.Identifiers.Inverse._ENV = _ENV
+	ModUtil.Identifiers.Inverse._ENV = __G
 end
 
 -- Data Misc
@@ -955,9 +934,6 @@ stackLevelProperty = {
 }
 
 local stackLevelFunction = {
-	getEnv = function( self, ... )
-		return getEnv( self.co, self.here, ... )
-	end,
 	gethook = function( self, ... )
 		return debug.gethook( self.co, ... )
 	end,
@@ -1788,78 +1764,134 @@ ModUtil.Metatables.Context = {
 		local contextInfo = {
 			call = callContext,
 			wrap = function( ... ) callContext( ... ) end,
-			parent = threadContexts[ thread ]
+			parent = threadContexts[ thread ],
+			thread = thread
 		}
 
 		threadContexts[ thread ] = contextInfo
 
 		contextInfo.context = self
 		contextInfo.args = table.pack( ... )
-		local processed = table.pack( getObjectData( self, "callContextProcessor" )( contextInfo, ... ) )
-		contextInfo.params = table.pack( table.unpack( processed, 2, processed.n ) )
-		contextInfo.env = processed[ 1 ]
+		contextInfo.data = { }
+		contextInfo.params = table.pack( getObjectData( self, "callContextProcessor" )( contextInfo ) )
 
-		contextInfo.envNode = { }
-		setmetatable( contextInfo.envNode, envNodeMeta )
-		envNodeInfo[ contextInfo.envNode ] = { env = contextInfo.env, parent = envNodes, func = contextInfo.wrap }
-		envNodes[ contextInfo.wrap ] = contextInfo.envNode
-		contextInfo.wrap( table.unpack( contextInfo.params ) )
+		local penv = threadEnvironments[ thread ]
+		local env = setmetatable( { }, { __index = ( penv or _G ), __newindex = ( penv or _G ) } )
+		threadEnvironments[ thread ] = env
 
+		contextInfo.response = table.pack( contextInfo.wrap( table.unpack( contextInfo.params ) ) )
+
+		if getObjectData( self, "postCall" ) then
+			contextInfo.final = table.pack( getObjectData( self, "postCall" )( contextInfo ) )
+		end
+
+		threadEnvironments[ thread ] = penv
 		threadContexts[ thread ] = contextInfo.parent
+
+		if contextInfo.final then
+			return table.unpack( contextInfo.final )
+		end
 	end
 }
 
 setmetatable( ModUtil.Context, {
-	__call = function( _, callContextProcessor )
-		return ModUtil.ObjectDataProxy( { callContextProcessor = callContextProcessor }, ModUtil.Metatables.Context )
+	__call = function( _, callContextProcessor, postCall )
+		return ModUtil.ObjectDataProxy( { callContextProcessor = callContextProcessor, postCall = postCall }, ModUtil.Metatables.Context )
 	end
 } )
 
 ModUtil.Context.Data = ModUtil.Context( function( info )
 	local tbl = info.args[ 1 ]
-	return setmetatable( { }, {
-		__index = function( _, key ) return tbl[ key ] or _G[ key ] end,
+	info.env = setmetatable( { }, {
+		__index = function( _, key ) return tbl[ key ] or __G[ key ] end,
 		__newindex = tbl
 	} )
 end )
 
 ModUtil.Context.Meta = ModUtil.Context( function( info )
 	local tbl = ModUtil.Nodes.Data.Metatable.New( info.args[ 1 ] )
-	return setmetatable( { }, {
-		__index = function( _, key ) return tbl[ key ] or _G[ key ] end,
+	info.env = setmetatable( { }, {
+		__index = function( _, key ) return tbl[ key ] or __G[ key ] end,
 		__newindex = tbl
 	} )
 end )
 
-ModUtil.Context.Call = ModUtil.Context( function( info )
-	local stack = { }
-	local l = 1
-	while info and info.context == ModUtil.Context.Call do
-		stack[ l ] = info.args[ 1 ]
-		l = l + 1
-		info = info.parent
+local fenvData = setmetatable( { }, { __mode = "k" } )
+
+ModUtil.Context.Env = ModUtil.Context( function( info )
+	local func = info.args[ 1 ]
+	local fenv = fenvData[ func ]
+	if not fenv then
+		fenv = getfenv( func ) or { }
+		fenvData[ func ] = fenv
 	end
-	l = l - 1
-	local envNode = envNodes
-	local env
-	for i = l, 1, -1 do
-		local func = stack[ i ]
-		if not envNode[ func ] then
-			local penv = _G
-			local nodeInfo = envNodeInfo[ envNode ]
-			if nodeInfo then
-				penv = nodeInfo.env
+	setfenv( func, setmetatable( { }, {
+		__index = function( _, key )
+			local val
+			local env = threadEnvironments[ coroutine.running( ) ]
+			if env then
+				val = env[ key ]
 			end
-			env = setmetatable( { }, { __index = penv, __newindex = penv } )
-			local node = { }
-			envNodeInfo[ node ] = { env = env, parent = envNode, func = func }
-			envNode[ func ] = node
-			setmetatable( node, envNodeMeta )
+			if val ~= nil then return val end
+			val = fenv[ key ]
+			if val ~= nil then return val end
+			return _G[ key ]
+		end,
+		__newindex = function( _, key, val )
+			local env = threadEnvironments[ coroutine.running( ) ]
+			if env and env[ key ] ~= nil then
+				env[ key ] = val
+			elseif fenv[ key ] ~= nil then
+				fenv[ key ] = val
+			end
+			_G[ key ] = val
 		end
-		envNode = envNode[ func ]
-	end
-	return setmetatable( { }, { __index = env, __newindex = ModUtil.RawInterface( env ) } )
+	} ) )
+	info.env = setmetatable( { }, {
+		__index = function( _, key ) return fenv[ key ] or __G[ key ] end,
+		__newindex = fenv
+	} )
 end )
+
+ModUtil.Context.Call = ModUtil.Context(
+	function( info )
+		local meta
+		local penv = threadEnvironments[ info.thread ]
+		local func = info.args[ 1 ]
+
+		meta = {
+			__index = function( _, key )
+				local data = fenvData[ func ]
+				if data then
+					local val = data[ key ]
+					if val ~= nil then return val end
+				end
+				return ( penv or _G )[ key ]
+			end,
+			__newindex = function( _, key, val )
+				local data = fenvData[ func ]
+				if data and data[ key ] ~= nil then
+					data[ key ] = val
+				else
+					( penv or _G )[ key ] = val
+				end
+			end
+		}
+
+		local env = setmetatable( { }, meta )
+		info.env = setmetatable( { }, { __index = env, __newindex = ModUtil.RawInterface( env ) } )
+
+		info.data.penv = penv
+		info.data.env = env
+		info.data.func = func
+	end,
+	function ( info )
+		threadEnvironments[ info.thread ] = info.env
+		local ret = table.pack( info.data.func( table.unpack( info.args, 2, info.args.n ) ) )
+		threadEnvironments[ info.thread ] = info.penv
+		return table.unpack( ret )
+	end
+)
 
 -- Special traversal nodes
 
@@ -2122,7 +2154,7 @@ local function internalHolder( )
 	return { internalHolder, _G,
 		objectData, newObjectData, getObjectData,
 		wrapCallbacks, overrides,
-		envNodes, envNodeInfo, getEnv, replaceGlobalEnvironment }
+		threadEnvironments, fenvData, getEnv, replaceGlobalEnvironment }
 end
 
 do
