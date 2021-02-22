@@ -16,7 +16,7 @@ ModUtil.Anchors.PrintOverhead = {}
 --]]
 ModUtil.IndexArray.Wrap( getmetatable( _ENV ), { "__index" }, function( baseFunc, self, key )
 	local value = baseFunc( self, key )
-	if value ~= nil then return value
+	if value ~= nil then return value end
 	local t = type( key )
 	if t == "function" or t == "table" then
 		return key
