@@ -89,11 +89,9 @@ end
 
 -- Internal Access
 
-local function internalHolderMain( )
-    return { internalHolderMain, forceClosed, funcsToLoad, loadFuncs }
-end
-
 do
-	local ups = ModUtil.UpValues( internalHolderMain )
+	local ups = ModUtil.UpValues( function( )
+		return forceClosed, funcsToLoad, loadFuncs
+	end )
 	rawset( ModUtil.Internal, "Main", setmetatable( { }, { __index = ups, __newindex = ups } ) )
 end

@@ -27,7 +27,6 @@ ModUtil = {
 	}
 
 }
---SaveIgnores[ "ModUtil" ] = true --(done in Stage 2)
 
 -- Extended Global Utilities (assuming lua 5.2)
 
@@ -135,8 +134,8 @@ end
 	Global variable lookups (including function calls) in that function
 	will use the new environment table rather than the normal one.
 	This is useful for function-specific overrides. The new environment
-	table should generally have _G as its __index, so that any globals
-	other than those being overridden can still be read.
+	table should generally have _G as its __index and __newindex, so that any globals
+	other than those being deliberately overridden operate as usual.
 ]]
 function setfenv( fn, env )
 	if type( fn ) ~= "function" then
@@ -267,7 +266,7 @@ function ModUtil.RawInterface( obj )
 	} )
 end
 
--- Environment Context
+-- Environment Context ( EXPERIMENTAL ) ( BROKEN )
 
 local _G = _ENV
 local __G
@@ -281,12 +280,7 @@ end
 local function replaceGlobalEnvironment( )
 	__G = debug.setmetatable( { }, {
 		__index = function( _, key )
-			local value = getEnv( )[ key ]
-			if value ~= nil then return value end
-			local t = type( key )
-			if t == "function" or t == "table" then
-				return key
-			end
+			return getEnv( )[ key ]
 		end,
 		__newindex = function( _, key, value )
 			getEnv( )[ key ] = value
@@ -1439,8 +1433,8 @@ ModUtil.Metatables.Locals.Values.__inext = ModUtil.Metatables.Locals.Values.__ne
 
 --[[
 	Example Use:
-	for i, name, value in pairs( ModUtil.Locals.Values( level ) ) do
-		--
+	for i, value in pairs( ModUtil.Locals.Values( level ) ) do
+		-- stuff
 	end
 --]]
 function ModUtil.Locals.Values( level )
@@ -1477,8 +1471,8 @@ ModUtil.Metatables.Locals.Names.__inext = ModUtil.Metatables.Locals.Names.__next
 
 --[[
 	Example Use:
-	for i, name, value in pairs( ModUtil.Locals.Names( level ) ) do
-		--
+	for i, name in pairs( ModUtil.Locals.Names( level ) ) do
+		-- stuff
 	end
 --]]
 function ModUtil.Locals.Names( level )
@@ -1749,7 +1743,7 @@ setmetatable( ModUtil.Entangled.Map.Unique, {
 	end
 } )
 
--- Context Managers
+-- Context Managers ( EXPERIMENTAL ) ( BROKEN )
 
 ModUtil.Context = { }
 
@@ -2150,18 +2144,16 @@ end
 
 -- Internal access
 
-local function internalHolder( )
-	return { internalHolder, _G,
+do
+	local ups = ModUtil.UpValues( function( )
+	return _G,
 		objectData, newObjectData, getObjectData,
 		wrapCallbacks, overrides,
-		threadEnvironments, fenvData, getEnv, replaceGlobalEnvironment }
-end
-
-do
-	local ups = ModUtil.UpValues( internalHolder )
+		threadEnvironments, fenvData, getEnv, replaceGlobalEnvironment
+	end )
 	setmetatable( ModUtil.Internal, { __index = ups, __newindex = ups } )
 end
 
--- Final Actions
+-- Final Actions ( EXPERIMENTAL ) ( BROKEN )
 
 replaceGlobalEnvironment( )

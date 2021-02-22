@@ -8,6 +8,21 @@ ModUtil.Table.Merge( ModUtil.Hades, {
 
 ModUtil.Anchors.PrintOverhead = {}
 
+-- Global Interception
+
+--[[
+	Intercept global keys which are objects to return themselves
+	This way we can use other namespaces for UI etc
+--]]
+ModUtil.IndexArray.Wrap( getmetatable( _ENV ), { "__index" }, function( baseFunc, self, key )
+	local value = baseFunc( self, key )
+	if value ~= nil then return value
+	local t = type( key )
+	if t == "function" or t == "table" then
+		return key
+	end
+end, ModUtil.Hades )
+
 -- Screen Handling
 
 OnAnyLoad{ function() 
