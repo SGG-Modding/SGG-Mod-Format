@@ -23,24 +23,6 @@ ModUtil.IndexArray.Wrap( getmetatable( _ENV ), { "__index" }, function( baseFunc
 	end
 end, ModUtil.Hades )
 
--- Screen Handling
-
-OnAnyLoad{ function() 
-	if ModUtil.Hades.UnfreezeLoop then return end
-	ModUtil.Hades.UnfreezeLoop = true
-	thread( function()
-		while ModUtil.Hades.UnfreezeLoop do
-			wait(15)
-			if ModUtil.IndexArray.Get(CurrentRun,{'Hero','FreezeInputKeys'}) then
-				if (not AreScreensActive()) and (not IsInputAllowed({})) then
-					UnfreezePlayerUnit()
-					DisableShopGamepadCursor()
-				end
-			end
-		end
-	end)
-end}
-
 -- Menu Handling
 
 function ModUtil.Hades.CloseMenu( screen, button )
@@ -320,7 +302,7 @@ end
 
 function ModUtil.Hades.PrintStackChunks( text, linespan, ... )
 	if not linespan then linespan = 90 end
-	for _,s in ipairs( ModUtil.String.Chunk( text, linespan,ModUtil.Hades.PrintStackCapacity ) ) do
+	for _,s in ipairs( ModUtil.String.Chunk( text, linespan, ModUtil.Hades.PrintStackCapacity ) ) do
 		ModUtil.Hades.PrintStack( s, ... )
 	end
 end

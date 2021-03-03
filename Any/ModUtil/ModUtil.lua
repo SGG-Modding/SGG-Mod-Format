@@ -323,37 +323,26 @@ function ModUtil.ToString.Value( o )
 		return tostring( o )
 	end
 	local identifier = ModUtil.Identifiers.Data[ o ]
-	if identifier then
-		identifier = "(" .. identifier .. ")"
-	else
-		identifier = ""
-	end
-	return identifier .. '<' .. tostring( o ) .. '>'
+	identifier = identifier and identifier .. " | " or ""
+	return '<' .. identifier .. tostring( o ) .. '>'
 end
 
 function ModUtil.ToString.Key( o )
 	local t = type( o )
-	o = tostring( o )
-	if t == 'string' and not excludedFieldNames[ o ] then
-		local pattern = "^[a-zA-Z_][a-zA-Z0-9_]*$"
-		if o:gmatch( pattern ) then
+	if t == 'string' then
+		if not excludedFieldNames[ o ] and o:gmatch( "^[a-zA-Z_][a-zA-Z0-9_]*$" ) then
 			return o
 		end
 		return '"' .. o .. '"'
 	end
+	s = tostring( o )
 	if t == 'number' then
-	    o = "#" .. o
-	end
-	if not passByValueTypes[ t ] then
-        o = '<' .. o .. '>'
+	    s = "#" .. s
 	end
 	local identifier = ModUtil.Identifiers.Data[ o ]
-	if identifier then
-		identifier = "(" .. identifier .. ")"
-	else
-		identifier = ""
-	end
-	return identifier .. o
+	identifier = identifier and identifier .. " | " or ""
+	if passByValueTypes[ t ] then return s end
+    return '<' .. identifier .. s .. '>'
 end
 
 function ModUtil.ToString.TableKeys( o )
@@ -370,7 +359,7 @@ end
 
 function ModUtil.ToString.Shallow( o )
 	if type( o ) == "table" then
-		local out = { ModUtil.ToString.Value( o ), "{ " }
+		local out = { ModUtil.ToString.Value( o ), "( " }
 		for k, v in pairs( o ) do
 			table.insert( out, ModUtil.ToString.Key( k ) )
 			table.insert( out, ' = ' )
@@ -378,7 +367,7 @@ function ModUtil.ToString.Shallow( o )
 			table.insert( out , ", " )
 		end
 		if #out > 2 then table.remove( out ) end
-		return table.concat( out ) .. " }"
+		return table.concat( out ) .. " )"
 	else
 		return ModUtil.ToString.Value( o )
 	end
@@ -388,7 +377,7 @@ function ModUtil.ToString.Deep( o, seen )
 	seen = seen or { }
 	if type( o ) == "table" and not seen[ o ] then
 		seen[ o ] = true
-		local out = { ModUtil.ToString.Value( o ), "{ " }
+		local out = { ModUtil.ToString.Value( o ), "( " }
 		for k, v in pairs( o ) do
 			table.insert( out, ModUtil.ToString.Key( k ) )
 			table.insert( out, ' = ' )
@@ -396,7 +385,7 @@ function ModUtil.ToString.Deep( o, seen )
 			table.insert( out , ", " )
 		end
 		if #out > 2 then table.remove( out ) end
-		return table.concat( out ) .. " }"
+		return table.concat( out ) .. " )"
 	else
 		return ModUtil.ToString.Value( o )
 	end
@@ -410,7 +399,7 @@ function ModUtil.ToString.DeepNoNamespaces( o, seen )
 	end
 	if type( o ) == "table" and not seen[ o ] and o ~= _G and o ~= _ENV and ( first or not ModUtil.Mods.Inverse[ o ] ) then
 		seen[ o ] = true
-		local out = { ModUtil.ToString.Value( o ), "{ " }
+		local out = { ModUtil.ToString.Value( o ), "( " }
 		for k, v in pairs( o ) do
 			if v ~= _G and v ~= _ENV and not ModUtil.Mods.Inverse[ v ] then
 				table.insert( out, ModUtil.ToString.Key( k ) )
@@ -420,7 +409,7 @@ function ModUtil.ToString.DeepNoNamespaces( o, seen )
 			end
 		end
 		if #out > 2 then table.remove( out ) end
-		return table.concat( out ) .. " }"
+		return table.concat( out ) .. " )"
 	else
 		return ModUtil.ToString.Value( o )
 	end
@@ -434,7 +423,7 @@ function ModUtil.ToString.DeepNamespaces( o, seen )
 	end
 	if type( o ) == "table" and not seen[ o ] and ( first or o == _G or o == _ENV or ModUtil.Mods.Inverse[ o ] ) then
 		seen[ o ] = true
-		local out = { ModUtil.ToString.Value( o ), "{ " }
+		local out = { ModUtil.ToString.Value( o ), "( " }
 		for k, v in pairs( o ) do
 			if v == _G or v == _ENV or ModUtil.Mods.Inverse[ v ] then
 				table.insert( out, ModUtil.ToString.Key( k ) )
@@ -444,7 +433,7 @@ function ModUtil.ToString.DeepNamespaces( o, seen )
 			end
 		end
 		if #out > 2 then table.remove( out ) end
-		return table.concat( out ) .. " }"
+		return table.concat( out ) .. " )"
 	else
 		return ModUtil.ToString.Value( o )
 	end
@@ -2154,6 +2143,6 @@ do
 	setmetatable( ModUtil.Internal, { __index = ups, __newindex = ups } )
 end
 
--- Final Actions ( EXPERIMENTAL ) ( BROKEN )
+-- Final Actions
 
 replaceGlobalEnvironment( )
