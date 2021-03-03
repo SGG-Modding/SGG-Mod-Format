@@ -316,11 +316,23 @@ local excludedFieldNames = ToLookup{ "and", "break", "do", "else", "elseif", "en
 
 setmetatable( ModUtil.ToString, {
 	__call = function ( _, o )
-		local t = type( o )
-		if t == "string" or passByValueTypes[ t ] then return tostring( o ) end
-		return tostring( o ):gsub( ": 0*", ":", 1 )
+		local identifier = ModUtil.Identifiers.Data[ o ]
+		identifier = identifier and identifier .. ":" or ""
+		return identifier .. ModUtil.ToString.Static( o )
 	end
 })
+
+function ModUtil.ToString.Address( o )
+	local t = type( o )
+	if t == "string" or passByValueTypes[ t ] then return end
+	return tostring( o ):match( ": 0*([0-9A-F]*)" )
+end
+
+function ModUtil.ToString.Static( o )
+	local t = type( o )
+	if t == "string" or passByValueTypes[ t ] then return tostring( o ) end
+	return tostring( o ):gsub( ": 0*", ":", 1 )
+end
 
 function ModUtil.ToString.Value( o )
 	local t = type( o )
@@ -330,9 +342,7 @@ function ModUtil.ToString.Value( o )
 	if passByValueTypes[ t ] then
 		return tostring( o )
 	end
-	local identifier = ModUtil.Identifiers.Data[ o ]
-	identifier = identifier and identifier .. ":" or ""
-	return '<' .. identifier .. ModUtil.ToString( o ) .. '>'
+	return '<' .. ModUtil.ToString( o ) .. '>'
 end
 
 function ModUtil.ToString.Key( o )
@@ -347,9 +357,7 @@ function ModUtil.ToString.Key( o )
 	    return "#" .. tostring( o )
 	end
 	if passByValueTypes[ t ] then return tostring( o ) end
-	local identifier = ModUtil.Identifiers.Data[ o ]
-	identifier = identifier and identifier .. ":" or ""
-    return '<' .. identifier .. ModUtil.ToString( o ) .. '>'
+    return '<' .. ModUtil.ToString( o ) .. '>'
 end
 
 function ModUtil.ToString.TableKeys( o )
