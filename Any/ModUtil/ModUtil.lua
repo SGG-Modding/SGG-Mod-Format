@@ -314,6 +314,14 @@ end
 local passByValueTypes = ToLookup{ "number", "boolean", "nil" }
 local excludedFieldNames = ToLookup{ "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while" }
 
+setmetatable( ModUtil.ToString, {
+	__call = function ( _, o )
+		local t = type( o )
+		if t == "string" or passByValueTypes[ t ] then return tostring( o ) end
+		return tostring( o ):gsub( ": 0*", ":", 1 )
+	end
+})
+
 function ModUtil.ToString.Value( o )
 	local t = type( o )
 	if t == 'string' then
@@ -323,8 +331,8 @@ function ModUtil.ToString.Value( o )
 		return tostring( o )
 	end
 	local identifier = ModUtil.Identifiers.Data[ o ]
-	identifier = identifier and identifier .. " | " or ""
-	return '<' .. identifier .. tostring( o ) .. '>'
+	identifier = identifier and identifier .. ":" or ""
+	return '<' .. identifier .. ModUtil.ToString( o ) .. '>'
 end
 
 function ModUtil.ToString.Key( o )
@@ -335,14 +343,13 @@ function ModUtil.ToString.Key( o )
 		end
 		return '"' .. o .. '"'
 	end
-	s = tostring( o )
 	if t == 'number' then
-	    s = "#" .. s
+	    return "#" .. tostring( o )
 	end
+	if passByValueTypes[ t ] then return tostring( o ) end
 	local identifier = ModUtil.Identifiers.Data[ o ]
-	identifier = identifier and identifier .. " | " or ""
-	if passByValueTypes[ t ] then return s end
-    return '<' .. identifier .. s .. '>'
+	identifier = identifier and identifier .. ":" or ""
+    return '<' .. identifier .. ModUtil.ToString( o ) .. '>'
 end
 
 function ModUtil.ToString.TableKeys( o )
