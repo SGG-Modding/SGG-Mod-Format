@@ -49,9 +49,9 @@ ModUtil.Compat.SafeGet = ModUtil.IndexArray.Get
 
 ModUtil.Compat.SafeSet = ModUtil.IndexArray.Set
 
-ModUtil.Compat.MapNilTable = ModUtil.Table.NilMap
+ModUtil.Compat.MapNilTable = ModUtil.Table.NilMerge
 
-ModUtil.Compat.MapSetTable = ModUtil.Table.SetMap
+ModUtil.Compat.MapSetTable = ModUtil.Table.Merge
 
 ModUtil.Compat.JoinIndexArrays = ModUtil.IndexArray.Join
 
