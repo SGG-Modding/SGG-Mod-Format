@@ -1,5 +1,0 @@
-:: Mod Utility
-
-Load Priority 0
-Top Import "ModUtil.lua"
-Import "ModUtilHades.lua"
