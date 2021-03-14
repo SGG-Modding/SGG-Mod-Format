@@ -48,7 +48,7 @@ def is_subfile(filename, folder):
     if not filename.exists():
         return Signal(False, "DoesNotExist")
 
-    if not filename.is_relative_to(folder):
+    if not filename.relative_to(folder):
         return Signal(False, "NonSub")
 
     if filename.is_dir():
@@ -61,16 +61,26 @@ def is_subfile(filename, folder):
 
 
 def in_scope(filename, config, permit_DNE=False):
-    if not (filename.exists() or permit_DNE):
+    if not (permit_DNE or filename.exists()):
         return Signal(False, "DoesNotExist")
 
-    if not filename.is_relative_to(config.scope_dir):
+    try:
+        filename.relative_to(config.scope_dir)
+    except ValueError:
         return Signal(False, "OutOfScope")
 
-    if filename.is_relative_to(config.base_cache_dir):
+    try:
+        filename.relative_to(config.base_cache_dir)
+    except ValueError:
+        pass
+    else:
         return Signal(True, "InBase")
 
-    if filename.is_relative_to(config.edit_cache_dir):
+    try:
+        filename.relative_to(config.edit_cache_dir)
+    except ValueError:
+        pass
+    else:
         return Signal(True, "InEdits")
 
     if filename.is_dir():
@@ -87,8 +97,8 @@ def in_source(filename, config, permit_DNE=False):
         return Signal(False, "DoesNotExist")
 
     if not (
-        filename.is_relative_to(config.scope_dir)
-        and config.mods_dir.is_relative_to(config.scope_dir)
+        filename.relative_to(config.scope_dir)
+        and config.mods_dir.relative_to(config.scope_dir)
     ):
         return Signal(False, "OutOfSource")
 

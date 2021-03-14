@@ -7,14 +7,14 @@ __all__ = [
 ]
 
 try:
-    import sjson  # pip: SJSON
+    import sjson
 except Exception as e:
     print("Could not import sjson, skipping sjson edits.")
 
 from collections import OrderedDict
 import os
 
-from sggmi import util
+import util
 
 KEYWORD = "SJSON"
 RESERVED = {
