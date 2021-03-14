@@ -1,5 +1,6 @@
 from argparse import ArgumentParser
 
+
 def get_parser():
     """
     Generates and returns an ArgumentParser for SGGMI.
@@ -82,7 +83,7 @@ def get_parser():
         "-g",
         "--game",
         action="store",
-        dest="game_dir",
+        dest="game_rel_dir",
         help="Temporarily use a different game directory",
         metavar="<relative game path>",
     )

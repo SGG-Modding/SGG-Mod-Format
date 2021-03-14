@@ -13,29 +13,12 @@ __all__ = [
     "cleanup",
     "hashfile",
     "lua_addimport",
-    # variables
-    "configfile",
-    "logfile_prefix",
-    "logfile_suffix",
-    "edited_suffix",
-    "scopemods",
-    "modsrel",
-    "baserel",
-    "editrel",
-    "logsrel",
-    "gamerel",
-    "do_log",
-    "cfg_modify",
-    "cfg_overwrite",
-    "profile_use_special",
     # modules
     "logging",
     "xml",
     "sjson",
     "json",
     "hashlib",
-    # other
-    "DNE",
 ]
 __version__ = "1.0a-r4"
 __author__ = "Andre Issa"
@@ -45,7 +28,6 @@ __author__ = "Andre Issa"
 import os, sys, stat
 import logging
 import json
-import warnings
 import hashlib
 from pathlib import Path, PurePath
 from shutil import copyfile, rmtree
@@ -55,92 +37,29 @@ from distutils.dir_util import copy_tree
 from distutils.errors import DistutilsFileError
 
 from sggmi import (
-  args_parser,
-  util,
-  sggmi_sjson,
-  sggmi_xml
+    args_parser,
+    util,
+    sggmi_sjson,
+    sggmi_xml,
+)
+from sggmi.config import SggmiConfiguration
+from sggmi.util import (
+    alt_exit,
+    alt_input,
+    alt_open,
+    alt_print,
+    alt_warn,
 )
 
-# Configurable Globals
-
-configfile = "miconfig.json"
-#### These are better configured using the config file to be specific to different installs
-scopemods = "Deploy"  # Must be accessible to game scope
-modsrel = "Mods"
-baserel = "Base Cache"
-editrel = "Edit Cache"
-logsrel = "Logs"
-logfile_prefix = "log-modimp "
-logfile_suffix = ".txt"
-edited_suffix = ".hash"
-
-# Data Functionality
-
-DNE = ()  # 'Does Not Exist' singleton
-
 ## LUA import statement adding
-
-
 def lua_addimport(base, path):
     with open(base, "a") as basefile:
         basefile.write(f"\nImport {path}")
 
 
-# FILE/MOD CONTROL
-
-hashes = ["md5"]
-
-
-def alt_open(*args, **kwargs):
-    return open(*args, encoding="utf-8-sig", **kwargs)
-
-
-def alt_print(*args, **kwargs):
-    if do_echo:
-        return print(*args, **kwargs)
-    if do_log:
-        tlog = logsdir / f"temp-{logfile_prefix}{thetime()}{logfile_suffix}"
-        with alt_open(tlog, "w") as temp_file:
-            print(file=temp_file, *args, **kwargs)
-
-        with alt_open(tlog, "r") as temp_file:
-            data = temp_file.read()
-
-        tlog.unlink()
-        return logging.getLogger(__name__).info(data)
-
-
-def alt_warn(message):
-    warnings.warn(message, stacklevel=2)
-    if do_log and do_echo:
-        logging.getLogger(__name__).warning(message)
-
-
-def alt_input(*args, **kwargs):
-    if do_echo:
-        if do_input:
-            return input(*args)
-        print(*args)
-        return kwargs.get("default", None)
-    if do_log:
-        tlog = logsdir / f"temp-{logfile_prefix}{thetime()}{logfile_suffix}"
-        with alt_open(tlog, "w") as temp_file:
-            print(file=temp_file, *args)
-
-        with alt_open(tlog, "r") as temp_file:
-            data = temp_file.read()
-
-        tlog.unlink()
-        logging.getLogger(__name__).info(data)
-
-        if do_input:
-            return input()
-        return kwargs.get("default", None)
-
-
-def alt_exit(code=None):
-    alt_input("Press any key to end program...")
-    exit(code)
+####################
+# Mod File Control #
+####################
 
 
 def modfile_splitlines(body):
@@ -224,61 +143,91 @@ def modfile_startswith(tokens, keyword, n):
 
 def modfile_loadcommand(reldir, tokens, to, n, mode, cfg={}, **load):
     for scopepath in to:
-        path = PurePath.joinpath(scopedir, scopepath)
-        if util.in_scope(path, localdir, basedir, editdir, scopedir):
+        path = PurePath.joinpath(config.scope_dir, scopepath)
+        if util.in_scope(
+            path,
+            config.local_dir,
+            config.base_cache_dir,
+            config.edit_cache_dir,
+            config.scope_dir,
+        ):
             args = [tokens[i::n] for i in range(n)]
             for i in range(len(args[-1])):
                 sources = [
-                    PurePath.joinpath(reldir, arg[i].replace('"', ""))
-                    for arg in args
+                    PurePath.joinpath(reldir, arg[i].replace('"', "")) for arg in args
                 ]
                 paths = []
                 num = -1
                 for source in sources:
-                    if PurePath.joinpath(modsdir, source).is_dir():
+                    if PurePath.joinpath(config.mods_dir, source).is_dir():
                         tpath = []
-                        for entry in PurePath.joinpath(modsdir, source).iterdir():
-                            if util.in_scope(entry, localdir, basedir, editdir, scopedir):
+                        for entry in PurePath.joinpath(
+                            config.mods_dir, source
+                        ).iterdir():
+                            if util.in_scope(
+                                entry,
+                                config.local_dir,
+                                config.base_cache_dir,
+                                config.edit_cache_dir,
+                                config.scope_dir,
+                            ):
                                 tpath.append(entry.as_posix())
                         paths.append(tpath)
                         if num > len(tpath) or num < 0:
                             num = len(tpath)
-                    elif util.in_scope(PurePath.joinpath(modsdir, source), localdir, basedir, editdir, scopedir):
-                        paths.append(PurePath.joinpath(modsdir, source).resolve().as_posix())
+                    elif util.in_scope(
+                        PurePath.joinpath(config.mods_dir, source),
+                        config.local_dir,
+                        config.base_cache_dir,
+                        config.edit_cache_dir,
+                        config.scope_dir,
+                    ):
+                        paths.append(
+                            PurePath.joinpath(config.mods_dir, source)
+                            .resolve()
+                            .as_posix()
+                        )
                 if paths:
                     for j in range(abs(num)):
                         sources = [x[j] if isinstance(x, list) else x for x in paths]
                         for src in sources:
                             todeploy[src] = util.merge_dict(todeploy.get(src), cfg)
-                        f = lambda x: map(lambda y: PurePath.joinpath(deploy_from_scope, y), x)
+                        f = lambda x: map(
+                            lambda y: PurePath.joinpath(config.deploy_rel_dir, y), x
+                        )
                         codes[scopepath].append(
                             Mod(
-                                "\n".join([Path(source).resolve().as_posix() for source in sources]),
+                                "\n".join(
+                                    [
+                                        Path(source).resolve().as_posix()
+                                        for source in sources
+                                    ]
+                                ),
                                 tuple(f(sources)),
                                 mode,
                                 scopepath,
                                 len(codes[scopepath]),
-                                **load
+                                **load,
                             )
                         )
 
 
-def modfile_load(filename, echo=True):
-    if util.is_subfile(filename, modsdir).message == "SubDir":
+def modfile_load(filename, config):
+    if util.is_subfile(filename, config.mods_dir).message == "SubDir":
         for entry in Path(filename).iterdir():
-            modfile_load(entry, echo)
+            modfile_load(entry, config)
         return
 
-    relname = filename.relative_to(modsdir)
+    rel_name = filename.relative_to(config.mods_dir)
     try:
         file = alt_open(filename, "r")
     except IOError:
         return
 
-    if echo:
-        alt_print(relname)
+    if config.echo:
+        alt_print(rel_name, config=config)
 
-    reldir = relname.parent
+    reldir = rel_name.parent
     p = default_priority
     to = default_target
     cfg = {}
@@ -307,10 +256,7 @@ def modfile_load(filename, echo=True):
 
             if modfile_startswith(tokens, KWRD_include, 1):
                 for s in tokens[1:]:
-                    modfile_load(
-                        PurePath.joinpath(reldir, s.replace('"', "")),
-                        echo
-                    )
+                    modfile_load(PurePath.joinpath(reldir, s.replace('"', "")), config)
 
             elif modfile_startswith(tokens, KWRD_deploy, 1):
                 for token in tokens[1:]:
@@ -334,7 +280,13 @@ def modfile_load(filename, echo=True):
                 )
             elif modfile_startswith(tokens, sggmi_xml.KEYWORD, 1):
                 modfile_loadcommand(
-                    reldir, tokens[len(sggmi_xml.KEYWORD) :], to, 1, "xml", cfg, priority=p
+                    reldir,
+                    tokens[len(sggmi_xml.KEYWORD) :],
+                    to,
+                    1,
+                    "xml",
+                    cfg,
+                    priority=p,
                 )
             elif modfile_startswith(tokens, sggmi_sjson.KEYWORD, 1):
                 if sjson:
@@ -352,55 +304,58 @@ def modfile_load(filename, echo=True):
                     alt_warn("SJSON module not found! Skipped command: " + line)
 
 
-def deploy_mods():
+def deploy_mods(todeploy, config):
     for file_path in todeploy.keys():
-        PurePath.joinpath(deploydir, Path(file_path).resolve().parent.relative_to(modsdir)).mkdir(
-            parents=True, exist_ok=True
-        )
+        PurePath.joinpath(
+            config.deploy_dir,
+            Path(file_path).resolve().parent.relative_to(config.mods_dir),
+        ).mkdir(parents=True, exist_ok=True)
 
         copyfile(
             Path(file_path),
-            PurePath.joinpath(deploydir, Path(file_path).relative_to(modsdir)),
+            PurePath.joinpath(
+                config.deploy_dir, Path(file_path).relative_to(config.mods_dir)
+            ),
         )
 
 
-def sort_mods(base, mods):
+def sort_mods(base, mods, codes):
     codes[base].sort(key=lambda x: x.load["priority"])
     for i in range(len(mods)):
         mods[i].id = i
 
 
-def make_base_edits(base, mods, echo=True):
-    PurePath.joinpath(basedir, Path(base).parent).mkdir(
+def make_base_edits(base, mods, config):
+    PurePath.joinpath(config.base_cache_dir, Path(base).parent).mkdir(
         parents=True, exist_ok=True
     )
     copyfile(
-        PurePath.joinpath(scopedir, base),
-        PurePath.joinpath(basedir, base),
+        PurePath.joinpath(config.scope_dir, base),
+        PurePath.joinpath(config.base_cache_dir, base),
     )
 
-    if echo:
+    if config.echo:
         i = 0
-        alt_print("\n" + base)
+        alt_print(f"\n{base}", config=config)
 
     try:
         for mod in mods:
             if mod.mode == "lua":
                 lua_addimport(
-                    PurePath.joinpath(scopedir, base),
+                    PurePath.joinpath(config.scope_dir, base),
                     mod.data[0],
                 )
             elif mod.mode == "xml":
                 sggmi_xml.merge(
-                    PurePath.joinpath(scopedir, base),
+                    PurePath.joinpath(config.scope_dir, base),
                     mod.data[0],
                 )
             elif mod.mode == "sjson":
                 sggmi_sjson.merge_files(
-                    PurePath.joinpath(scopedir, base),
+                    PurePath.joinpath(config.scope_dir, base),
                     mod.data[0],
                 )
-            if echo:
+            if config.echo:
                 k = i + 1
                 for s in mod.src.split("\n"):
                     i += 1
@@ -408,60 +363,61 @@ def make_base_edits(base, mods, echo=True):
                         f" #{i}"
                         + " +" * (k < i)
                         + " " * ((k >= i) + 5 - len(str(i)))
-                        + f"{Path(s).relative_to(modsdir)}"
+                        + f"{Path(s).relative_to(config.mods_dir)}",
+                        config=config,
                     )
     except Exception as e:
         copyfile(
-            PurePath.joinpath(basedir, base),
-            PurePath.joinpath(scopedir, base),
+            PurePath.joinpath(config.base_cache_dir, base),
+            PurePath.joinpath(config.scope_dir, base),
         )
         raise RuntimeError(
             "Encountered uncaught exception while implementing mod changes"
         ) from e
 
-    PurePath.joinpath(editdir, Path(base).parent).mkdir(
+    PurePath.joinpath(config.edit_cache_dir, Path(base).parent).mkdir(
         parents=True, exist_ok=True
     )
     util.hash_file(
-        PurePath.joinpath(scopedir, base),
-        PurePath.joinpath(editdir, f"{base}{edited_suffix}")
+        PurePath.joinpath(config.base_cache_dir, base),
+        PurePath.joinpath(config.edit_cache_dir, f"{base}{config.edited_suffix}"),
     )
 
 
-def cleanup(target=None, echo=True):
-    if not target.exists():
+def cleanup(target, config):
+    if not target and target.exists():
         return True
 
     if target.is_dir():
         empty = True
         for entry in target.iterdir():
-            if cleanup(entry, echo):
+            if cleanup(entry, config):
                 empty = False
         if empty:
             target.rmdir()
             return False
         return True
 
-    target_relative_to_basedir = target.relative_to(basedir)
-    if PurePath.joinpath(scopedir, target_relative_to_basedir).is_file():
-        if util.is_edited(target_relative_to_basedir, scopedir, editdir, edited_suffix):
+    target_relative_to_base_cache_dir = target.relative_to(config.base_cache_dir)
+    if PurePath.joinpath(config.scope_dir, target_relative_to_base_cache_dir).is_file():
+        if util.is_edited(target_relative_to_base_cache_dir, config):
             copyfile(
                 target,
-                PurePath.joinpath(scopedir, target_relative_to_basedir),
+                PurePath.joinpath(config.scope_dir, target_relative_to_base_cache_dir),
             )
 
-        if echo:
-            alt_print(target_relative_to_basedir)
+        if config.echo:
+            alt_print(target_relative_to_base_cache_dir, config=config)
 
         target.unlink()
         return False
     return True
 
 
-def restorebase(echo=True):
-    if not cleanup(basedir, echo):
+def restorebase(config):
+    if not cleanup(config.base_cache_dir, config):
         try:
-            copy_tree(basedir, scopedir)
+            copy_tree(config.base_cache_dir, config.base_cache_dir)
         except DistutilsFileError:
             pass
 
@@ -473,173 +429,17 @@ def thetime():
     return datetime.now().strftime("%d.%m.%Y-%I.%M%p-%S.%f")
 
 
-def preplogfile():
-    if do_log:
-        logsdir.mkdir(parents=True, exist_ok=True)
+def preplogfile(config):
+    if config.log:
+        config.logs_dir.mkdir(parents=True, exist_ok=True)
         logging.basicConfig(
-            filename=logsdir / f"{logfile_prefix}{thetime()}{logfile_suffix}",
+            filename=config.logs_dir
+            / f"{config.logs_prefix}{thetime()}{config.logs_suffix}",
             level=logging.INFO,
         )
-    logging.captureWarnings(do_log and not do_echo)
+    logging.captureWarnings(config.log and not config.echo)
 
 
-def update_scope(rel=".."):
-    global gamedir
-    gamedir = Path(rel).resolve()
-    global scopeparent
-    scopeparent = gamedir.name
-    global scopedir
-    scopedir = PurePath.joinpath(gamedir, scope)
-
-
-def configure_globals(condict={}, flow=True):
-
-    global do_echo, do_log, do_input
-    do_echo = util.get_attribute(condict, "echo", do_echo)
-    do_log = util.get_attribute(condict, "log", do_log)
-    do_input = util.get_attribute(condict, "input", do_input)
-
-    global logsrel, logfile_prefix, logfile_suffix
-    logsrel = util.get_attribute(condict, "log_folder", logsrel)
-    logfile_prefix = util.get_attribute(condict, "log_prefix", logfile_prefix)
-    logfile_suffix = util.get_attribute(condict, "log_suffix", logfile_suffix)
-
-    global logsdir
-    logsdir = Path(logsrel).resolve().parent
-    preplogfile()
-
-    global hashes
-    hashes = util.get_attribute(condict, "hashes", hashes)
-
-    global thisfile, localdir, localparent
-    thisfile = Path(__file__).resolve()
-    localdir = thisfile.parent
-    localparent = localdir.parent
-
-    global profiles, profile, folderprofile
-    profiles = {}
-    profiles.update(util.get_attribute(condict, "profiles", {}))
-    profile = None
-
-    folderprofile = util.get_attribute(condict, "profile", localparent)
-    if profile_use_special:
-        profile = util.get_attribute(condict, "profile_special", profile)
-    while profile is None:
-        profile = util.get_attribute(profiles, folderprofile, None)
-        if profile is None:
-            if not flow:
-                alt_warn(MSG_MissingFolderProfile.format(configfile))
-                profile = {}
-                break
-            folderprofile = alt_input(
-                "Type the name of a profile, " + "or leave empty to cancel:\n\t> "
-            )
-            if not folderprofile:
-                alt_warn(MSG_MissingFolderProfile.format(configfile))
-                alt_exit(1)
-
-    update_scope(util.get_attribute(profile, "game_dir_path", gamerel))
-
-    global default_target
-    default_target = profile.get("default_target", default_target)
-
-    global scopemods, modsrel, modsabs, baserel, baseabs, editrel, editabs
-    scopemods = util.get_attribute(profile, "folder_deployed", scopemods)
-    modsrel = util.get_attribute(profile, "folder_mods", modsrel)
-    baserel = util.get_attribute(profile, "folder_basecache", baserel)
-    editrel = util.get_attribute(profile, "folder_editcache", editrel)
-
-    global basedir, editdir, modsdir, deploydir
-    basedir = PurePath.joinpath(scopedir, baserel).resolve() 
-    editdir = PurePath.joinpath(scopedir, editrel).resolve()
-    modsdir = PurePath.joinpath(scopedir, modsrel).resolve()
-    deploydir = PurePath.joinpath(scopedir, scopemods).resolve()
-
-    game_has_scope = util.in_scope(scopedir, localdir, basedir, editdir, scopedir).message == "DirInScope"
-    local_in_scope = util.in_scope(thisfile, localdir, basedir, editdir, scopedir).message == "FileInScope"
-
-    if not game_has_scope:
-        alt_warn(MSG_GameHasNoScope.format(scopedir, scopeparent, configfile))
-        if flow:
-            alt_exit(1)
-
-    if not util.in_scope(deploydir, localdir, basedir, editdir, scopedir, True).message == "DirInScope":
-        alt_warn(MSG_DeployNotInScope.format(deploydir, scopedir, configfile))
-        if flow:
-            alt_exit(1)
-
-    global deploy_from_scope
-    deploy_from_scope = deploydir.relative_to(scopedir)
-
-def configsetup(predict={}, postdict={}):
-    condict = CFG_framework
-    if not cfg_overwrite:
-        try:
-            with alt_open(configfile) as f:
-                condict.update(json.load(f))
-        except FileNotFoundError:
-            pass
-
-    util.merge_dict(condict, predict)
-    if cfg_modify:
-        util.merge_dict(condict, postdict)
-
-    with alt_open(configfile, "w") as f:
-        json.dump(condict, f, indent=1)
-
-    if cfg_modify:
-        alt_print("Config modification successful.")
-        alt_exit(0)
-
-    util.merge_dict(condict, postdict)
-    configure_globals(condict)
-
-
-# Private Globals
-
-MSG_ConfigHelp = """
-Create or configure a folder profile using:
- * config file: `profiles` in '{0}'
-Or change the active folder profile using:
- * config file: `profile` in '{0}'
- * terminal option: --profile
-Use and modify the special profile:
- * terminal options:
-        --special
-        --special-set <profile json>
-Override the game path temporarily:
- * terminal option: --game <path to game>
-"""
-
-MSG_MissingFolderProfile = (
-    """
-The selected profile is not a default or configured folder profile or is configured incorrectly.
-Make sure the profile is configured to the actual game directory.
-Alternatively, make sure this program is in the appropriate location.
-"""
-    + MSG_ConfigHelp
-)
-
-MSG_GameHasNoScope = """
-The folder '{0}' does not exist.
-Are you sure {1} is the game's proper location?
-You may need to change the path 'game_dir_path' in the profile's config.
-""" + MSG_ConfigHelp.format(
-    "{2}"
-)
-
-MSG_DeployNotInScope = """
-Deployment folder '{0}' is not a subfolder of '{1}'.
-This means deploying mods is impossible!
-Configure the deployment path 'folder_deployed' to be within the content.
-""" + MSG_ConfigHelp.format(
-    "{2}"
-)
-
-default_target = []
-default_priority = 100
-
-modfile = "modfile.txt"
 modfile_mlcom_start = "-:"
 modfile_mlcom_end = ":-"
 modfile_comment = "::"
@@ -653,65 +453,18 @@ KWRD_include = ["Include"]
 KWRD_deploy = ["Deploy"]
 KWRD_import = ["Import"]
 
-scope = "Content"
-importscope = "Scripts"
-localsources = {"sggmi"}
-
-profile_template = {
-    "default_target": None,
-    "game_dir_path": None,
-    "folder_deployed": None,
-    "folder_mods": None,
-    "folder_basecache": None,
-    "folder_editcache": None,
-}
-
-default_profiles = {
-    "Hades": {
-        "default_target": ["Scripts/RoomManager.lua"],
-    },
-    "Pyre": {
-        "default_target": ["Scripts/Campaign.lua", "Scripts/MPScripts.lua"],
-    },
-    "Transistor": {
-        "default_target": ["Scripts/AllCampaignScripts.txt"],
-    },
-    "Bastion": {},
-}
-
-for k, v in default_profiles.items():
-    default_profiles[k] = util.merge_dict(
-        profile_template.copy(), v, modify_original=False
-    )
-
-CFG_framework = {
-    "echo": True,
-    "input": True,
-    "log": True,
-    "hashes": hashes,
-    "profile": None,
-    "profile_special": profile_template,
-    "profiles": default_profiles,
-    "log_folder": None,
-    "log_prefix": None,
-    "log_suffix": None,
-}
 
 # Main Process
-
-
-def start(*args, **kwargs):
-
-    configsetup(kwargs.get("predict", {}), kwargs.get("postdict", {}))
-
-    global codes
+def start(config):
     codes = defaultdict(list)
-    global todeploy
     todeploy = {}
 
     # remove anything in the base cache that is not in the edit cache
-    alt_print("\nCleaning edits... (if there are issues validate/reinstall files)")
-    restorebase()
+    alt_print(
+        "\nCleaning edits... (if there are issues validate/reinstall files)",
+        config=config,
+    )
+    restorebase(config)
 
     # remove the edit cache and base cache from the last run
     def on_error(func, path, exc_info):
@@ -721,21 +474,21 @@ def start(*args, **kwargs):
         else:
             raise
 
-    rmtree(editdir, on_error)
-    rmtree(basedir, on_error)
+    rmtree(config.edit_cache_dir, on_error)
+    rmtree(config.base_cache_dir, on_error)
 
-    editdir.mkdir(parents=True, exist_ok=True)
-    basedir.mkdir(parents=True, exist_ok=True)
-    modsdir.mkdir(parents=True, exist_ok=True)
-    deploydir.mkdir(parents=True, exist_ok=True)
+    config.edit_cache_dir.mkdir(parents=True, exist_ok=True)
+    config.base_cache_dir.mkdir(parents=True, exist_ok=True)
+    config.mods_dir.mkdir(parents=True, exist_ok=True)
+    config.deploy_dir.mkdir(parents=True, exist_ok=True)
 
-    alt_print("\nReading mod files...")
-    for mod in modsdir.iterdir():
-        modfile_load(mod / modfile)
+    alt_print("\nReading mod files...", config=config)
+    for mod in config.mods_dir.iterdir():
+        modfile_load(mod / config.mod_file, config)
 
-    deploy_mods()
+    deploy_mods(config)
 
-    alt_print("\nModified files for " + folderprofile + " mods:")
+    alt_print(f"\nModified files for {config.chosen_profile} mods:", config=config)
     for base, mods in codes.items():
         sort_mods(base, mods)
         make_base_edits(base, mods)
@@ -753,76 +506,58 @@ def start(*args, **kwargs):
         + str(ms)
         + " mod file"
         + "s" * (ms != 1)
-        + "."
+        + ".",
+        config=config,
     )
 
 
-def main_action(*args, **kwargs):
+def main_action(config):
     try:
-        start(*args, **kwargs)
+        start(config)
     except Exception as e:
-        alt_print("There was a critical error, now attempting to display the error")
+        alt_print(
+            "There was a critical error, now attempting to display the error",
+            config=config,
+        )
         alt_print(
             "(if this doesn't work, try again in a terminal"
-            + " which doesn't close, or check the log files)"
+            + " which doesn't close, or check the log files)",
+            config=config,
         )
         logging.getLogger("MainExceptions").exception(e)
-        alt_input("Press any key to see the error...")
+        alt_input("Press any key to see the error...", config=config)
         raise RuntimeError("Encountered uncaught exception during program") from e
-    alt_input("Press any key to end program...")
 
+    alt_input("Press any key to end program...", config=config)
 
-def main(*args, **kwargs):
-    predict = {}
-    postdict = {}
-
-    global cfg_modify, cfg_overwrite, profile_use_special, configfile, gamerel
-
-    parser = args_parser.get_parser()
-    parsed_args = vars(parser.parse_args())
-
-    # This section is to take the parsed arguments and convert them to the
-    # current globals system. Once the config module is complete, this section
-    # will go away.
-    postdict["echo"] = parsed_args["echo"]
-    postdict["log"] = parsed_args["log"]
-    postdict["input"] = parsed_args["input"]
-
-    if parsed_args["profile"]:
-        postdict["profile"] = parsed_args["profile"]
-
-    if parsed_args["use_special_profile"]:
-        profile_use_special = parsed_args["use_special_profile"]
-
-    if parsed_args["special_profile"]:
-        predict.setdefault("profile_special", {})
-        predict["profile_special"] = json.loads(parsed_args["special_profile"])
-
-    cfg_modify = parsed_args["modify_config"]
-    cfg_modify = parsed_args["overwrite_config"]
-
-    if parsed_args["config_file"]:
-        configfile = Path(parsed_args["config_file"])
-
-    if parsed_args["game_dir"]:
-        gamerel = Path(parsed_args["game_dir"])
-
-    if parsed_args["hashes"]:
-        postdict["hashes"] = parsed_args["hashes"].split(" ")
-
-    main_action(*args, predict=predict, postdict=postdict)
-
-
-do_log = True
-cfg_modify = False
-cfg_overwrite = False
-profile_use_special = False
-gamerel = ".."
 
 if __name__ == "__main__":
-    do_echo = True
-    do_input = True
-    main(*sys.argv[1:])
-else:
-    do_echo = False
-    do_input = False
+    config = SggmiConfiguration()
+
+    parser = args_parser.get_parser()
+    parsed_args = parser.parse_args()
+    config.apply_command_line_arguments(parsed_args)
+
+    scopes_okay = util.check_scopes(config)
+    if not scopes_okay:
+        if scopes_okay.message == "GameHasNoScope":
+            alt_warn(
+                messages.game_has_no_scope(
+                    config.scope_dir, config.scope_dir.parent, config.config_file
+                )
+            )
+
+        if scopes_okay.message == "DeployNotInScope":
+            alt_warn(
+                messages.deploy_not_in_scope(
+                    config.deploy_dir, config.scope_dir, config.config_file
+                )
+            )
+
+        alt_exit(1, config=config)
+
+    if config.modify_config:
+        alt_print("Config modification successful.", config=config)
+        alt_exit(0, config=config)
+
+    main_action(config)
