@@ -1,0 +1,2 @@
+Load Priority 50
+Import "LootChoiceExt.lua"

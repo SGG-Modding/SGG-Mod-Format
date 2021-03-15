@@ -1,7 +1,9 @@
 # Mod Importer for SuperGiant Games' Games
 
+import argparse
 import os
 from collections import defaultdict
+from collections import deque
 from pathlib import Path
 
 import logging
@@ -9,6 +11,7 @@ from collections import OrderedDict
 from shutil import copyfile
 from datetime import datetime
 
+import csv
 import xml.etree.ElementTree as xml
 
 can_sjson = False
@@ -17,9 +20,11 @@ try:
     can_sjson = True
 except ModuleNotFoundError:
     print("SJSON python module not found! SJSON changes will be skipped!")
-    print("Get the SJSON module at https://pypi.org/project/SJSON/\n")
+    print("SJSON module should be available in the same place as the importer\n")
 
 ## Global Settings
+
+game_aliases = {"Resources":"Hades"} #alias for temporary mac support
 
 logging.basicConfig(filename="modimporter.log.txt",filemode='w')
 
@@ -41,11 +46,11 @@ modified_modrep = " by Mod Importer @ "
 modified_lua = "-- "+modified+" "
 modified_xml = "<!-- "+modified+" -->"
 modified_sjson = "/* "+modified+" */"
+modified_csv = modified
 
-default_to = defaultdict(str)
-default_to.update({"Hades":["Scripts/RoomManager.lua"],
+default_to = {"Hades":["Scripts/RoomManager.lua"],
             "Pyre":["Scripts/Campaign.lua","Scripts/MPScripts.lua"],
-            "Transistor":["Scripts/AllCampaignScripts.txt"]})
+            "Transistor":["Scripts/AllCampaignScripts.txt"]}
 default_priority = 100
 
 kwrd_to = ["To"]
@@ -57,6 +62,7 @@ kwrd_topimport = ["Top","Import"]
 kwrd_xml = ["XML"]
 kwrd_sjson = ["SJSON"]
 kwrd_replace = ["Replace"]
+kwrd_csv = ["CSV"]
 
 reserved_sequence = "_sequence"
 reserved_append = "_append"
@@ -112,6 +118,64 @@ def addtopimport(base,path):
         basefile.seek(0)                 
         basefile.truncate()
         basefile.writelines(lines)
+
+### CSV mapping
+
+def readcsv(filename):
+    with open(filename,'r',newline='',encoding='utf-8-sig') as file:
+        return list(csv.reader(file))
+    
+
+def writecsv(filename,content):
+    with open(filename,'w',newline='',encoding='utf-8-sig') as file:
+        writer = csv.writer(file,quoting=csv.QUOTE_MINIMAL)
+        for row in content:
+            writer.writerow(row)
+
+def csvmap(indata,mapdata):
+    target = [0,0]
+    current = [0,0]
+    append = False
+    replace = False
+    for row in mapdata:
+        if len(row) == 2 and row[0][0] == '<' and row[-1][-1] == '>':
+            target[0] = int(row[0][1:])
+            target[1] = int(row[-1][:-1])
+            current[0] = target[0]
+            append = False
+            replace = False
+            continue
+        if len(row) == 1 and row[0] == reserved_append:
+            append = True
+            replace = False
+        if len(row) == 1 and row[0] == reserved_replace:
+            append = False
+            replace = True
+        if append:
+            indata.append(row)
+        else:
+            if replace:
+                indata[current[0]]=row
+            else:
+                current[1] = target[1]
+                for value in row:
+                    if value == reserved_delete:
+                        indata[current[0]][current[1]] = ""
+                    elif value != "":
+                        indata[current[0]][current[1]] = value
+                    current[1] += 1
+            current[0] += 1
+    return indata
+            
+
+def mergecsv(infile,mapfile):
+    indata = readcsv(infile)
+    if mapfile:
+        mapdata = readcsv(mapfile)
+    else:
+        mapdata = DNE
+    indata = csvmap(indata,mapdata)
+    writecsv(infile,indata)
 
 ### XML mapping
 
@@ -293,29 +357,20 @@ if can_sjson:
 
 ## FILE/MOD CONTROL
 
-mode_dud = 0
 mode_lua = 1
 mode_lua_alt = 2
 mode_xml = 3
 mode_sjson = 4
 mode_replace = 5
+mode_csv = 6
 
 class modcode():
-    ep = None
-    ap = None
-    before = None
-    after = None
-    rbefore = None
-    rafter = None
-    
-    mode = mode_dud
-    def __init__(self,src,data,mode,key,index,**load):
+    def __init__(self,src,data,mode,key,**load):
         self.src = src
         self.data = data
         self.mode = mode
         self.key = key
-        self.id = index
-        self.ep = load.get("ep",default_priority)
+        self.ep = load["ep"]
 
 def strup(string):
     return string[0].upper()+string[1:]
@@ -323,6 +378,7 @@ def strup(string):
 selffile = "".join(os.path.realpath(__file__).replace("\\","/").split(".")[:-1])+".py"
 gamedir = os.path.join(os.path.realpath(gamerel), '').replace("\\","/")[:-1]
 game = strup(gamedir.split("/")[-1])
+game = game_aliases.get(game,game)
 
 def in_directory(file,nobackup=True):
     if file.find(".pkg") == -1:
@@ -396,8 +452,6 @@ def tokenise(line):
 
 ## FILE/MOD LOADING
 
-codes = defaultdict(list)
-
 def startswith(tokens,keyword,n):
     return tokens[:len(keyword)] == keyword and len(tokens)>=len(keyword)+1
 
@@ -425,7 +479,13 @@ def loadcommand(reldir,tokens,to,n,mode,**load):
                 if paths:
                     for j in range(abs(num)):
                         sources = [x[j] if isinstance(x,list) else x for x in paths]
-                        codes[path].append(modcode('\n'.join(sources),tuple(sources),mode,path,len(codes[path]),**load))
+                        codeargs = ('\n'.join(sources),tuple(sources),mode,path)
+                        load["ep"] = load.get("ep",default_priority)
+                        if load.get("reverse",False):
+                            load["ep"] = -load["ep"]
+                            codes[path].appendleft(modcode(*codeargs,**load))
+                        else:
+                            codes[path].append(modcode(*codeargs,**load))
 
 def loadmodfile(filename,echo=True):
     if in_directory(filename):
@@ -474,9 +534,11 @@ def loadmodfile(filename,echo=True):
                 elif startswith(tokens,kwrd_import,1):
                     loadcommand(reldir,tokens[len(kwrd_import):],to,1,mode_lua,ep=ep)
                 elif startswith(tokens,kwrd_topimport,1):
-                    loadcommand(reldir,tokens[len(kwrd_topimport):],to,1,mode_lua_alt,ep=ep)
+                    loadcommand(reldir,tokens[len(kwrd_topimport):],to,1,mode_lua_alt,ep=ep,reverse=True)
                 elif startswith(tokens,kwrd_xml,1):
                     loadcommand(reldir,tokens[len(kwrd_xml):],to,1,mode_xml,ep=ep)
+                elif startswith(tokens,kwrd_csv,1):
+                    loadcommand(reldir,tokens[len(kwrd_csv):],to,1,mode_csv,ep=ep)
                 elif can_sjson and startswith(tokens,kwrd_sjson,1):
                     loadcommand(reldir,tokens[len(kwrd_sjson):],to,1,mode_sjson,ep=ep)
 
@@ -490,9 +552,7 @@ def isedited(base):
     return False
          
 def sortmods(base,mods):
-    codes[base].sort(key=lambda x: x.ep)
-    for i in range(len(mods)):
-        mods[i].id=i
+    codes[base] = deque(sorted(codes[base],key=lambda x: x.ep))
 
 def makeedit(base,mods,echo=True):
     Path(bakdir+"/"+"/".join(base.split("/")[:-1])).mkdir(parents=True, exist_ok=True)
@@ -534,6 +594,8 @@ def makeedit(base,mods,echo=True):
         modifiedstr = "\n"+modified_xml
     elif mods[0].mode == mode_sjson:
         modifiedstr = "\n"+modified_sjson
+    elif mods[0].mode == mode_csv:
+         modifiedstr = "\n"+modified_csv
     with open(base,'a',encoding='utf-8') as basefile:
         basefile.write(modifiedstr.replace(modified,modified+modified_modrep+str(datetime.now())))
 
@@ -568,7 +630,7 @@ def cleanup(folder=bakdir,echo=True):
 
 def start():
     global codes
-    codes = defaultdict(list)
+    codes = defaultdict(deque)
 
     print("Cleaning edits... (if there are issues validate/reinstall files)\n")
     Path(bakdir).mkdir(parents=True, exist_ok=True)
@@ -590,6 +652,10 @@ def start():
     print("\n"+str(bs)+" base file"+"s"*(bs!=1)+" import"+"s"*(bs==1)+" a total of "+str(ms)+" mod file"+"s"*(ms!=1)+".")
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--game', '-g', choices=[game for game in default_to])
+    args = parser.parse_args()
+    game = args.game or game
     try:
         start()
     except Exception as e:
