@@ -1,8 +1,9 @@
 :: Mod Utility
 
 Load Priority 0
-	Import "ModUtil.lua"
-
-Load Priority 0.5
-	Import "ModUtilPyre.lua"
-	Import "ModUtilHades.lua"
+	To "Scripts/Main.lua"
+		Top Import "ModUtil.lua"
+		Import "ModUtil.Main.lua"
+		Import "ModUtil.Compat.lua"
+	To "Scripts/RoomManager.lua"
+		Import "ModUtil.Hades.lua"
