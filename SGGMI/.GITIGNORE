@@ -1,0 +1,4 @@
+*.pyc
+*.json
+sjson
+log*
