@@ -1,9 +1,9 @@
 [submodule "Mod Importer"]
 	path = Mod Importer
-	url = https://github.com/MagicGonads/sgg-mod-modimporter
+	url = https://github.com/SGG-Modding/sgg-mod-modimporter.git
 [submodule "SGGMI"]
 	path = SGGMI
-	url = https://github.com/MagicGonads/sgg-mod-sggmi
+	url = https://github.com/SGG-Modding/sgg-mod-sggmi.git
 [submodule "ModUtil"]
 	path = ModUtil
-	url = https://github.com/MagicGonads/sgg-mod-modutil
+	url = https://github.com/SGG-Modding/sgg-mod-modutil.git
