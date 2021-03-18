@@ -24,7 +24,7 @@ AdjustKeepsakeProgress.Config.Adjustment = config.Adjustment
 
 ModUtil.WrapBaseFunction( "IncrementTableValue", function( baseFunc, tbl, key, amount, ... )
     if tbl and tbl == ModUtil.PathGet( "GameState.KeepsakeChambers" ) then
-        DebugPrint{ Text = " INFO@AdjustKeepsakeProgress: Adjusted keepsake progress for " .. key .. " as: " .. AdjustKeepsakeProgress.Config.Adjustment }
+        DebugPrint{ Text = "(INFO) AdjustKeepsakeProgress: Adjusted keepsake progress for " .. key .. " as: " .. AdjustKeepsakeProgress.Config.Adjustment }
         return baseFunc( tbl, key, AdjustKeepsakeProgress.AdjustmentFunction( amount or 1 ) )
     end
     return baseFunc( tbl, key, amount, ... )
