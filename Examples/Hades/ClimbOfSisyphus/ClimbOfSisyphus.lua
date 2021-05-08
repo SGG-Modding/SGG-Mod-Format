@@ -6,15 +6,16 @@ local config = {
 	MaxGodRate = 1,
 	PlayerDamageMult = 1.35,
 	EnemyDamageMult = 0.65,
+	RarityRate = 0.20,
+	ExchangeRate = 0.15,
+	EncounterModificationEnabled = false, -- enabling this will cause crashes with bone hydra on second run
 	EncounterDifficultyRate = 2.35,
 	EncounterMinWaveRate = 0.65,
 	EncounterMaxWaveRate = 1.25,
 	EncounterEnemyCapRate = 0.65,
-	EncounterTypesRate = 0.20,
-	RarityRate = 0.20,
-	ExchangeRate = 0.15,
+	EncounterTypesRate = 0.20
 }	
-ClimbOfSisyphus.config = config
+ClimbOfSisyphus.Config = config
 
 local function falloff( x )
 	return x/math.sqrt(3+x*x)
@@ -46,6 +47,7 @@ function ClimbOfSisyphus.ShowLevelIndicator()
 	if ClimbOfSisyphus.LevelIndicator then
 		Destroy({Ids = ClimbOfSisyphus.LevelIndicator.Id})
 	end
+	CurrentRun.TotalFalls = CurrentRun.TotalFalls or config.BaseFalls
 	if CurrentRun.TotalFalls > 0 then
 		ClimbOfSisyphus.LevelIndicator = CreateScreenComponent({Name = "BlankObstacle", Group = "LevelIndicator", X = 2*ScreenCenterX-55, Y = 110 })
 		CreateTextBox({ Id = ClimbOfSisyphus.LevelIndicator.Id, Text = tostring(CurrentRun.TotalFalls), OffsetX = -40, FontSize = 22, Color = color, Font = "AlegreyaSansSCExtraBold"})
@@ -66,7 +68,6 @@ function ClimbOfSisyphus.EndFallFunc( currentRun, exitDoor)
 	RemoveInputBlock({ Name = "LeaveRoomPresentation" })
 	ToggleControl({ Names = { "AdvancedTooltip", }, Enabled = true })
 end
-ModUtil.GlobalisePath("ClimbOfSisyphus.EndFallFunc")
 
 function ClimbOfSisyphus.RunFall( currentRun, door )
 	currentRun.RoomCreations = {}
@@ -81,7 +82,7 @@ function ClimbOfSisyphus.RunFall( currentRun, door )
     currentRun.EncountersOccuredBiomedCache = {}
 	UpdateRunHistoryCache( currentRun )
 	door.Room = CreateRoom( RoomData["RoomOpening"] )
-	door.ExitFunctionName = ModUtil.JoinPath("ClimbOfSisyphus.EndFallFunc")
+	door.ExitFunctionName = "ClimbOfSisyphus.EndFallFunc"
 	door.Room.EntranceDirection = false
 	currentRun.CurrentRoom.ExitFunctionName = nil
 	currentRun.CurrentRoom.ExitDirection = door.Room.EntranceDirection
@@ -121,6 +122,12 @@ ModUtil.WrapBaseFunction("LeaveRoom",function(baseFunc,currentRun,door)
 end, ClimbOfSisyphus)
 
 ModUtil.BaseOverride("ReachedMaxGods",function(excludedGods)
+	if not CurrentRun then return end
+	if not CurrentRun.TotalFalls then
+		CurrentRun.TotalFalls = config.BaseFalls
+		CurrentRun.MetaDepth = GetBiomeDepth( CurrentRun )
+	end
+
 	excludedGods = excludedGods or {}
 	local maxLootTypes = config.BaseGods + config.MaxGodRate * CurrentRun.TotalFalls
 	local gods = ShallowCopyTable( excludedGods )
@@ -158,39 +165,41 @@ ModUtil.WrapBaseFunction( "ShowHealthUI", function( baseFunc )
 	baseFunc()
 end, ClimbOfSisyphus)
 
-ModUtil.WrapBaseFunction("GenerateEncounter", function (baseFunc, currentRun, room, encounter )
-	if not CurrentRun.TotalFalls then
-		CurrentRun.TotalFalls = config.BaseFalls
-		CurrentRun.MetaDepth = GetBiomeDepth( CurrentRun )
-	end
+if config.EncounterModificationEnabled then
+	ModUtil.WrapBaseFunction("GenerateEncounter", function (baseFunc, currentRun, room, encounter )
+		if not CurrentRun.TotalFalls then
+			CurrentRun.TotalFalls = config.BaseFalls
+			CurrentRun.MetaDepth = GetBiomeDepth( CurrentRun )
+		end
 
-	encounter.DifficultyModifier = (encounter.DifficultyModifier or 0) + config.EncounterDifficultyRate * CurrentRun.TotalFalls
-	if encounter.ActiveEnemyCapDepthRamp then
-		encounter.ActiveEnemyCapDepthRamp = encounter.ActiveEnemyCapDepthRamp + config.EncounterDifficultyRate * CurrentRun.TotalFalls
-	end
-	if encounter.ActiveEnemyCapBase then
-		encounter.ActiveEnemyCapBase = encounter.ActiveEnemyCapBase + config.EncounterEnemyCapRate * CurrentRun.TotalFalls
-	end
-	if encounter.ActiveEnemyCapMax then
-		encounter.ActiveEnemyCapMax = encounter.ActiveEnemyCapMax + config.EncounterEnemyCapRate * CurrentRun.TotalFalls
-	end
-	
-	local waveCap = #WaveDifficultyPatterns
-	encounter.MinWaves = lerp((encounter.MinWaves or 1),waveCap,falloff(config.EncounterMinWaveRate * CurrentRun.TotalFalls))
-	encounter.MaxWaves = lerp((encounter.MaxWaves or 1),waveCap,falloff(config.EncounterMaxWaveRate * CurrentRun.TotalFalls))
-	if encounter.MinWaves > encounter.MaxWaves then encounter.MinWaves = encounter.MaxWaves end
+		encounter.DifficultyModifier = (encounter.DifficultyModifier or 0) + config.EncounterDifficultyRate * CurrentRun.TotalFalls
+		if encounter.ActiveEnemyCapDepthRamp then
+			encounter.ActiveEnemyCapDepthRamp = encounter.ActiveEnemyCapDepthRamp + config.EncounterDifficultyRate * CurrentRun.TotalFalls
+		end
+		if encounter.ActiveEnemyCapBase then
+			encounter.ActiveEnemyCapBase = encounter.ActiveEnemyCapBase + config.EncounterEnemyCapRate * CurrentRun.TotalFalls
+		end
+		if encounter.ActiveEnemyCapMax then
+			encounter.ActiveEnemyCapMax = encounter.ActiveEnemyCapMax + config.EncounterEnemyCapRate * CurrentRun.TotalFalls
+		end
+		
+		local waveCap = #WaveDifficultyPatterns
+		encounter.MinWaves = lerp((encounter.MinWaves or 1),waveCap,falloff(config.EncounterMinWaveRate * CurrentRun.TotalFalls))
+		encounter.MaxWaves = lerp((encounter.MaxWaves or 1),waveCap,falloff(config.EncounterMaxWaveRate * CurrentRun.TotalFalls))
+		if encounter.MinWaves > encounter.MaxWaves then encounter.MinWaves = encounter.MaxWaves end
 
-	if encounter.MaxTypesCap then
-		encounter.MaxTypes = lerp((encounter.MaxTypes or 1),encounter.MaxTypesCap,falloff(config.EncounterTypesRate * CurrentRun.TotalFalls))
-	else
-		encounter.MaxTypes = (encounter.MaxTypes or 1) + config.EncounterTypesRate * CurrentRun.TotalFalls
-	end
-	if encounter.MaxEliteTypes then
-		encounter.MaxEliteTypes = encounter.MaxEliteTypes + config.EncounterTypesRate * CurrentRun.TotalFalls
-	end
-	
-	return baseFunc(currentRun, room, encounter)
-end, ClimbOfSisyphus)
+		if encounter.MaxTypesCap then
+			encounter.MaxTypes = lerp((encounter.MaxTypes or 1),encounter.MaxTypesCap,falloff(config.EncounterTypesRate * CurrentRun.TotalFalls))
+		else
+			encounter.MaxTypes = (encounter.MaxTypes or 1) + config.EncounterTypesRate * CurrentRun.TotalFalls
+		end
+		if encounter.MaxEliteTypes then
+			encounter.MaxEliteTypes = encounter.MaxEliteTypes + config.EncounterTypesRate * CurrentRun.TotalFalls
+		end
+		
+		return baseFunc(currentRun, room, encounter)
+	end, ClimbOfSisyphus)
+end
 
 ModUtil.WrapBaseFunction("SetTraitsOnLoot", function ( baseFunc, lootData, args )
 	local extraRarity = falloff( config.RarityRate * CurrentRun.TotalFalls )
