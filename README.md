@@ -31,7 +31,7 @@ The unedited base files will be stored in `Content/Backups`.
 *tells you what you can do*   
 
 - [Modfiles | modfile.txt](https://github.com/MagicGonads/sgg-mod-format/wiki/Modfiles-%7C-modfile.txt)
-- [ModUtil Documentation](https://github.com/MagicGonads/sgg-mod-format/wiki/ModUtil-Documentation)
+- [ModUtil Documentation](https://github.com/MagicGonads/sgg-mod-modutil/wiki/Documentation)
 
 ### Articles
 *tells you about stuff*
