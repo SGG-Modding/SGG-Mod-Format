@@ -2,7 +2,7 @@ ModUtil.RegisterMod("LootChoiceExt")
 
 local config = {
 	MinExtraLootChoices = 1,
-	MaxExtraLootChoices = 2
+	MaxExtraLootChoices = 4
 }
 LootChoiceExt.config = config
 
@@ -58,6 +58,7 @@ ModUtil.Path.Context.Wrap("CreateBoonLootButtons", function( )
 	ModUtil.Path.Wrap( "CreateTextBox", function( base, args )
 		if active then
 			if args.OffsetY then args.OffsetY = args.OffsetY*data.squashY end
+			if args.FontSize then args.FontSize = args.FontSize*math.pow(data.squashY,1/3) end
 			if data.upgrade and args.Text == data.upgrade.CustomRarityName then 
 				ModUtil.Locals.Stacked( ).lineSpacing = 8*data.squashY
 			end
