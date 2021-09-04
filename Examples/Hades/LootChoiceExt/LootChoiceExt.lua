@@ -2,7 +2,7 @@ ModUtil.RegisterMod("LootChoiceExt")
 
 local config = {
 	MinExtraLootChoices = 1,
-	MaxExtraLootChoices = 4
+	MaxExtraLootChoices = 2
 }
 LootChoiceExt.config = config
 
