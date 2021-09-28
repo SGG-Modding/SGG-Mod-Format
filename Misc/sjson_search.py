@@ -17,8 +17,8 @@ def traverse(tree, key, value):
     return paths
 
 
-file = io.open(sys.argv[1], "rb")
-obj = sjson.load(file)
+file = io.open(sys.argv[1], "r",encoding='utf-8-sig')
+obj = sjson.loads(file.read())
 for path in traverse(obj, sys.argv[2], sys.argv[3]):
     out = ""
     for node in path:
