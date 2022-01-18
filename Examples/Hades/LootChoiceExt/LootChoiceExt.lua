@@ -16,15 +16,15 @@ LootChoiceExt.GetBaseChoices = function( )
 end
 
 OnAnyLoad{ function()
-	LootChoiceExt.LastLootChoices = LootChoiceExt.Choices + RandomInt( config.MinExtraLootChoices, config.MaxExtraLootChoices )
+	CurrentRun.LastLootChoices = LootChoiceExt.Choices + RandomInt( config.MinExtraLootChoices, config.MaxExtraLootChoices )
 end}
 
 ModUtil.Path.Override("GetTotalLootChoices", function( )
-	return LootChoiceExt.LastLootChoices
+	return CurrentRun.LastLootChoices or LootChoiceExt.Choices
 end, LootChoiceExt)
 
 ModUtil.Path.Override("CalcNumLootChoices", function( )
-	local numChoices = LootChoiceExt.LastLootChoices - GetNumMetaUpgrades("ReducedLootChoicesShrineUpgrade")
+	local numChoices = CurrentRun.LastLootChoices - GetNumMetaUpgrades("ReducedLootChoicesShrineUpgrade")
 	return numChoices
 end, LootChoiceExt)
 
