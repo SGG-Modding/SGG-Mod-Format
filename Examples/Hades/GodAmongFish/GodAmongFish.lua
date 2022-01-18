@@ -8,44 +8,42 @@ local config = {
 	FishingPointChance = 1,
 	RequiredMinRoomsSinceFishingPoint = 1,
 	ClearFishingPointRequirements = true,
-	GiveUnlimitedSkeletalLure = true,
-	GiveHugeCatch = true
+	GiveUnlimitedSkeletalLure = false,
+	GiveHugeCatch = false
 }
 
-ModUtil.LoadOnce( function()
+ModUtil.LoadOnce( function( )
 	ModUtil.MapSetTable( FishingData, {
 		NumFakeDunks = { Max = config.MaxFakeDunks },
 		PerfectInterval = config.PerfectInterval,
 		GoodInterval = config.GoodInterval,
 		WayLateInterval = config.WayLateInterval,
 	})
-	for k,v in pairs(RoomSetData) do
-		local room = ModUtil.SafeGet( RoomSetData, {k,"FishingPointChance"})
-		if room then
+	for k, v in pairs( RoomData ) do
+		if v[ "FishingPointChance" ] then
 			if config.ClearFishingPointRequirements then
-				ModUtil.SafeSet( v, {"FishingPointRequirements"}, {} )
+				v["FishingPointRequirements"] = { }
 			end
 			ModUtil.MapSetTable( v, {
 				FishingPointChance = config.FishingPointChance,
 				FishingPointRequirements = {
 					RequiredMinRoomsSinceFishingPoint = config.RequiredMinRoomsSinceFishingPoint,
 				},
-			})
-			OverwriteTableKeys( RoomData, v )
+			} )
 		end
 	end
 end)
 
 ModUtil.WrapBaseFunction( "StartNewRun", function( StartNewRun, ... )
-	local ret = StartNewRun( ... )
+	local currentRun = StartNewRun( ... )
 	if config.GiveUnlimitedSkeletalLure then
-		local traitData = GetProcessedTraitData({ Unit = ret.Hero, TraitName = "TemporaryForcedFishingPointTrait", Rarity = "Common" })
+		local traitData = GetProcessedTraitData{ Unit = currentRun.Hero, TraitName = "TemporaryForcedFishingPointTrait", Rarity = "Common" }
 		traitData.RemainingUses = math.inf
 		TraitData[traitData.Name].RemainingUses = traitData.RemainingUses
-		AddTraitToHero({ TraitData = traitData })
+		AddTraitToHero{ TraitData = traitData }
 	end
 	if config.GiveHugeCatch then
-		AddTraitToHero({ TraitData = GetProcessedTraitData({ Unit = ret.Hero, TraitName = "FishingTrait", Rarity = "Legendary" }) })
+		AddTraitToHero{ TraitData = GetProcessedTraitData{ Unit = currentRun.Hero, TraitName = "FishingTrait", Rarity = "Legendary" } }
 	end
-	return ret
-end, "GodAmongFish")
+	return currentRun
+end, "GodAmongFish" )
