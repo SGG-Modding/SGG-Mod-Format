@@ -1,7 +1,7 @@
 ModUtil.RegisterMod("ClimbOfSisyphus")
 
 local config = { 
-	TestMode = false,
+	TestMode = true,
 	BaseFalls = 0,
 	BaseGods = 4,
 	MaxGodRate = 1,
@@ -11,7 +11,7 @@ local config = {
 	EnemyDamageRate = 0.2,
 	EnemyDamageLimit = 0.02,
 	EnemyDamageBase = 1,
-	RarityRate = 0.05,
+	RarityRate = 0.1,
 	ExchangeRate = 0.15,
 	EncounterModificationEnabled = true,
 	EncounterDifficultyRate = 2.35,
@@ -94,6 +94,7 @@ function ClimbOfSisyphus.EndFallFunc( currentRun, exitDoor )
 
 	RemoveInputBlock{ Name = "LeaveRoomPresentation" }
 	ToggleControl{ Names = { "AdvancedTooltip" }, Enabled = true }
+	StartNewRunPresentation( currentRun )
 end
 
 function ClimbOfSisyphus.RunFall( currentRun, door )
@@ -209,9 +210,7 @@ end, ClimbOfSisyphus )
 
 ModUtil.WrapBaseFunction( "Damage", function( base, victim, triggerArgs )
 	if victim == CurrentRun.Hero then
-		if config.TestMode then
-			victim.CannotDieFromDamage = true
-		end
+		victim.CannotDieFromDamage = config.TestMode
 		triggerArgs.DamageAmount = triggerArgs.DamageAmount * sfalloff( CurrentRun.TotalFalls, config.PlayerDamageRate, config.PlayerDamageBase, config.PlayerDamageLimit )
 	end
 	return base( victim, triggerArgs )
@@ -233,40 +232,44 @@ ModUtil.WrapBaseFunction( "GetBiomeDepth", function( base, currentRun, ... )
 end, ClimbOfSisyphus )
 
 ModUtil.WrapBaseFunction( "ShowHealthUI", function( base )
-	ClimbOfSisyphus.ShowLevelIndicator( )
+	if not CurrentRun.EndingMoney then
+		ClimbOfSisyphus.ShowLevelIndicator( )
+	end
 	return base( )
 end, ClimbOfSisyphus )
 
 if config.EncounterModificationEnabled then
 	ModUtil.WrapBaseFunction( "GenerateEncounter", function( base, currentRun, room, encounter )
-		if not CurrentRun.TotalFalls then
-			CurrentRun.TotalFalls = config.BaseFalls
-			CurrentRun.MetaDepth = GetBiomeDepth( CurrentRun )
-		end
+		if encounter.EncounterType == "Default" then
+			if not CurrentRun.TotalFalls then
+				CurrentRun.TotalFalls = config.BaseFalls
+				CurrentRun.MetaDepth = GetBiomeDepth( CurrentRun )
+			end
 
-		encounter.DifficultyModifier = ( encounter.DifficultyModifier or 0 ) + config.EncounterDifficultyRate * CurrentRun.TotalFalls
-		if encounter.ActiveEnemyCapDepthRamp then
-			encounter.ActiveEnemyCapDepthRamp = encounter.ActiveEnemyCapDepthRamp + config.EncounterDifficultyRate * CurrentRun.TotalFalls
-		end
-		if encounter.ActiveEnemyCapBase then
-			encounter.ActiveEnemyCapBase = encounter.ActiveEnemyCapBase + config.EncounterEnemyCapRate * CurrentRun.TotalFalls
-		end
-		if encounter.ActiveEnemyCapMax then
-			encounter.ActiveEnemyCapMax = encounter.ActiveEnemyCapMax + config.EncounterEnemyCapRate * CurrentRun.TotalFalls
-		end
-		
-		local waveCap = #WaveDifficultyPatterns
-		encounter.MinWaves = lerp( ( encounter.MinWaves or 1 ), waveCap, falloff( config.EncounterMinWaveRate * CurrentRun.TotalFalls ) )
-		encounter.MaxWaves = lerp( ( encounter.MaxWaves or 1 ), waveCap, falloff( config.EncounterMaxWaveRate * CurrentRun.TotalFalls ) )
-		if encounter.MinWaves > encounter.MaxWaves then encounter.MinWaves = encounter.MaxWaves end
+			encounter.DifficultyModifier = ( encounter.DifficultyModifier or 0 ) + config.EncounterDifficultyRate * CurrentRun.TotalFalls
+			if encounter.ActiveEnemyCapDepthRamp then
+				encounter.ActiveEnemyCapDepthRamp = encounter.ActiveEnemyCapDepthRamp + config.EncounterDifficultyRate * CurrentRun.TotalFalls
+			end
+			if encounter.ActiveEnemyCapBase then
+				encounter.ActiveEnemyCapBase = encounter.ActiveEnemyCapBase + config.EncounterEnemyCapRate * CurrentRun.TotalFalls
+			end
+			if encounter.ActiveEnemyCapMax then
+				encounter.ActiveEnemyCapMax = encounter.ActiveEnemyCapMax + config.EncounterEnemyCapRate * CurrentRun.TotalFalls
+			end
+			
+			local waveCap = #WaveDifficultyPatterns
+			encounter.MinWaves = lerp( ( encounter.MinWaves or 1 ), waveCap, falloff( config.EncounterMinWaveRate * CurrentRun.TotalFalls ) )
+			encounter.MaxWaves = lerp( ( encounter.MaxWaves or 1 ), waveCap, falloff( config.EncounterMaxWaveRate * CurrentRun.TotalFalls ) )
+			if encounter.MinWaves > encounter.MaxWaves then encounter.MinWaves = encounter.MaxWaves end
 
-		if encounter.MaxTypesCap then
-			encounter.MaxTypes = lerp( ( encounter.MaxTypes or 1 ), encounter.MaxTypesCap, falloff( config.EncounterTypesRate * CurrentRun.TotalFalls ) )
-		else
-			encounter.MaxTypes = ( encounter.MaxTypes or 1 ) + config.EncounterTypesRate * CurrentRun.TotalFalls
-		end
-		if encounter.MaxEliteTypes then
-			encounter.MaxEliteTypes = encounter.MaxEliteTypes + config.EncounterTypesRate * CurrentRun.TotalFalls
+			if encounter.MaxTypesCap then
+				encounter.MaxTypes = lerp( ( encounter.MaxTypes or 1 ), encounter.MaxTypesCap, falloff( config.EncounterTypesRate * CurrentRun.TotalFalls ) )
+			else
+				encounter.MaxTypes = ( encounter.MaxTypes or 1 ) + config.EncounterTypesRate * CurrentRun.TotalFalls
+			end
+			if encounter.MaxEliteTypes then
+				encounter.MaxEliteTypes = encounter.MaxEliteTypes + config.EncounterTypesRate * CurrentRun.TotalFalls
+			end
 		end
 		
 		return base( currentRun, room, encounter )
@@ -276,11 +279,16 @@ end
 ModUtil.WrapBaseFunction( "SetTraitsOnLoot", function( base, lootData, args )
 	local extraRarity = falloff( config.RarityRate * CurrentRun.TotalFalls )
 	local extraReplace = falloff( config.ExchangeRate * CurrentRun.TotalFalls )
+	local oldRarityChances = lootData.RarityChances
+	local oldReplaceChance = CurrentRun.Hero.BoonData.ReplaceChance
+	lootData.RarityChances = ShallowCopyTable( oldRarityChances )
 	lootData.RarityChances.Legendary = maxInterpolate( lootData.RarityChances.Legendary, extraRarity )
 	lootData.RarityChances.Heroic = maxInterpolate( lootData.RarityChances.Heroic, extraRarity )
 	lootData.RarityChances.Epic = maxInterpolate( lootData.RarityChances.Epic, extraRarity )
 	lootData.RarityChances.Rare = maxInterpolate( lootData.RarityChances.Rare, extraRarity )
-	lootData.RarityChances.Common = maxInterpolate(lootData.RarityChances.Common, extraRarity )
-	CurrentRun.Hero.BoonData.ReplaceChance = maxInterpolate( CurrentRun.Hero.BoonData.ReplaceChance, extraReplace )
-	return base( lootData, args )
+	lootData.RarityChances.Common = maxInterpolate( lootData.RarityChances.Common, extraRarity )
+	CurrentRun.Hero.BoonData.ReplaceChance = maxInterpolate( oldReplaceChance, extraReplace )
+	base( lootData, args )
+	lootData.RarityChances = oldRarityChances
+	CurrentRun.Hero.BoonData.ReplaceChance = oldReplaceChance
 end, ClimbOfSisyphus )
