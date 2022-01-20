@@ -1,7 +1,7 @@
 ModUtil.RegisterMod("ClimbOfSisyphus")
 
 local config = { 
-	TestMode = true,
+	TestMode = false,
 	BaseFalls = 0,
 	BaseGods = 4,
 	MaxGodRate = 1,
@@ -52,22 +52,11 @@ OnAnyLoad{ function( )
 	end
 end }
 
-function ClimbOfSisyphus.SkipToEnd( fight )
-	local _, door = next( OfferedExitDoors )
-	if not door then
-		UseEscapeDoor( CurrentRun.Hero )
-		return thread( function( )
-			wait(0.1)
-			ClimbOfSisyphus.SkipToEnd( fight )
-		end )
-	end
-	if not fight then
+function ClimbOfSisyphus.SkipToEnd( skipFight )
+	if skipFight then
 		ForceNextEncounter = "Empty"
 	end
-	room = CreateRoom( RoomData["D_Boss01"], { SkipChooseReward = true, SkipChooseEncounter = true } )
-	CurrentRun.CurrentRoom.ExitDirection = room.EntranceDirection
-	AssignRoomToExitDoor( door, room )
-	LeaveRoom( CurrentRun, door )
+	return LeaveRoomWithNoDoor( nil, { NextMap = "D_Boss01" } )
 end
 
 function ClimbOfSisyphus.ShowLevelIndicator( )
@@ -101,7 +90,7 @@ function ClimbOfSisyphus.RunFall( currentRun, door )
 
 	currentRun.TotalFalls = currentRun.TotalFalls + 1
 	currentRun.MetaDepth = GetBiomeDepth( currentRun )
-	currentRun.NumRerolls = currentRun.NumRerolls + GetNumMetaUpgrades( "RerollMetaUpgrade" ) + GetNumMetaUpgrades("RerollPanelMetaUpgrade")
+	currentRun.NumRerolls = currentRun.NumRerolls + GetNumMetaUpgrades( "RerollMetaUpgrade" ) + GetNumMetaUpgrades( "RerollPanelMetaUpgrade" )
 	
     currentRun.BiomeRoomCountCache = { }
     currentRun.RoomCountCache = { }
@@ -148,26 +137,26 @@ function ClimbOfSisyphus.RunFall( currentRun, door )
 	UpdateRunHistoryCache( currentRun )
 	
 	door.Room = CreateRoom( RoomData["RoomOpening"] )
-	door.ExitFunctionName = "ClimbOfSisyphus.EndFallFunc"
-	door.Room.EntranceDirection = false
+	door.ExitFunctionName = ClimbOfSisyphus.EndFallFunc
+	door.Room.EntranceDirection = nil
 	currentRun.CurrentRoom.ExitFunctionName = nil
-	currentRun.CurrentRoom.ExitDirection = door.Room.EntranceDirection
+	currentRun.CurrentRoom.ExitDirection = nil
 	currentRun.CurrentRoom.SkipLoadNextMap = false
 end
 
-ModUtil.WrapBaseFunction( "IsEncounterEligible", function( base, currentRun, room, encounterData )
-	if encounterData.EncounterType == "NonCombat" then return true end
+ModUtil.Path.Wrap( "IsEncounterEligible", function( base, currentRun, room, encounterData )
+	if room.ForcedReward == "Story" and encounterData.EncounterType == "NonCombat" then return true end
 	return base( currentRun, room, encounterData )
 end, ClimbOfSisyphus )
 
-ModUtil.WrapBaseFunction( "RunShopGeneration", function( base, currentRoom, ... )
+ModUtil.Path.Wrap( "RunShopGeneration", function( base, currentRoom, ... )
 	if currentRoom.Name == "RoomOpening" or currentRoom.Name == "D_Boss01" then
 		currentRoom.Flipped = false
 	end
 	return base( currentRoom, ... )
 end, ClimbOfSisyphus )
 
-ModUtil.WrapBaseFunction( "LeaveRoom", function( base, currentRun, door )
+ModUtil.Path.Wrap( "LeaveRoom", function( base, currentRun, door )
 	if currentRun.CurrentRoom.EntranceFunctionName == "RoomEntranceHades" then
 		local screen = ModUtil.Hades.NewMenuYesNo(
 			"ClimbOfSisyphusExitMenu", 
@@ -190,7 +179,7 @@ ModUtil.WrapBaseFunction( "LeaveRoom", function( base, currentRun, door )
 	end
 end, ClimbOfSisyphus )
 
-ModUtil.BaseOverride( "ReachedMaxGods", function( excludedGods )
+ModUtil.Path.Override( "ReachedMaxGods", function( excludedGods )
 	if not CurrentRun then return end
 	if not CurrentRun.TotalFalls then
 		CurrentRun.TotalFalls = config.BaseFalls
@@ -208,7 +197,7 @@ ModUtil.BaseOverride( "ReachedMaxGods", function( excludedGods )
 	return TableLength( gods ) >= maxLootTypes
 end, ClimbOfSisyphus )
 
-ModUtil.WrapBaseFunction( "Damage", function( base, victim, triggerArgs )
+ModUtil.Path.Wrap( "Damage", function( base, victim, triggerArgs )
 	if victim == CurrentRun.Hero then
 		victim.CannotDieFromDamage = config.TestMode
 		triggerArgs.DamageAmount = triggerArgs.DamageAmount * sfalloff( CurrentRun.TotalFalls, config.PlayerDamageRate, config.PlayerDamageBase, config.PlayerDamageLimit )
@@ -216,7 +205,7 @@ ModUtil.WrapBaseFunction( "Damage", function( base, victim, triggerArgs )
 	return base( victim, triggerArgs )
 end, ClimbOfSisyphus )
 
-ModUtil.WrapBaseFunction( "DamageEnemy", function( base, victim, triggerArgs )
+ModUtil.Path.Wrap( "DamageEnemy", function( base, victim, triggerArgs )
 	if config.TestMode then
 		victim.Health = 0
 	end
@@ -224,14 +213,14 @@ ModUtil.WrapBaseFunction( "DamageEnemy", function( base, victim, triggerArgs )
 	return base( victim, triggerArgs )
 end, ClimbOfSisyphus )
 
-ModUtil.WrapBaseFunction( "GetBiomeDepth", function( base, currentRun, ... )
+ModUtil.Path.Wrap( "GetBiomeDepth", function( base, currentRun, ... )
 	if currentRun.MetaDepth then
 		return currentRun.MetaDepth + base( currentRun, ...)
 	end
 	return base( currentRun )
 end, ClimbOfSisyphus )
 
-ModUtil.WrapBaseFunction( "ShowHealthUI", function( base )
+ModUtil.Path.Wrap( "ShowHealthUI", function( base )
 	if not CurrentRun.EndingMoney then
 		ClimbOfSisyphus.ShowLevelIndicator( )
 	end
@@ -239,8 +228,8 @@ ModUtil.WrapBaseFunction( "ShowHealthUI", function( base )
 end, ClimbOfSisyphus )
 
 if config.EncounterModificationEnabled then
-	ModUtil.WrapBaseFunction( "GenerateEncounter", function( base, currentRun, room, encounter )
-		if encounter.EncounterType == "Default" then
+	ModUtil.Path.Wrap( "GenerateEncounter", function( base, currentRun, room, encounter )
+		if encounter.EncounterType ~= "Spawned" then
 			if not CurrentRun.TotalFalls then
 				CurrentRun.TotalFalls = config.BaseFalls
 				CurrentRun.MetaDepth = GetBiomeDepth( CurrentRun )
@@ -276,7 +265,7 @@ if config.EncounterModificationEnabled then
 	end, ClimbOfSisyphus )
 end
 
-ModUtil.WrapBaseFunction( "SetTraitsOnLoot", function( base, lootData, args )
+ModUtil.Path.Wrap( "SetTraitsOnLoot", function( base, lootData, args )
 	local extraRarity = falloff( config.RarityRate * CurrentRun.TotalFalls )
 	local extraReplace = falloff( config.ExchangeRate * CurrentRun.TotalFalls )
 	local oldRarityChances = lootData.RarityChances
