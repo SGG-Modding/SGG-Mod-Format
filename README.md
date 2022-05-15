@@ -1,4 +1,4 @@
-# SuperGiantGames Mod Format
+# Supergiant Games Mod Format
 Format for making and loading lua/sjson/xml mods for SuperGiantGames' games (Bastion, Transistor, Pyre, Hades)
 
 
