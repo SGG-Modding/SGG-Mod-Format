@@ -28,7 +28,7 @@ ModUtil.Path.Override("CalcNumLootChoices", function( )
 	return numChoices
 end, LootChoiceExt)
 
-ModUtil.Path.Context.Wrap("CreateBoonLootButtons", function( )
+ModUtil.Path.Context.Env("CreateBoonLootButtons", function( )
 	local data = { }
 	local active = false
 	ModUtil.Path.Wrap( "CreateScreenComponent", function( base, args )
@@ -39,7 +39,6 @@ ModUtil.Path.Context.Wrap("CreateBoonLootButtons", function( )
 			local excess = math.max( 3,#locals.upgradeOptions )-3
 			locals.itemLocationY = locals.itemLocationY-12.5*excess
 			data.squashY = 3/(3+excess)
-			data.iconScaling = (excess == 0) and 0.85 or 1
 		elseif active and args.Group == "Combat_Menu" then
 			local locals = ModUtil.Locals.Stacked( )
 			if args.Name == "TraitBacking" then
@@ -52,24 +51,22 @@ ModUtil.Path.Context.Wrap("CreateBoonLootButtons", function( )
 			end
 		end
 		local component = base( args )
-		SetScaleY({Id = component.Id, Fraction = 1})
+		SetScaleY({Id = component.Id, Fraction = data.squashY})
 		return component
 	end, LootChoiceExt )
 	ModUtil.Path.Wrap( "CreateTextBox", function( base, args )
 		if active then
 			if args.OffsetY then args.OffsetY = args.OffsetY*data.squashY end
-			if args.FontSize then args.FontSize = args.FontSize*math.pow(data.squashY,1/3) end
+			if args.FontSize then args.FontSize = args.FontSize*data.squashY end
 			if data.upgrade and args.Text == data.upgrade.CustomRarityName then 
 				ModUtil.Locals.Stacked( ).lineSpacing = 8*data.squashY
 			end
 		end
 		return base( args )
-	end, LootChoiceExt )
+	end, LootChoiceExt)
 	ModUtil.Path.Wrap( "SetScale", function( base, args )
 		if active then
-			args.Fraction = data.iconScaling
-			SetScaleY(args)
-			args.Fraction = data.iconScaling*data.squashY
+			args.Fraction = data.squashY
 			return SetScaleX(args)
 		end
 		return base( args )
@@ -82,7 +79,7 @@ ModUtil.Path.Context.Wrap("CreateBoonLootButtons", function( )
 		if active and arg == "RerollPanelMetaUpgrade" then active = false end
 		return base( arg )
 	end, LootChoiceExt )
-end, LootChoiceExt)
+end)
 
 ModUtil.Path.Override("DestroyBoonLootButtons", function( lootData )
 	local components = ScreenAnchors.ChoiceScreen.Components
