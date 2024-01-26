@@ -15,7 +15,7 @@ local config = -- (set to nil or false to disable any of them)
 	UnlockEveryCodexEntry = false,	-- Unlock every codex entry ... (will affect your save permanently!)
 	AllowRespecMirror = false,		-- Always able to respec at the mirror and swap upgrades (will affect your save permanently!)
 	UnlimitedGodsPerRun = true,		-- Any unlocked god can appear in the same run
-	ChooseMultipleUpgrades = 1,		-- Choose multiple upgrades at any given choice (multiplier of available number)
+	ChooseMultipleUpgrades = 1,		-- Choose multiple upgrades at any given choice (to always choose all options once put '...' instead (quotes included))
 	PlayerDamageMult = 0.5,			-- Multiply damage the player recieves
 	EnemyDamageMult = 1.5,			-- Multiply damage enemies recieve
 	ExtraMoney = 5,					-- Global multiplier of charon coins gained
@@ -42,7 +42,32 @@ local config = -- (set to nil or false to disable any of them)
 	}
 }
 
-MagicEdits.config = config
+local function generateFunction( value )
+	if type(value) == "string" then
+		return load( "local _ENV = { }; return " .. value )
+	end
+	return function() return value end
+end
+
+MagicEdits.Config = setmetatable( { }, { 
+    __index = config,
+    __newindex = function( _, key, value )
+        config[ key ] = value
+        if key == "ChooseMultipleUpgrades" then
+            config.ChooseMultipleUpgradesFunction = generateFunction( value )
+        end
+    end
+} )
+
+MagicEdits.Config.ChooseMultipleUpgrades = config.ChooseMultipleUpgrades
+
+ModUtil.WrapBaseFunction( "IncrementTableValue", function( baseFunc, tbl, key, amount, ... )
+    if tbl and tbl == ModUtil.PathGet( "GameState.KeepsakeChambers" ) then
+        DebugPrint{ Text = "(INFO) AdjustKeepsakeProgress: Adjusted keepsake progress for " .. key .. " as: " .. AdjustKeepsakeProgress.Config.Adjustment }
+        return baseFunc( tbl, key, AdjustKeepsakeProgress.AdjustmentFunction( amount or 1 ) )
+    end
+    return baseFunc( tbl, key, amount, ... )
+end, AdjustKeepsakeProgress )
 
 if config.UnlockEveryCodexEntry then
 	ModUtil.LoadOnce( function()
@@ -116,30 +141,28 @@ if config.MoneyCost then
 end
 
 if config.ChooseMultipleUpgrades then
-	if config.ChooseMultipleUpgrades >= 0 then
-		ModUtil.WrapBaseFunction( "CloseUpgradeChoiceScreen", function( baseFunc, screen, button )
-			CurrentRun.Hero.UpgradeChoicesSinceMenuOpened = CurrentRun.Hero.UpgradeChoicesSinceMenuOpened - 1
-			if CurrentRun.Hero.UpgradeChoicesSinceMenuOpened < 1 then
-				baseFunc( screen, button )
-			end
-		end, MagicEdits)
+	ModUtil.WrapBaseFunction( "CloseUpgradeChoiceScreen", function( baseFunc, screen, button )
+		CurrentRun.Hero.UpgradeChoicesSinceMenuOpened = CurrentRun.Hero.UpgradeChoicesSinceMenuOpened - 1
+		if CurrentRun.Hero.UpgradeChoicesSinceMenuOpened < 1 then
+			baseFunc( screen, button )
+		end
+	end, MagicEdits)
 
-		ModUtil.WrapBaseFunction( "CreateBoonLootButtons", function( baseFunc, lootData)
-			if lootData.UpgradeOptions == nil then
-				SetTraitsOnLoot( lootData )
-			end
-			if IsEmpty( lootData.UpgradeOptions ) then
-				table.insert(lootData.UpgradeOptions, { ItemName = "FallbackMoneyDrop", Type = "Consumable", Rarity = "Common" })
-			end
-			CurrentRun.Hero.UpgradeChoicesSinceMenuOpened = TableLength(lootData.UpgradeOptions)
-			if CurrentRun.Hero.UpgradeChoicesSinceMenuOpened then
-				CurrentRun.Hero.UpgradeChoicesSinceMenuOpened=CurrentRun.Hero.UpgradeChoicesSinceMenuOpened*config.ChooseMultipleUpgrades
-			else
-				CurrentRun.Hero.UpgradeChoicesSinceMenuOpened = 1
-			end
-			return baseFunc( lootData )
-		end, MagicEdits)
-	end
+	ModUtil.WrapBaseFunction( "CreateBoonLootButtons", function( baseFunc, lootData)
+		if lootData.UpgradeOptions == nil then
+			SetTraitsOnLoot( lootData )
+		end
+		if IsEmpty( lootData.UpgradeOptions ) then
+			table.insert(lootData.UpgradeOptions, { ItemName = "FallbackMoneyDrop", Type = "Consumable", Rarity = "Common" })
+		end
+		CurrentRun.Hero.UpgradeChoicesSinceMenuOpened = TableLength(lootData.UpgradeOptions)
+		if CurrentRun.Hero.UpgradeChoicesSinceMenuOpened then
+			CurrentRun.Hero.UpgradeChoicesSinceMenuOpened = config.ChooseMultipleUpgradesFunction( CurrentRun.Hero.UpgradeChoicesSinceMenuOpened )
+		else
+			CurrentRun.Hero.UpgradeChoicesSinceMenuOpened = 1
+		end
+		return baseFunc( lootData )
+	end, MagicEdits)
 end
 
 if config.ExtraRarity then
