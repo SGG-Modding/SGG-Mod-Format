@@ -1,4 +1,4 @@
-ModUtil.RegisterMod("BottleFountain")
+ModUtil.Mod.Register("BottleFountain")
 
 local config = {
 	debug = false,
@@ -38,7 +38,7 @@ function BottleFountain.DoHeal( healFraction )
 	thread(UpdateHealthUI)
 end
 
-ModUtil.WrapBaseFunction( "BeginOpeningCodex", function(baseFunc, ... )
+ModUtil.Path.Wrap( "BeginOpeningCodex", function(base, ... )
 	if not CanOpenCodex() and not AreScreensActive() and IsInputAllowed({}) then
 		if CurrentRun.Hero.MaxHealth > CurrentRun.Hero.Health then
 			wait(0.2)
@@ -49,10 +49,10 @@ ModUtil.WrapBaseFunction( "BeginOpeningCodex", function(baseFunc, ... )
 			wait(0.2)
 		end
 	end
-	return baseFunc(...)
+	return base(...)
 end, BottleFountain)
 
-ModUtil.WrapBaseFunction( "Heal", function(baseFunc, victim, triggerArgs)
+ModUtil.Path.Wrap( "Heal", function(base, victim, triggerArgs)
 	if victim == CurrentRun.Hero then
 		if triggerArgs.SourceName == "HealthFountain" and triggerArgs.HealFraction ~= 0 and HasResource( "GiftPoints", config.NectarCost ) then
 			local bottleChose = false
@@ -60,7 +60,7 @@ ModUtil.WrapBaseFunction( "Heal", function(baseFunc, victim, triggerArgs)
 				"BottleFountainGet", 
 				function()
 					if bottleChose then return end
-					baseFunc(victim, triggerArgs)
+					base(victim, triggerArgs)
 					thread(UpdateHealthUI)
 				end,
 				ModUtil.Hades.DimMenu,
@@ -79,5 +79,5 @@ ModUtil.WrapBaseFunction( "Heal", function(baseFunc, victim, triggerArgs)
 			return
 		end
 	end
-	return baseFunc(victim, triggerArgs)
+	return base(victim, triggerArgs)
 end, BottleFountain)

@@ -1,4 +1,4 @@
-ModUtil.RegisterMod( "AdjustKeepsakeProgress" )
+ModUtil.Mod.Register( "AdjustKeepsakeProgress" )
 
 local config = {
     -- Write any expression you want for the new keepsake progress to increase by
@@ -22,10 +22,10 @@ end
 
 AdjustKeepsakeProgress.Config.Adjustment = config.Adjustment
 
-ModUtil.WrapBaseFunction( "IncrementTableValue", function( baseFunc, tbl, key, amount, ... )
+ModUtil.Path.Wrap( "IncrementTableValue", function( base, tbl, key, amount, ... )
     if tbl and tbl == ModUtil.PathGet( "GameState.KeepsakeChambers" ) then
         DebugPrint{ Text = "(INFO) AdjustKeepsakeProgress: Adjusted keepsake progress for " .. key .. " as: " .. AdjustKeepsakeProgress.Config.Adjustment }
-        return baseFunc( tbl, key, AdjustKeepsakeProgress.AdjustmentFunction( amount or 1 ) )
+        return base( tbl, key, AdjustKeepsakeProgress.AdjustmentFunction( amount or 1 ) )
     end
-    return baseFunc( tbl, key, amount, ... )
+    return base( tbl, key, amount, ... )
 end, AdjustKeepsakeProgress )

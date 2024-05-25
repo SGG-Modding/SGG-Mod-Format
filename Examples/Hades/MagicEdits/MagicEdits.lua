@@ -5,7 +5,7 @@ Author: MagicGonads
 		Proof of concept for this mod format
 -]]
 
-ModUtil.RegisterMod("MagicEdits")
+ModUtil.Mod.Register("MagicEdits")
 
 local config = -- (set to nil or false to disable any of them) 
 {
@@ -61,12 +61,12 @@ MagicEdits.Config = setmetatable( { }, {
 
 MagicEdits.Config.ChooseMultipleUpgrades = config.ChooseMultipleUpgrades
 
-ModUtil.WrapBaseFunction( "IncrementTableValue", function( baseFunc, tbl, key, amount, ... )
+ModUtil.Path.Wrap( "IncrementTableValue", function( base, tbl, key, amount, ... )
     if tbl and tbl == ModUtil.PathGet( "GameState.KeepsakeChambers" ) then
         DebugPrint{ Text = "(INFO) AdjustKeepsakeProgress: Adjusted keepsake progress for " .. key .. " as: " .. AdjustKeepsakeProgress.Config.Adjustment }
-        return baseFunc( tbl, key, AdjustKeepsakeProgress.AdjustmentFunction( amount or 1 ) )
+        return base( tbl, key, AdjustKeepsakeProgress.AdjustmentFunction( amount or 1 ) )
     end
-    return baseFunc( tbl, key, amount, ... )
+    return base( tbl, key, amount, ... )
 end, AdjustKeepsakeProgress )
 
 if config.UnlockEveryCodexEntry then
@@ -91,64 +91,64 @@ if config.AllowRespecMirror then
 end
 
 if config.GatherBonus then
-	ModUtil.WrapBaseFunction("AddResource", function( baseFunc, name, amount, source, args )
+	ModUtil.Path.Wrap("AddResource", function( base, name, amount, source, args )
 		if source ~= "MetaPointCapRefund" then
 			if amount then
 				if config.GatherBonus[name] then
-					return baseFunc( name, config.GatherBonus[name]*amount, source, args )
+					return base( name, config.GatherBonus[name]*amount, source, args )
 				elseif config.GatherBonus.Global then
-					return baseFunc( name, config.GatherBonus.Global*amount, source, args )
+					return base( name, config.GatherBonus.Global*amount, source, args )
 				end
 			end
 		end
-		baseFunc( name, amount, source, args )
+		base( name, amount, source, args )
 	end, MagicEdits)
 end
 
 if config.PurchaseCost then
-	ModUtil.WrapBaseFunction( "HasResource", function( baseFunc, name, amount )
+	ModUtil.Path.Wrap( "HasResource", function( base, name, amount )
 		if name ~= "MetaPoints" then
 			if amount then
 				if config.PurchaseCost[name] then
-					return baseFunc( name, config.PurchaseCost[name]*amount)
+					return base( name, config.PurchaseCost[name]*amount)
 				elseif config.PurchaseCost.Global then
-					return baseFunc( name, config.PurchaseCost.Global*amount)
+					return base( name, config.PurchaseCost.Global*amount)
 				end
 			end
 		end
-		return baseFunc( name, amount )
+		return base( name, amount )
 	end, MagicEdits)
 	
-	ModUtil.WrapBaseFunction( "SpendResource", function( baseFunc, name, amount, source, args )
+	ModUtil.Path.Wrap( "SpendResource", function( base, name, amount, source, args )
 		if amount then
 			if config.PurchaseCost[name] then
-				return baseFunc( name, config.PurchaseCost[name]*amount, source, args)
+				return base( name, config.PurchaseCost[name]*amount, source, args)
 			elseif config.PurchaseCost.Global then
-				return baseFunc( name, config.PurchaseCost.Global*amount, source, args)
+				return base( name, config.PurchaseCost.Global*amount, source, args)
 			end
 		end
-		return baseFunc( name, amount )
+		return base( name, amount )
 	end, MagicEdits)
 end
 
 if config.MoneyCost then
-	ModUtil.WrapBaseFunction( "SpendMoney", function(baseFunc, amount, source )
+	ModUtil.Path.Wrap( "SpendMoney", function(base, amount, source )
 		if amount then
-			return baseFunc( config.MoneyCost*amount, source )
+			return base( config.MoneyCost*amount, source )
 		end
-		return baseFunc( amount, source )
+		return base( amount, source )
 	end, MagicEdits)
 end
 
 if config.ChooseMultipleUpgrades then
-	ModUtil.WrapBaseFunction( "CloseUpgradeChoiceScreen", function( baseFunc, screen, button )
+	ModUtil.Path.Wrap( "CloseUpgradeChoiceScreen", function( base, screen, button )
 		CurrentRun.Hero.UpgradeChoicesSinceMenuOpened = CurrentRun.Hero.UpgradeChoicesSinceMenuOpened - 1
 		if CurrentRun.Hero.UpgradeChoicesSinceMenuOpened < 1 then
-			baseFunc( screen, button )
+			base( screen, button )
 		end
 	end, MagicEdits)
 
-	ModUtil.WrapBaseFunction( "CreateBoonLootButtons", function( baseFunc, lootData)
+	ModUtil.Path.Wrap( "CreateBoonLootButtons", function( base, lootData)
 		if lootData.UpgradeOptions == nil then
 			SetTraitsOnLoot( lootData )
 		end
@@ -161,13 +161,13 @@ if config.ChooseMultipleUpgrades then
 		else
 			CurrentRun.Hero.UpgradeChoicesSinceMenuOpened = 1
 		end
-		return baseFunc( lootData )
+		return base( lootData )
 	end, MagicEdits)
 end
 
 if config.ExtraRarity then
 
-	ModUtil.WrapBaseFunction( "SetTraitsOnLoot", function( baseFunc, lootData )
+	ModUtil.Path.Wrap( "SetTraitsOnLoot", function( base, lootData )
 		if lootData.RarityChances.Legendary and config.ExtraRarity.Legendary < 1 then
 			lootData.RarityChances.Legendary = lootData.RarityChances.Legendary*(1-config.ExtraRarity.Legendary) + config.ExtraRarity.Legendary
 		else
@@ -193,62 +193,62 @@ if config.ExtraRarity then
 		else
 			lootData.RarityChances.Common = config.ExtraRarity.Common
 		end
-		baseFunc( lootData )
+		base( lootData )
 	end, MagicEdits)
 end
 
 if config.ExtraMoney then
-	ModUtil.WrapBaseFunction( "AddMoney", function( baseFunc, amount, source )
+	ModUtil.Path.Wrap( "AddMoney", function( base, amount, source )
 		if amount then
-			return baseFunc( config.ExtraMoney*amount, source )
+			return base( config.ExtraMoney*amount, source )
 		end
-		return baseFunc( amount, source )
+		return base( amount, source )
 	end, MagicEdits)
 end
 
 if config.AlwaysSeeChamberCount then
-	ModUtil.WrapBaseFunction( "ShowHealthUI", function( baseFunc )
+	ModUtil.Path.Wrap( "ShowHealthUI", function( base )
 		ShowDepthCounter()
-		baseFunc()
+		base()
 	end, MagicEdits)
 end
 
 if config.AlwaysUseSpecialDoors then
-	ModUtil.WrapBaseFunction( "CheckSpecialDoorRequirement", function( baseFunc, door )
-		baseFunc( door )
+	ModUtil.Path.Wrap( "CheckSpecialDoorRequirement", function( base, door )
+		base( door )
 		return nil
 	end, MagicEdits)
 end
 
 if config.PlayerDamageMult then
-	ModUtil.WrapBaseFunction( "Damage", function( baseFunc, victim, triggerArgs )
+	ModUtil.Path.Wrap( "Damage", function( base, victim, triggerArgs )
 		if triggerArgs.DamageAmount and victim == CurrentRun.Hero then
 			triggerArgs.DamageAmount = triggerArgs.DamageAmount * config.PlayerDamageMult
 		end
-		baseFunc( victim, triggerArgs )
+		base( victim, triggerArgs )
 	end, MagicEdits)
 end
 if config.EnemyDamageMult then
-	ModUtil.WrapBaseFunction( "DamageEnemy", function( baseFunc, victim, triggerArgs )
+	ModUtil.Path.Wrap( "DamageEnemy", function( base, victim, triggerArgs )
 		if triggerArgs.DamageAmount then
 			triggerArgs.DamageAmount = triggerArgs.DamageAmount * config.EnemyDamageMult
 		end
-		baseFunc( victim, triggerArgs )
+		base( victim, triggerArgs )
 	end, MagicEdits)
 end
 
 if config.CanAlwaysExitRoom then
-	ModUtil.WrapBaseFunction( "CheckRoomExitsReady", function( baseFunc, currentRoom )
-		baseFunc( currentRoom )
+	ModUtil.Path.Wrap( "CheckRoomExitsReady", function( base, currentRoom )
+		base( currentRoom )
 		return true
 	end, MagicEdits)
 
-	ModUtil.WrapBaseFunction( "AttemptUseDoor", function( baseFunc, door )
+	ModUtil.Path.Wrap( "AttemptUseDoor", function( base, door )
 		if not door.Room then
 			DoUnlockRoomExits( CurrentRun, CurrentRoom )
 		else
 			door.ReadyToUse = true
-			baseFunc( door )
+			base( door )
 		end
 	end, MagicEdits)
 end

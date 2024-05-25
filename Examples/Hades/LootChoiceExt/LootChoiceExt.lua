@@ -1,4 +1,4 @@
-ModUtil.RegisterMod("LootChoiceExt")
+ModUtil.Mod.Register("LootChoiceExt")
 
 local config = {
 	MinExtraLootChoices = 1,

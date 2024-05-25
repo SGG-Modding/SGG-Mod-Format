@@ -1,4 +1,4 @@
-ModUtil.RegisterMod( "VersusExtra" )
+ModUtil.Mod.Register( "VersusExtra" )
 
 local config = {
 	TeamA = {
@@ -49,7 +49,7 @@ function VersusExtra.AddCharacter( addteam, data, index )
 	VersusExtra.CopyCharacterTeamData( character, copyteam )
 	
 	ModUtil.MapNilTable(character,data.NilTable)
-	ModUtil.MapSetTable(character,data.SetTable)
+	ModUtil.Table.Merge(character,data.SetTable)
 			
 	if index == nil then
 		index = #addteam.TeamBench + 1
@@ -66,7 +66,7 @@ function VersusExtra.AddCharacter( addteam, data, index )
 	addteam.TeamBench[index] = character
 end
 
-ModUtil.WrapBaseFunction( "PrepareLocalMPDraft", function(baseFunc, TeamAid, TeamBid )
+ModUtil.Path.Wrap( "PrepareLocalMPDraft", function(base, TeamAid, TeamBid )
 	local TeamA = League[TeamAid]
 	local TeamB = League[TeamBid]
 	if #TeamA.TeamBench == config.TeamA.BaseCount and #TeamB.TeamBench == config.TeamB.BaseCount then
@@ -81,19 +81,19 @@ ModUtil.WrapBaseFunction( "PrepareLocalMPDraft", function(baseFunc, TeamAid, Tea
 			VersusExtra.AddCharacter( TeamB, data )
 		end
 	end
-	return baseFunc( TeamAid, TeamBid )
+	return base( TeamAid, TeamBid )
 end, VersusExtra)
 
-ModUtil.WrapBaseFunction( "DisplayDraftScreen", function(baseFunc, ...)
-    local ret = baseFunc(...)
+ModUtil.Path.Wrap( "DisplayDraftScreen", function(base, ...)
+    local ret = base(...)
 	if IsMultiplayerMatch() then
 		SetMenuOptions({ Name = "RosterScreen", Item = "YButton", Properties = {OffsetY = 400} })
 	end
     return ret
 end, VersusExtra)
 
-ModUtil.WrapBaseFunction( "ViewTeam", function(baseFunc, ...)
-	local ret = baseFunc(...)
+ModUtil.Path.Wrap( "ViewTeam", function(base, ...)
+	local ret = base(...)
 	if IsMultiplayerMatch() then
 		SetMenuOptions({ Name = "RosterScreen", Item = "YButton", Properties = {OffsetY = 400} })
 	end

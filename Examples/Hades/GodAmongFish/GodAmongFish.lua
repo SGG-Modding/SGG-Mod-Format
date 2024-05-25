@@ -1,4 +1,4 @@
-ModUtil.RegisterMod( "GodAmongFish" )
+ModUtil.Mod.Register( "GodAmongFish" )
 
 local config = {
 	PerfectInterval = 4,
@@ -13,7 +13,7 @@ local config = {
 }
 
 ModUtil.LoadOnce( function( )
-	ModUtil.MapSetTable( FishingData, {
+	ModUtil.Table.Merge( FishingData, {
 		NumFakeDunks = { Max = config.MaxFakeDunks },
 		PerfectInterval = config.PerfectInterval,
 		GoodInterval = config.GoodInterval,
@@ -24,7 +24,7 @@ ModUtil.LoadOnce( function( )
 			if config.ClearFishingPointRequirements then
 				v["FishingPointRequirements"] = { }
 			end
-			ModUtil.MapSetTable( v, {
+			ModUtil.Table.Merge( v, {
 				FishingPointChance = config.FishingPointChance,
 				FishingPointRequirements = {
 					RequiredMinRoomsSinceFishingPoint = config.RequiredMinRoomsSinceFishingPoint,
@@ -34,7 +34,7 @@ ModUtil.LoadOnce( function( )
 	end
 end)
 
-ModUtil.WrapBaseFunction( "StartNewRun", function( StartNewRun, ... )
+ModUtil.Path.Wrap( "StartNewRun", function( StartNewRun, ... )
 	local currentRun = StartNewRun( ... )
 	if config.GiveUnlimitedSkeletalLure then
 		local traitData = GetProcessedTraitData{ Unit = currentRun.Hero, TraitName = "TemporaryForcedFishingPointTrait", Rarity = "Common" }

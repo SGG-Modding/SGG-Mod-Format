@@ -1,4 +1,4 @@
-ModUtil.RegisterMod("ClimbOfSisyphus")
+ModUtil.Mod.Register("ClimbOfSisyphus")
 
 local config = { 
 	TestMode = false,
